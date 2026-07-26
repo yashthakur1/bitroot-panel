@@ -167,6 +167,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
   // GitHub connection
   const [ghLogin, setGhLogin] = useState<string | null>(null);
+  const [ghAvatar, setGhAvatar] = useState<string | null>(null);
+  const [ghProfile, setGhProfile] = useState<string>('');
   const [ghChecked, setGhChecked] = useState(false);
   const [pat, setPat] = useState('');
   const [ghBusy, setGhBusy] = useState(false);
@@ -208,6 +210,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
     const res = await fetch('/api/github');
     const data = await res.json().catch(() => ({}));
     setGhLogin(data.connected ? data.login : null);
+    setGhAvatar(data.connected ? (data.avatarUrl ?? null) : null);
+    setGhProfile(data.profileUrl ?? '');
     setGhChecked(true);
     if (data.connected) {
       const rr = await fetch('/api/github/repos');
@@ -468,9 +472,30 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
           {source === 'github' && ghLogin && (
             <>
               <div className="fade-in-up flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60">
-                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                  <CheckCircle2 size={15} className="text-green-600 pop-in" />
-                  Connected as <strong>{ghLogin}</strong>
+                <span className="flex items-center gap-2.5 text-gray-700 dark:text-gray-300">
+                  <Github size={16} className="text-gray-800 dark:text-gray-200 shrink-0" />
+                  {ghAvatar && (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={ghAvatar}
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="w-5 h-5 rounded-full outline outline-1 outline-black/10 dark:outline-white/10 pop-in"
+                    />
+                  )}
+                  <span>
+                    Connected as{' '}
+                    <a
+                      href={ghProfile || `https://github.com/${ghLogin}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-gray-900 dark:text-gray-100 hover:underline underline-offset-2"
+                    >
+                      {ghLogin}
+                    </a>
+                  </span>
+                  <CheckCircle2 size={14} className="text-green-600 dark:text-green-500 shrink-0" />
                 </span>
                 <button
                   type="button"
@@ -478,6 +503,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                   onClick={async () => {
                     await fetch('/api/github', { method: 'DELETE' });
                     setGhLogin(null);
+                    setGhAvatar(null);
                     setRepos(null);
                   }}
                 >
