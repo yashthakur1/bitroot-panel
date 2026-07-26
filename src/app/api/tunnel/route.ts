@@ -3,6 +3,8 @@ import { run } from '@/lib/runner';
 import { assertPort, ValidationError } from '@/lib/validate';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
+const TS_HOST = process.env.TAILSCALE_HOST ?? 'oneplus-6';
+const TS_IP = process.env.TAILSCALE_IP ?? '100.127.137.83';
 
 function assertSubdomain(name: unknown): string {
   if (typeof name !== 'string' || !/^[a-z0-9-]{1,40}$/.test(name)) {
@@ -13,14 +15,40 @@ function assertSubdomain(name: unknown): string {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// Tunnel overview: cloudflared daemon state + ingress routes from config.yml.
+// Tunnel overview: cloudflared state, ingress routes annotated with the
+// service each one points at, and the private (Tailscale) side of the picture.
 export async function GET() {
-  const [cfg, pm2] = await Promise.all([
+  const [cfg, pm2, ports] = await Promise.all([
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
     run('pm2 jlist'),
+    run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
   ]);
 
-  const routes: Array<{ hostname: string; service: string }> = [];
+  // port -> service name, from the registry first then pm2 env
+  const portToService: Record<number, string> = {};
+  for (const line of ports.output.split('\n')) {
+    const m = line.match(/^([\w-]+)=(\d+)\s*$/);
+    if (m) portToService[Number(m[2])] = m[1];
+  }
+
+  let apps: any[] = [];
+  try {
+    const start = pm2.output.indexOf('[');
+    if (start >= 0) apps = JSON.parse(pm2.output.slice(start));
+  } catch {
+    // ignore
+  }
+  for (const a of apps) {
+    const p = Number(a.pm2_env?.env?.PORT);
+    if (p && !portToService[p]) portToService[p] = a.name;
+  }
+
+  const routes: Array<{
+    hostname: string;
+    service: string;
+    port: number | null;
+    attachedTo: string | null;
+  }> = [];
   let pendingHost: string | null = null;
   for (const raw of cfg.output.split('\n')) {
     const line = raw.trim();
@@ -31,15 +59,22 @@ export async function GET() {
     }
     const s = line.match(/^(?:-\s*)?service:\s*(\S+)/);
     if (s) {
-      if (pendingHost) routes.push({ hostname: pendingHost, service: s[1] });
+      if (pendingHost) {
+        const portMatch = s[1].match(/:(\d+)$/);
+        const port = portMatch ? Number(portMatch[1]) : null;
+        routes.push({
+          hostname: pendingHost,
+          service: s[1],
+          port,
+          attachedTo: port ? (portToService[port] ?? null) : null,
+        });
+      }
       pendingHost = null;
     }
   }
 
   let daemon = { status: 'unknown', uptimeMs: 0, restarts: 0 };
   try {
-    const start = pm2.output.indexOf('[');
-    const apps = JSON.parse(pm2.output.slice(start));
     const cf = apps.find((a: any) => a.name === 'cloudflared');
     if (cf) {
       daemon = {
@@ -52,10 +87,21 @@ export async function GET() {
       };
     }
   } catch {
-    // leave daemon as unknown
+    // leave unknown
   }
 
-  return NextResponse.json({ daemon, routes, domain: DOMAIN_SUFFIX });
+  // Everything reachable privately over the tailnet, no route required.
+  const services = Object.entries(portToService)
+    .map(([port, name]) => ({ name, port: Number(port) }))
+    .sort((a, b) => a.port - b.port);
+
+  return NextResponse.json({
+    daemon,
+    routes,
+    services,
+    domain: DOMAIN_SUFFIX,
+    tailscale: { host: TS_HOST, ip: TS_IP },
+  });
 }
 
 // Add a route: runs the existing `tunnel-add <name> <port>` script
@@ -85,6 +131,22 @@ export async function POST(req: NextRequest) {
       ok: restart.ok,
       output: `${add.output}\n${restart.output}`.trim(),
     });
+  } catch (e) {
+    const status = e instanceof ValidationError ? 400 : 500;
+    return NextResponse.json({ error: (e as Error).message }, { status });
+  }
+}
+
+// Detach a route (ingress entry only; the DNS CNAME stays).
+export async function DELETE(req: NextRequest) {
+  try {
+    const name = assertSubdomain(req.nextUrl.searchParams.get('name'));
+    const r = await run(`tunnel-remove ${name}`, 60_000);
+    if (!r.ok) {
+      return NextResponse.json({ ok: false, output: r.output }, { status: 500 });
+    }
+    const restart = await run('pm2 restart cloudflared', 60_000);
+    return NextResponse.json({ ok: true, output: `${r.output}\n${restart.output}`.trim() });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
     return NextResponse.json({ error: (e as Error).message }, { status });

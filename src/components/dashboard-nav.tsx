@@ -46,7 +46,7 @@ export default function DashboardNav() {
             {pathname.startsWith('/dashboard/tunnel') && (
               <>
                 <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">Tunnel</span>
+                <span className="font-medium text-gray-800 dark:text-gray-200">Routes</span>
               </>
             )}
             {pathname.startsWith('/dashboard/iam') && (

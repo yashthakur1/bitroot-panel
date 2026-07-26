@@ -17,6 +17,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { StatCardsSkeleton } from './skeletons';
 import { humanUptime } from './project-list';
+import PocketBaseDatabases from './pocketbase-databases';
 
 interface PbState {
   healthy: boolean;
@@ -26,6 +27,14 @@ interface PbState {
   uptimeMs: number;
   memoryMb: number;
   restarts: number;
+  cpu: number;
+  dbSize: string;
+  collections: number;
+  records: number;
+  requests24h: number | null;
+  errors24h: number | null;
+  internalUrl: string;
+  publicUrl: string;
 }
 
 const ADMIN_URL = 'https://pocketbase.bitroot.in/_/';
@@ -112,46 +121,71 @@ export default function PocketBasePage() {
       {!state && !error && <StatCardsSkeleton count={5} />}
 
       {state && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
           {(
             [
               ['Version', state.version],
-              ['Status', state.status],
-              ['Port', String(state.port)],
-              ['Memory', state.memoryMb ? `${state.memoryMb} MB` : '—'],
               ['Uptime', humanUptime(state.uptimeMs)],
+              ['Memory', state.memoryMb ? `${state.memoryMb} MB` : '—'],
+              ['CPU', `${state.cpu}%`],
+              ['DB size', state.dbSize],
+              ['Collections', String(state.collections)],
+              ['Records', state.records.toLocaleString()],
+              [
+                'Requests 24h',
+                state.requests24h === null
+                  ? '—'
+                  : `${state.requests24h.toLocaleString()}${
+                      state.errors24h ? ` · ${state.errors24h} err` : ''
+                    }`,
+              ],
             ] as Array<[string, string]>
           ).map(([label, value]) => (
-            <div key={label} className="border rounded-lg p-4">
-              <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
+            <div key={label} className="border rounded-lg p-3.5">
+              <div className="text-[11px] uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 {label}
               </div>
-              <div className="text-lg font-medium mt-1 tabular-nums">{value}</div>
+              <div className="text-base font-medium mt-1 tabular-nums truncate" title={value}>
+                {value}
+              </div>
             </div>
           ))}
         </div>
       )}
 
+      <PocketBaseDatabases />
+
       <div>
         <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
           <Plug size={18} className="text-gray-500 dark:text-gray-400" />
-          Connect from your apps
+          Endpoints
         </h2>
-        <div className="border rounded-lg p-5 space-y-3 text-sm">
-          <p className="text-gray-600 dark:text-gray-400">
-            Apps running on the phone reach it locally — no tunnel, no auth hop:
-          </p>
-          <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto">
-{`import PocketBase from 'pocketbase';
-
-const pb = new PocketBase('http://127.0.0.1:8090');
-const posts = await pb.collection('my_app_posts').getList(1, 20);`}
-          </pre>
-          <p className="text-gray-500 dark:text-gray-400 text-xs">
-            Tip: prefix collections per app (<code>blog_posts</code>, <code>todo_items</code>)
-            to keep one instance tidy across projects. The admin dashboard is reachable over
-            Tailscale only.
-          </p>
+        <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
+          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+            <span className="text-gray-700 dark:text-gray-300">
+              Internal (apps on the phone)
+            </span>
+            <span className="font-mono text-gray-800 dark:text-gray-200">
+              {state?.internalUrl ?? 'http://127.0.0.1:8090'}
+            </span>
+          </div>
+          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+            <span className="text-gray-700 dark:text-gray-300">Public (HTTPS via tunnel)</span>
+            <a
+              href={state?.publicUrl ?? 'https://pocketbase.bitroot.in'}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-purple-600 dark:text-purple-400 hover:underline"
+            >
+              {(state?.publicUrl ?? 'https://pocketbase.bitroot.in').replace('https://', '')}
+            </a>
+          </div>
+          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+            <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
+            <span className="font-mono text-gray-800 dark:text-gray-200">
+              http://oneplus-6:8090
+            </span>
+          </div>
         </div>
       </div>
 

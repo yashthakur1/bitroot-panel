@@ -28,7 +28,7 @@ export default function SidebarNav() {
       active: pathname.startsWith('/dashboard/pocketbase'),
     },
     {
-      name: 'Tunnel',
+      name: 'Routes',
       href: '/dashboard/tunnel',
       icon: <Cloud size={18} />,
       active: pathname.startsWith('/dashboard/tunnel'),

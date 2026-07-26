@@ -62,6 +62,12 @@ const UPGRADE_TARGETS: Array<{
   },
 ];
 
+interface CheckEntry {
+  current: string;
+  latest: string;
+  updateAvailable: boolean;
+}
+
 function Upgrades({
   versions,
   onDone,
@@ -72,6 +78,24 @@ function Upgrades({
   const [running, setRunning] = useState('');
   const [log, setLog] = useState('');
   const [result, setResult] = useState<'ok' | 'fail' | ''>('');
+  const [checks, setChecks] = useState<Record<string, CheckEntry> | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await fetch('/api/upgrades/check');
+      if (res.ok) setChecks(await res.json());
+    } catch {
+      // offline; chips stay hidden
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    check();
+  }, [check]);
 
   async function upgrade(target: string) {
     setRunning(target);
@@ -107,6 +131,7 @@ function Upgrades({
       }
       setResult(/\[\[EXIT:0\]\]/.test(full) ? 'ok' : 'fail');
       onDone();
+      check();
     } catch (e) {
       setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the phone)`);
       setResult('fail');
@@ -117,40 +142,63 @@ function Upgrades({
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-        <ArrowUpCircle size={18} className="text-gray-500 dark:text-gray-400" />
-        Software &amp; upgrades
-      </h2>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <ArrowUpCircle size={18} className="text-gray-500 dark:text-gray-400" />
+          Software &amp; upgrades
+        </h2>
+        <button
+          onClick={check}
+          disabled={checking}
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1.5 py-2 transition-colors"
+        >
+          {checking ? <Loader2 size={12} className="animate-spin" /> : null}
+          {checking ? 'checking…' : 'check for updates'}
+        </button>
+      </div>
       <div className="border rounded-lg divide-y dark:divide-gray-800">
-        {UPGRADE_TARGETS.map((t) => (
-          <div key={t.target} className="px-4 py-3 flex items-center gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                {t.label}
-                {t.versionKey && versions[t.versionKey] && (
-                  <span className="ml-2 font-mono text-xs text-gray-500 dark:text-gray-400">
-                    {versions[t.versionKey]}
-                  </span>
-                )}
+        {UPGRADE_TARGETS.map((t) => {
+          const c = checks?.[t.target];
+          return (
+            <div key={t.target} className="px-4 py-3 flex items-center gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2 flex-wrap">
+                  {t.label}
+                  {t.versionKey && versions[t.versionKey] && (
+                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                      {versions[t.versionKey]}
+                    </span>
+                  )}
+                  {c?.updateAvailable ? (
+                    <span className="pop-in inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded-full">
+                      <ArrowUpCircle size={10} />
+                      {c.latest ? `update → ${c.latest}` : c.current}
+                    </span>
+                  ) : c ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase text-green-700 dark:text-green-400">
+                      <Check size={10} /> up to date
+                    </span>
+                  ) : null}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.desc}</div>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.desc}</div>
+              <Button
+                variant={c?.updateAvailable ? 'default' : 'outline'}
+                size="sm"
+                disabled={!!running}
+                onClick={() => upgrade(t.target)}
+              >
+                {running === t.target ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin mr-1.5" /> Upgrading…
+                  </>
+                ) : (
+                  'Upgrade'
+                )}
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!!running}
-              onClick={() => upgrade(t.target)}
-            >
-              {running === t.target ? (
-                <>
-                  <Loader2 size={13} className="animate-spin mr-1.5" /> Upgrading…
-                </>
-              ) : (
-                'Upgrade'
-              )}
-            </Button>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {log && (
         <div className="mt-3 space-y-2">

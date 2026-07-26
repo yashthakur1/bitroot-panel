@@ -42,7 +42,9 @@ function childEnv(): NodeJS.ProcessEnv {
 }
 
 export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
-  const wrapped = `PATH="$HOME/bin:$PATH" ${command}`;
+  // `export` rather than a prefix assignment: a prefix only works before a
+  // simple command, and would be a syntax error before `for`/`if`/`while`.
+  const wrapped = `export PATH="$HOME/bin:$PATH"; ${command}`;
   const argv = buildArgv(wrapped);
 
   return new Promise((resolve) => {
@@ -68,7 +70,9 @@ export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
 //  - If the client disconnects, the command KEEPS RUNNING to completion —
 //    a half-finished deploy is worse than a wasted stream.
 export function runStream(command: string, timeoutMs = 600_000): ReadableStream<Uint8Array> {
-  const wrapped = `PATH="$HOME/bin:$PATH" ${command}`;
+  // `export` rather than a prefix assignment: a prefix only works before a
+  // simple command, and would be a syntax error before `for`/`if`/`while`.
+  const wrapped = `export PATH="$HOME/bin:$PATH"; ${command}`;
   const argv = buildArgv(wrapped);
   const child = spawn(argv[0], argv.slice(1), { env: childEnv() });
 
