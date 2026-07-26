@@ -3,6 +3,7 @@
 import React from 'react';
 import DashboardNav from './dashboard-nav';
 import SidebarNav from './sidebar-nav';
+import KeyboardShortcuts from './keyboard-shortcuts';
 
 export default function DashboardLayout({
   children
@@ -11,6 +12,7 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="flex flex-col min-h-screen bg-white">
+      <KeyboardShortcuts />
       {/* Top Navigation Bar */}
       <DashboardNav />
 

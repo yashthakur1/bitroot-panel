@@ -9,9 +9,17 @@ import { humanUptime, StatusBadge, type Project } from './project-list';
 
 type Tab = 'overview' | 'logs' | 'environment';
 
-export default function ProjectDetail({ name }: { name: string }) {
+export default function ProjectDetail({
+  name,
+  initialTab,
+}: {
+  name: string;
+  initialTab?: string;
+}) {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('overview');
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'logs' || initialTab === 'environment' ? initialTab : 'overview',
+  );
   const [project, setProject] = useState<Project | null>(null);
   const [busyAction, setBusyAction] = useState('');
   const [actionOutput, setActionOutput] = useState('');
