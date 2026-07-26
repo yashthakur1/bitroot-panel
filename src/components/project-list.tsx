@@ -33,10 +33,10 @@ export function humanUptime(ms: number): string {
 export function StatusBadge({ status }: { status: string }) {
   const color =
     status === 'online'
-      ? 'bg-green-500 text-green-700'
+      ? 'bg-green-50 dark:bg-green-950/400 text-green-700 dark:text-green-400'
       : status === 'errored'
-        ? 'bg-red-500 text-red-700'
-        : 'bg-gray-400 text-gray-600';
+        ? 'bg-red-50 dark:bg-red-950/400 text-red-700 dark:text-red-300'
+        : 'bg-gray-400 text-gray-600 dark:text-gray-400';
   const [dot, text] = color.split(' ');
   return (
     <div className="flex items-center space-x-1.5">
@@ -81,7 +81,7 @@ export default function ProjectList() {
             <span>Refresh</span>
           </Button>
           <Link href="/dashboard/new-service">
-            <Button className="flex items-center gap-2 bg-black text-white hover:bg-black/90">
+            <Button className="flex items-center gap-2 bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200">
               <PlusCircle className="h-4 w-4" />
               <span>New project</span>
             </Button>
@@ -89,12 +89,12 @@ export default function ProjectList() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {!projects && !error && (
         <>
           <TableSkeleton rows={4} cols={7} />
           <div>
-            <h2 className="text-xl font-semibold mb-3 text-gray-700">System services</h2>
+            <h2 className="text-xl font-semibold mb-3 text-gray-700 dark:text-gray-300">System services</h2>
             <TableSkeleton rows={2} cols={7} />
           </div>
         </>
@@ -105,7 +105,7 @@ export default function ProjectList() {
           <ProjectTable projects={apps} emptyText="No projects yet — create one to get started." />
 
           <div>
-            <h2 className="text-xl font-semibold mb-3 text-gray-700">System services</h2>
+            <h2 className="text-xl font-semibold mb-3 text-gray-700 dark:text-gray-300">System services</h2>
             <ProjectTable projects={system} emptyText="No system services running." />
           </div>
         </>
@@ -116,13 +116,13 @@ export default function ProjectList() {
 
 function ProjectTable({ projects, emptyText }: { projects: Project[]; emptyText: string }) {
   if (projects.length === 0) {
-    return <p className="text-gray-500 border rounded-lg p-6">{emptyText}</p>;
+    return <p className="text-gray-500 dark:text-gray-400 border rounded-lg p-6">{emptyText}</p>;
   }
   return (
     <div className="overflow-x-auto border rounded-lg">
       <table className="min-w-full">
         <thead>
-          <tr className="text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-50">
+          <tr className="text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/60">
             <th className="px-4 py-3 whitespace-nowrap">Name</th>
             <th className="px-4 py-3 whitespace-nowrap">Status</th>
             <th className="px-4 py-3 whitespace-nowrap">Port</th>
@@ -135,13 +135,13 @@ function ProjectTable({ projects, emptyText }: { projects: Project[]; emptyText:
         </thead>
         <tbody>
           {projects.map((p) => (
-            <tr key={p.name} className="border-t hover:bg-gray-50">
+            <tr key={p.name} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/60">
               <td className="px-4 py-3 whitespace-nowrap">
                 <div className="flex items-center space-x-2">
-                  <Globe size={16} className="text-gray-500" />
+                  <Globe size={16} className="text-gray-500 dark:text-gray-400" />
                   <Link
                     href={`/dashboard/services/${p.name}`}
-                    className="font-medium text-gray-800 hover:underline"
+                    className="font-medium text-gray-800 dark:text-gray-200 hover:underline"
                   >
                     {p.name}
                   </Link>
@@ -150,24 +150,24 @@ function ProjectTable({ projects, emptyText }: { projects: Project[]; emptyText:
               <td className="px-4 py-3 whitespace-nowrap">
                 <StatusBadge status={p.status} />
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                 {p.port ?? '—'}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{p.cpu}%</td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{p.cpu}%</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                 {p.memoryMb ? `${p.memoryMb} MB` : '—'}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                 {humanUptime(p.uptimeMs)}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{p.restarts}</td>
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{p.restarts}</td>
               <td className="px-4 py-3 whitespace-nowrap text-sm">
                 {p.url ? (
                   <a
                     href={p.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-purple-600 hover:underline inline-flex items-center gap-1"
+                    className="text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1"
                   >
                     {p.url.replace('https://', '')}
                     <ExternalLink size={12} />

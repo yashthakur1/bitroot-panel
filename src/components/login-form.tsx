@@ -41,9 +41,9 @@ export default function LoginForm() {
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center">
           <span className="text-white font-bold">B</span>
         </div>
-        <h1 className="text-2xl font-medium text-gray-900">Bitroot Panel</h1>
+        <h1 className="text-2xl font-medium text-gray-900 dark:text-gray-100">Bitroot Panel</h1>
       </div>
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
         Deploy and manage apps on the OnePlus server
       </p>
 
@@ -64,7 +64,7 @@ export default function LoginForm() {
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-400 mb-4">{error}</p>}
 
         <Button type="submit" className="font-medium font-sans w-full" disabled={busy || !password}>
           {busy ? 'Signing in…' : 'Sign in'}

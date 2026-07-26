@@ -48,14 +48,14 @@ export default function ConfigPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Config</h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-gray-600 dark:text-gray-400 mt-2">
           The panel&apos;s own runtime configuration on the phone. Read-only — to change
           values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
           <code>pm2 restart bitroot-panel</code>.
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {!state && !error && (
         <>
@@ -79,27 +79,27 @@ export default function ConfigPage() {
               ] as Array<[string, string]>
             ).map(([label, value]) => (
               <div key={label} className="border rounded-lg p-4">
-                <div className="text-xs uppercase text-gray-500 font-semibold">{label}</div>
+                <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">{label}</div>
                 <div className="text-lg font-medium mt-1 truncate" title={value}>
                   {value}
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-sm text-gray-500 -mt-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400 -mt-4">
             Last deploy: <span className="font-mono">{state.panel.commit}</span>
           </p>
 
           {/* .env */}
           <div>
             <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-              <FileCode2 size={18} className="text-gray-500" />
+              <FileCode2 size={18} className="text-gray-500 dark:text-gray-400" />
               Environment (.env)
             </h2>
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full">
                 <thead>
-                  <tr className="text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-50">
+                  <tr className="text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/60">
                     <th className="px-4 py-3 whitespace-nowrap">Key</th>
                     <th className="px-4 py-3 whitespace-nowrap">Value</th>
                     <th className="px-4 py-3 w-10"></th>
@@ -109,17 +109,17 @@ export default function ConfigPage() {
                   {state.env.map((v) => {
                     const shown = !v.secret || revealed[v.key];
                     return (
-                      <tr key={v.key} className="border-t hover:bg-gray-50">
-                        <td className="px-4 py-3 whitespace-nowrap font-mono text-sm font-medium text-gray-800">
+                      <tr key={v.key} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3 whitespace-nowrap font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
                           {v.key}
                         </td>
-                        <td className="px-4 py-3 font-mono text-sm text-gray-700 break-all">
+                        <td className="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300 break-all">
                           {shown ? v.value : '••••••••••••'}
                         </td>
                         <td className="px-4 py-3">
                           {v.secret && (
                             <button
-                              className="text-gray-400 hover:text-gray-700"
+                              className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
                               title={shown ? 'hide' : 'reveal'}
                               onClick={() =>
                                 setRevealed({ ...revealed, [v.key]: !revealed[v.key] })
@@ -140,19 +140,19 @@ export default function ConfigPage() {
           {/* Endpoints */}
           <div>
             <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-              <Link2 size={18} className="text-gray-500" />
+              <Link2 size={18} className="text-gray-500 dark:text-gray-400" />
               Ways to reach this panel
             </h2>
             <div className="border rounded-lg divide-y text-sm">
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-                <span className="text-gray-700">Public (Cloudflare Access + password)</span>
-                <a href="https://panel.bitroot.in" className="font-mono text-purple-600 hover:underline">
+                <span className="text-gray-700 dark:text-gray-300">Public (Cloudflare Access + password)</span>
+                <a href="https://panel.bitroot.in" className="font-mono text-purple-600 dark:text-purple-400 hover:underline">
                   panel.bitroot.in
                 </a>
               </div>
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-                <span className="text-gray-700">Tailscale (private, password only)</span>
-                <span className="font-mono text-gray-800">100.127.137.83:{state.panel.port}</span>
+                <span className="text-gray-700 dark:text-gray-300">Tailscale (private, password only)</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">100.127.137.83:{state.panel.port}</span>
               </div>
             </div>
           </div>
@@ -160,7 +160,7 @@ export default function ConfigPage() {
           {/* Device */}
           <div>
             <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
-              <Smartphone size={18} className="text-gray-500" />
+              <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
               Device
             </h2>
             <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">

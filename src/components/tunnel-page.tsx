@@ -94,8 +94,8 @@ export default function TunnelPage() {
       </div>
 
       {/* Explainer */}
-      <div className="border rounded-lg p-5 bg-gray-50 text-sm text-gray-700 space-y-2">
-        <div className="flex items-center gap-2 font-medium text-gray-900">
+      <div className="border rounded-lg p-5 bg-gray-50 dark:bg-gray-800/60 text-sm text-gray-700 dark:text-gray-300 space-y-2">
+        <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
           <Cloud size={16} />
           How this works
         </div>
@@ -110,12 +110,12 @@ export default function TunnelPage() {
           Routes are <strong>publicly reachable</strong> — anything you expose here should have
           its own authentication (like this panel&apos;s password).
         </p>
-        <p className="text-gray-500">
+        <p className="text-gray-500 dark:text-gray-400">
           A cron watchdog checks the tunnel every 3 minutes and restarts it if it goes dead.
         </p>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {!state && !error && (
         <>
@@ -128,17 +128,17 @@ export default function TunnelPage() {
       {state && (
         <div className="grid grid-cols-3 gap-4 max-w-lg">
           <div className="border rounded-lg p-4">
-            <div className="text-xs uppercase text-gray-500 font-semibold">Daemon</div>
+            <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">Daemon</div>
             <div className="mt-1">
               <StatusBadge status={state.daemon.status} />
             </div>
           </div>
           <div className="border rounded-lg p-4">
-            <div className="text-xs uppercase text-gray-500 font-semibold">Uptime</div>
+            <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">Uptime</div>
             <div className="text-lg font-medium mt-1">{humanUptime(state.daemon.uptimeMs)}</div>
           </div>
           <div className="border rounded-lg p-4">
-            <div className="text-xs uppercase text-gray-500 font-semibold">Restarts</div>
+            <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">Restarts</div>
             <div className="text-lg font-medium mt-1">{state.daemon.restarts}</div>
           </div>
         </div>
@@ -151,33 +151,33 @@ export default function TunnelPage() {
           <div className="overflow-x-auto border rounded-lg">
             <table className="min-w-full">
               <thead>
-                <tr className="text-left text-xs font-semibold text-gray-700 uppercase tracking-wide bg-gray-50">
+                <tr className="text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/60">
                   <th className="px-4 py-3 whitespace-nowrap">Public URL</th>
                   <th className="px-4 py-3 whitespace-nowrap">Forwards to</th>
                 </tr>
               </thead>
               <tbody>
                 {state.routes.map((r) => (
-                  <tr key={r.hostname} className="border-t hover:bg-gray-50">
+                  <tr key={r.hostname} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/60">
                     <td className="px-4 py-3 whitespace-nowrap">
                       {r.service.startsWith('http://') ? (
                         <a
                           href={`https://${r.hostname}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-purple-600 hover:underline inline-flex items-center gap-1"
+                          className="text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1"
                         >
                           {r.hostname}
                           <ExternalLink size={12} />
                         </a>
                       ) : (
-                        <span className="text-gray-800 inline-flex items-center gap-1">
+                        <span className="text-gray-800 dark:text-gray-200 inline-flex items-center gap-1">
                           <Lock size={12} className="text-gray-400" />
                           {r.hostname}
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap font-mono text-sm text-gray-700">
+                    <td className="px-4 py-3 whitespace-nowrap font-mono text-sm text-gray-700 dark:text-gray-300">
                       {r.service}
                     </td>
                   </tr>
@@ -204,7 +204,7 @@ export default function TunnelPage() {
                   pattern="[a-z0-9-]{1,40}"
                   required
                 />
-                <span className="text-sm text-gray-500 whitespace-nowrap">
+                <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   .{state?.domain ?? 'bitroot.in'}
                 </span>
               </div>
@@ -225,7 +225,7 @@ export default function TunnelPage() {
           </div>
           <Button
             type="submit"
-            className="bg-black text-white hover:bg-black/90"
+            className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
             disabled={!!busy || !newName || !newPort}
           >
             {busy === 'add' ? 'Adding…' : 'Add route'}

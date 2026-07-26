@@ -77,7 +77,7 @@ export default function ProjectDetail({
                 href={project.url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-purple-600 hover:underline text-sm inline-flex items-center gap-1"
+                className="text-purple-600 dark:text-purple-400 hover:underline text-sm inline-flex items-center gap-1"
               >
                 {project.url.replace('https://', '')}
                 <ExternalLink size={12} />
@@ -87,7 +87,7 @@ export default function ProjectDetail({
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button
-            className="bg-black text-white hover:bg-black/90"
+            className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
             disabled={!!busyAction}
             onClick={() => runAction('deploy')}
           >
@@ -108,7 +108,7 @@ export default function ProjectDetail({
           {confirmRemove ? (
             <Button
               variant="outline"
-              className="border-red-300 text-red-600 hover:bg-red-50"
+              className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
               disabled={!!busyAction}
               onClick={() => runAction('remove')}
             >
@@ -117,7 +117,7 @@ export default function ProjectDetail({
           ) : (
             <Button
               variant="outline"
-              className="text-red-600"
+              className="text-red-600 dark:text-red-400"
               disabled={!!busyAction}
               onClick={() => setConfirmRemove(true)}
             >
@@ -134,8 +134,8 @@ export default function ProjectDetail({
             onClick={() => setTab(t)}
             className={`py-2 px-3 text-sm font-medium capitalize -mb-px ${
               tab === t
-                ? 'text-purple-600 border-b-2 border-purple-600'
-                : 'text-gray-600 hover:text-gray-800'
+                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
             {t}
@@ -165,14 +165,14 @@ function Overview({ project, actionOutput }: { project: Project | null; actionOu
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {stats.map(([label, value]) => (
           <div key={label} className="border rounded-lg p-4">
-            <div className="text-xs uppercase text-gray-500 font-semibold">{label}</div>
+            <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">{label}</div>
             <div className="text-lg font-medium mt-1">{value}</div>
           </div>
         ))}
       </div>
       {actionOutput && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Last action output</h3>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Last action output</h3>
           <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-80 whitespace-pre-wrap">
             {actionOutput}
           </pre>
@@ -228,7 +228,7 @@ function Logs({ name }: { name: string }) {
               </option>
             ))}
           </select>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
             auto-refresh
           </label>
@@ -297,7 +297,7 @@ function EnvEditor({ name }: { name: string }) {
 
   return (
     <div className="space-y-4 max-w-3xl">
-      <p className="text-sm text-gray-600">
+      <p className="text-sm text-gray-600 dark:text-gray-400">
         Values are written to the project&apos;s <code>.env</code> file on the phone.
       </p>
 
@@ -331,7 +331,7 @@ function EnvEditor({ name }: { name: string }) {
 
       <div className="flex items-center gap-4">
         <Button
-          className="bg-black text-white hover:bg-black/90"
+          className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
           disabled={busy}
           onClick={() => {
             const toSave = [...vars];
@@ -341,7 +341,7 @@ function EnvEditor({ name }: { name: string }) {
         >
           {busy ? 'Saving…' : 'Save changes'}
         </Button>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input
             type="checkbox"
             checked={restart}
@@ -349,7 +349,7 @@ function EnvEditor({ name }: { name: string }) {
           />
           restart after save
         </label>
-        {status && <span className="text-sm text-gray-600">{status}</span>}
+        {status && <span className="text-sm text-gray-600 dark:text-gray-400">{status}</span>}
       </div>
     </div>
   );

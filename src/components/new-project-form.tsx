@@ -56,10 +56,10 @@ function StepIcon({ state }: { state: StepState }) {
   if (state === 'done') return <CheckCircle2 size={18} className="text-green-600 pop-in" />;
   if (state === 'failed') return <AlertCircle size={18} className="text-red-500 pop-in" />;
   if (state === 'active')
-    return <Loader2 size={18} className="animate-spin text-purple-600" />;
+    return <Loader2 size={18} className="animate-spin text-purple-600 dark:text-purple-400" />;
   if (state === 'skipped')
-    return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 border-dashed" />;
-  return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300" />;
+    return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 dark:border-gray-800 border-dashed" />;
+  return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />;
 }
 
 function Timeline({
@@ -85,7 +85,7 @@ function Timeline({
           a: 4,
           d: 5,
           detail: (
-            <code className="text-xs text-gray-500">{name || '<name>'}.bitroot.in</code>
+            <code className="text-xs text-gray-500 dark:text-gray-400">{name || '<name>'}.bitroot.in</code>
           ),
         }
       : { label: 'Tunnel route', a: 4, d: 5, skip: true },
@@ -109,7 +109,7 @@ function Timeline({
               {!last && (
                 <div
                   className={`w-px flex-1 my-1 transition-colors ${
-                    state === 'done' ? 'bg-green-300' : 'bg-gray-200'
+                    state === 'done' ? 'bg-green-300' : 'bg-gray-200 dark:bg-gray-700'
                   }`}
                 />
               )}
@@ -118,11 +118,11 @@ function Timeline({
               <span
                 className={
                   state === 'done'
-                    ? 'text-gray-800'
+                    ? 'text-gray-800 dark:text-gray-200'
                     : state === 'active'
-                      ? 'text-gray-900 font-medium'
+                      ? 'text-gray-900 dark:text-gray-100 font-medium'
                       : state === 'failed'
-                        ? 'text-red-600 font-medium'
+                        ? 'text-red-600 dark:text-red-400 font-medium'
                         : 'text-gray-400'
                 }
               >
@@ -146,7 +146,7 @@ function Timeline({
 function FieldError({ msg }: { msg?: string }) {
   if (!msg) return null;
   return (
-    <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 mt-1.5">
+    <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 mt-1.5">
       <AlertCircle size={13} className="shrink-0" />
       {msg}
     </p>
@@ -155,7 +155,7 @@ function FieldError({ msg }: { msg?: string }) {
 
 function FieldOk({ msg }: { msg: string }) {
   return (
-    <p className="fade-in-up flex items-center gap-1.5 text-xs text-green-700 mt-1.5">
+    <p className="fade-in-up flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 mt-1.5">
       <Check size={12} className="shrink-0" />
       {msg}
     </p>
@@ -389,7 +389,7 @@ export default function NewProjectForm() {
         <h1 className="text-3xl font-bold tracking-tight" style={{ textWrap: 'balance' }}>
           New project
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-gray-600 dark:text-gray-400 mt-2">
           Clone, install, run under pm2 — and optionally publish at{' '}
           <code>&lt;name&gt;.bitroot.in</code>.
         </p>
@@ -408,8 +408,8 @@ export default function NewProjectForm() {
             onClick={() => !busy && setSource(s)}
             className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
-                ? 'text-purple-600 border-b-2 border-purple-600'
-                : 'text-gray-600 hover:text-gray-800'
+                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
             {icon}
@@ -421,17 +421,17 @@ export default function NewProjectForm() {
       {source === 'github' && !ghChecked && <Shimmer className="h-24 w-full" />}
 
       {source === 'github' && ghChecked && !ghLogin && (
-        <form onSubmit={connectGithub} className="fade-in-up border rounded-xl p-5 space-y-3 bg-gray-50">
+        <form onSubmit={connectGithub} className="fade-in-up border rounded-xl p-5 space-y-3 bg-gray-50 dark:bg-gray-800/60">
           <div className="font-medium flex items-center gap-2">
             <Github size={16} /> Connect GitHub
           </div>
-          <p className="text-sm text-gray-600" style={{ textWrap: 'pretty' }}>
+          <p className="text-sm text-gray-600 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
             Create a{' '}
             <a
               href="https://github.com/settings/personal-access-tokens/new"
               target="_blank"
               rel="noreferrer"
-              className="text-purple-600 hover:underline"
+              className="text-purple-600 dark:text-purple-400 hover:underline"
             >
               fine-grained personal access token
             </a>{' '}
@@ -465,14 +465,14 @@ export default function NewProjectForm() {
         <fieldset disabled={busy} className="space-y-4 disabled:opacity-70 transition-opacity">
           {source === 'github' && ghLogin && (
             <>
-              <div className="fade-in-up flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50">
-                <span className="flex items-center gap-2 text-gray-700">
+              <div className="fade-in-up flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60">
+                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                   <CheckCircle2 size={15} className="text-green-600 pop-in" />
                   Connected as <strong>{ghLogin}</strong>
                 </span>
                 <button
                   type="button"
-                  className="text-gray-500 hover:text-red-600 transition-colors py-2 px-2 -mr-2"
+                  className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors py-2 px-2 -mr-2"
                   onClick={async () => {
                     await fetch('/api/github', { method: 'DELETE' });
                     setGhLogin(null);
@@ -489,8 +489,8 @@ export default function NewProjectForm() {
                   id="repo"
                   value={repo}
                   onChange={(e) => selectRepo(e.target.value)}
-                  className={`border rounded-md px-3 py-2 text-sm bg-white transition-colors ${
-                    errors.repo ? 'border-red-400' : ''
+                  className={`border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 transition-colors ${
+                    errors.repo ? 'border-red-400 dark:border-red-700' : ''
                   }`}
                 >
                   <option value="">— select a repository —</option>
@@ -517,7 +517,7 @@ export default function NewProjectForm() {
                         setBranch(e.target.value);
                         clearError('branch');
                       }}
-                      className="border rounded-md px-3 py-2 text-sm bg-white w-64"
+                      className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 w-64"
                     >
                       {branches.map((b) => (
                         <option key={b} value={b}>
@@ -526,7 +526,7 @@ export default function NewProjectForm() {
                       ))}
                     </select>
                   )}
-                  <span className="text-xs text-gray-500 mt-1">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     future <code>project deploy</code> pulls the latest of this branch
                   </span>
                   <FieldError msg={errors.branch} />
@@ -546,7 +546,7 @@ export default function NewProjectForm() {
                   setUrlRepo(e.target.value);
                   clearError('urlRepo');
                 }}
-                className={errors.urlRepo ? 'border-red-400' : ''}
+                className={errors.urlRepo ? 'border-red-400 dark:border-red-700' : ''}
               />
               <FieldError msg={errors.urlRepo} />
             </div>
@@ -563,7 +563,7 @@ export default function NewProjectForm() {
                   setName(e.target.value);
                   clearError('name');
                 }}
-                className={errors.name ? 'border-red-400' : ''}
+                className={errors.name ? 'border-red-400 dark:border-red-700' : ''}
               />
               {errors.name ? (
                 <FieldError msg={errors.name} />
@@ -578,7 +578,7 @@ export default function NewProjectForm() {
                 <Label htmlFor="port">Port</Label>
                 <button
                   type="button"
-                  className="text-xs text-purple-600 hover:text-purple-800 transition-colors inline-flex items-center gap-0.5 py-1"
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 transition-colors inline-flex items-center gap-0.5 py-1"
                   onClick={() => {
                     setPort(String(nextFreePort()));
                     clearError('port');
@@ -598,7 +598,7 @@ export default function NewProjectForm() {
                 }}
                 min={1024}
                 max={65535}
-                className={`tabular-nums ${errors.port || portConflict ? 'border-red-400' : ''}`}
+                className={`tabular-nums ${errors.port || portConflict ? 'border-red-400 dark:border-red-700' : ''}`}
               />
               {errors.port ? (
                 <FieldError msg={errors.port} />
@@ -618,17 +618,17 @@ export default function NewProjectForm() {
                 onClick={() => setEnvironment('public')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'public'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'hover:border-gray-300'
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Globe size={15} /> Public
                   {environment === 'public' && (
-                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                    <Check size={14} className="text-purple-600 dark:text-purple-400 ml-auto pop-in" />
                   )}
                 </div>
-                <div className="text-xs text-gray-600 mt-1">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Internet-facing at <code>{name || '<name>'}.bitroot.in</code> via Cloudflare
                   Tunnel
                 </div>
@@ -638,17 +638,17 @@ export default function NewProjectForm() {
                 onClick={() => setEnvironment('private')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'private'
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'hover:border-gray-300'
+                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Lock size={15} /> Private
                   {environment === 'private' && (
-                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                    <Check size={14} className="text-purple-600 dark:text-purple-400 ml-auto pop-in" />
                   )}
                 </div>
-                <div className="text-xs text-gray-600 mt-1">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   Tailscale/LAN only — no public route
                 </div>
               </button>
@@ -674,7 +674,7 @@ export default function NewProjectForm() {
           {done && (
             <Link
               href={`/dashboard/services/${name}`}
-              className="fade-in-up text-purple-600 hover:underline inline-flex items-center gap-1 text-sm py-2"
+              className="fade-in-up text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
             >
               Go to {name} <ArrowRight size={14} />
             </Link>
@@ -693,7 +693,7 @@ export default function NewProjectForm() {
       )}
 
       {lostConnection && (
-        <div className="fade-in-up border border-amber-300 bg-amber-50 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800">
+        <div className="fade-in-up border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <div style={{ textWrap: 'pretty' }}>
             <strong>Connection to the panel dropped — the deployment is still running on
@@ -709,7 +709,7 @@ export default function NewProjectForm() {
 
       {output && (
         <details className="fade-in-up" open={failed}>
-          <summary className="text-sm text-gray-500 hover:text-gray-800 cursor-pointer select-none transition-colors py-1">
+          <summary className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer select-none transition-colors py-1">
             {failed ? 'error log' : 'view live log'}
           </summary>
           <pre

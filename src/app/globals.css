@@ -131,3 +131,40 @@
 .pop-in {
   animation: pop-in 0.3s cubic-bezier(0.2, 0, 0, 1);
 }
+
+/* Theming */
+@layer base {
+  body {
+    @apply bg-white text-gray-900 dark:bg-gray-950 dark:text-gray-100;
+  }
+  .dark *,
+  .dark ::before,
+  .dark ::after {
+    border-color: theme(colors.gray.800);
+  }
+}
+.dark .shimmer {
+  background: #1f2937;
+}
+.dark .shimmer::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+}
+
+/* Profile popup bounce */
+@keyframes bounce-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.95);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bounce-in {
+  animation: bounce-in 0.3s cubic-bezier(0.2, 0, 0, 1);
+}

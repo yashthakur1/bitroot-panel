@@ -13,8 +13,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${ppNeueMontreal.variable} ${roobert.variable}`}>
+    <html
+      lang="en"
+      className={`${ppNeueMontreal.variable} ${roobert.variable}`}
+      suppressHydrationWarning
+    >
       <body className="antialiased font-sans" suppressHydrationWarning>
+        <script
+          // Apply stored/system theme before first paint to avoid a flash.
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('bp-theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}",
+          }}
+        />
         {children}
       </body>
     </html>

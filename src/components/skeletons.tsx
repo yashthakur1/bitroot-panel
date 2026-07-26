@@ -8,7 +8,7 @@ export function Shimmer({ className = '' }: { className?: string }) {
 export function TableSkeleton({ rows = 5, cols = 6 }: { rows?: number; cols?: number }) {
   return (
     <div className="border rounded-lg overflow-hidden">
-      <div className="bg-gray-50 px-4 py-3 flex gap-6">
+      <div className="bg-gray-50 dark:bg-gray-800/60 px-4 py-3 flex gap-6">
         {Array.from({ length: cols }).map((_, i) => (
           <Shimmer key={i} className="h-3 w-20" />
         ))}

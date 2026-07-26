@@ -42,7 +42,7 @@ export default function SidebarNav() {
   ];
 
   return (
-    <div className="w-full h-full bg-white">
+    <div className="w-full h-full bg-white dark:bg-gray-900">
       <div className="flex flex-col h-full">
         <div className="flex-1">
           <nav className="space-y-1 py-2">
@@ -52,11 +52,11 @@ export default function SidebarNav() {
                 href={item.href}
                 className={`flex items-center px-3 py-2 text-sm ${
                   item.active
-                    ? 'bg-purple-50 text-purple-600 font-medium'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 font-medium'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
-                <span className="mr-3 text-gray-500">{item.icon}</span>
+                <span className="mr-3 text-gray-500 dark:text-gray-400">{item.icon}</span>
                 <span className="flex-1">{item.name}</span>
               </Link>
             ))}
@@ -71,7 +71,7 @@ export default function SidebarNav() {
             {' · '}
             <kbd className="border rounded px-1">g</kbd>+<kbd className="border rounded px-1">n</kbd> new
           </div>
-          <div className="flex items-center text-xs text-gray-500">
+          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
             <Smartphone size={14} className="mr-2" />
             OnePlus 6 · Termux · pm2
           </div>
