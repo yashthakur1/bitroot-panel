@@ -216,16 +216,13 @@ export default function NewProjectForm() {
 
   useEffect(() => {
     checkGithub();
-    // load existing names/ports for live validation
+    // load existing names + every occupied port (registry, tunnel routes,
+    // pm2 apps, listening sockets) for live validation
     fetch('/api/projects')
       .then((r) => r.json())
       .then((d) => {
-        const names: string[] = [];
-        const ports: Record<number, string> = {};
-        for (const p of d.projects ?? []) {
-          names.push(p.name);
-          if (p.port) ports[p.port] = p.name;
-        }
+        const names: string[] = (d.projects ?? []).map((p: { name: string }) => p.name);
+        const ports: Record<number, string> = d.portsInUse ?? {};
         setTaken({ names, ports });
       })
       .catch(() => {});
@@ -273,7 +270,7 @@ export default function NewProjectForm() {
     else if (nameConflict) errs.name = `"${name}" already exists on the server`;
     if (!port) errs.port = 'A port is required — every app gets its own';
     else if (!(portNum >= 1024 && portNum <= 65535)) errs.port = 'Use a port between 1024 and 65535';
-    else if (portConflict) errs.port = `Port ${port} is used by "${portConflict}"`;
+    else if (portConflict) errs.port = `Port ${port} is taken by ${portConflict}`;
     return errs;
   }
 
@@ -606,7 +603,7 @@ export default function NewProjectForm() {
               {errors.port ? (
                 <FieldError msg={errors.port} />
               ) : portConflict ? (
-                <FieldError msg={`used by "${portConflict}"`} />
+                <FieldError msg={`taken by ${portConflict}`} />
               ) : portValid ? (
                 <FieldOk msg="port is free" />
               ) : null}

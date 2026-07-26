@@ -21,15 +21,40 @@ export interface Project {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function GET() {
-  const [pm2, ports] = await Promise.all([
+  const [pm2, ports, tunnel, listeners] = await Promise.all([
     run('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
+    run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
+    run('ss -tln 2>/dev/null || netstat -tln 2>/dev/null || true'),
   ]);
 
   const portMap: Record<string, number> = {};
   for (const line of ports.output.split('\n')) {
     const m = line.match(/^([\w-]+)=(\d+)\s*$/);
     if (m) portMap[m[1]] = Number(m[2]);
+  }
+
+  // Every port that is spoken for, with a human label of who holds it.
+  // Sources in order of label quality: ports.conf, tunnel routes, pm2 env,
+  // raw listening sockets.
+  const portsInUse: Record<number, string> = {};
+  for (const [pname, pport] of Object.entries(portMap)) {
+    portsInUse[pport] = `project "${pname}"`;
+  }
+  let pendingHost: string | null = null;
+  for (const raw of tunnel.output.split('\n')) {
+    const line = raw.trim();
+    const h = line.match(/^-\s*hostname:\s*(\S+)/);
+    if (h) {
+      pendingHost = h[1];
+      continue;
+    }
+    const s = line.match(/^(?:-\s*)?service:\s*\w+:\/\/localhost:(\d+)/);
+    if (s) {
+      const p = Number(s[1]);
+      if (pendingHost) portsInUse[p] ??= `tunnel route ${pendingHost}`;
+      pendingHost = null;
+    }
   }
 
   let apps: any[] = [];
@@ -39,6 +64,16 @@ export async function GET() {
     if (start >= 0) apps = JSON.parse(pm2.output.slice(start));
   } catch {
     // fall through with empty list
+  }
+
+  for (const a of apps) {
+    const envPort = Number(a.pm2_env?.env?.PORT);
+    if (envPort) portsInUse[envPort] ??= `pm2 app "${a.name}"`;
+  }
+  for (const line of listeners.output.split('\n')) {
+    if (!/LISTEN/.test(line)) continue;
+    const m = line.match(/[:*](\d{2,5})\s/);
+    if (m) portsInUse[Number(m[1])] ??= 'a listening process';
   }
 
   const projects: Project[] = apps.map((a: any) => ({
@@ -73,7 +108,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ projects });
+  return NextResponse.json({ projects, portsInUse });
 }
 
 // Create a new project: runs `project clone <name> <repo> <port> [branch] [--no-tunnel]`
