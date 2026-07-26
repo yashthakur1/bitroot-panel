@@ -14,11 +14,21 @@ function stripAnsi(s: string): string {
 }
 
 export async function GET() {
-  const [envFile, commit, device] = await Promise.all([
+  const [envFile, commit, device, versions] = await Promise.all([
     run('cat "$HOME/apps/bitroot-panel/.env" 2>/dev/null || true'),
     run('git --git-dir="$HOME/repos/bitroot-panel.git" log -1 --format="%h %s (%cr)" 2>/dev/null || true'),
     run('device-info 2>/dev/null || echo "device-info not available"', 30_000),
+    run(
+      'echo "pocketbase=$($HOME/apps/pocketbase/pocketbase --version 2>/dev/null | sed s/^pocketbase.version..//)"; echo "pm2=$(pm2 --version 2>/dev/null)"; echo "node=$(node --version 2>/dev/null)"; echo "go=$(go version 2>/dev/null | cut -d" " -f3)"',
+      30_000,
+    ),
   ]);
+
+  const versionMap: Record<string, string> = {};
+  for (const line of versions.output.split('\n')) {
+    const m = line.match(/^(\w+)=(.*)$/);
+    if (m && m[2]) versionMap[m[1]] = m[2].trim();
+  }
 
   const env = envFile.output
     .split('\n')
@@ -41,5 +51,6 @@ export async function GET() {
     },
     env,
     device: stripAnsi(device.output),
+    versions: versionMap,
   });
 }

@@ -1,7 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, EyeOff, FileCode2, Smartphone, Link2, Keyboard } from 'lucide-react';
+import {
+  Eye,
+  EyeOff,
+  FileCode2,
+  Smartphone,
+  Link2,
+  Keyboard,
+  ArrowUpCircle,
+  Loader2,
+  Check,
+  AlertTriangle,
+} from 'lucide-react';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
 import { humanUptime } from './project-list';
 
@@ -22,6 +33,145 @@ interface ConfigState {
   };
   env: EnvVar[];
   device: string;
+  versions?: Record<string, string>;
+}
+
+const UPGRADE_TARGETS: Array<{
+  target: string;
+  label: string;
+  versionKey?: string;
+  desc: string;
+}> = [
+  {
+    target: 'pocketbase',
+    label: 'PocketBase',
+    versionKey: 'pocketbase',
+    desc: 'rebuilds the latest release with Termux Go, health-checks, auto-rolls back on failure',
+  },
+  {
+    target: 'pm2',
+    label: 'pm2',
+    versionKey: 'pm2',
+    desc: 'npm install -g pm2@latest + in-place daemon update (apps keep running)',
+  },
+  {
+    target: 'termux',
+    label: 'Termux packages',
+    desc: 'pkg update + upgrade — refreshes node, go, git, openssh and friends',
+  },
+];
+
+function Upgrades({
+  versions,
+  onDone,
+}: {
+  versions: Record<string, string>;
+  onDone: () => void;
+}) {
+  const [running, setRunning] = useState('');
+  const [log, setLog] = useState('');
+  const [result, setResult] = useState<'ok' | 'fail' | ''>('');
+
+  async function upgrade(target: string) {
+    setRunning(target);
+    setResult('');
+    setLog(`Starting ${target} upgrade…\n`);
+    try {
+      const res = await fetch('/api/upgrades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target }),
+      });
+      if (res.headers.get('content-type')?.includes('json')) {
+        const data = await res.json().catch(() => ({}));
+        setLog(data.error ?? `HTTP ${res.status}`);
+        setResult('fail');
+        return;
+      }
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        full += decoder.decode(value, { stream: true });
+        setLog(
+          full
+            .replaceAll('[[HB]]', '')
+            .replace(/\n?\[\[EXIT:\d+\]\]/, '')
+            .split('\n')
+            .map((l) => l.split('\r').pop() ?? '')
+            .join('\n'),
+        );
+      }
+      setResult(/\[\[EXIT:0\]\]/.test(full) ? 'ok' : 'fail');
+      onDone();
+    } catch (e) {
+      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the phone)`);
+      setResult('fail');
+    } finally {
+      setRunning('');
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+        <ArrowUpCircle size={18} className="text-gray-500 dark:text-gray-400" />
+        Software &amp; upgrades
+      </h2>
+      <div className="border rounded-lg divide-y dark:divide-gray-800">
+        {UPGRADE_TARGETS.map((t) => (
+          <div key={t.target} className="px-4 py-3 flex items-center gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                {t.label}
+                {t.versionKey && versions[t.versionKey] && (
+                  <span className="ml-2 font-mono text-xs text-gray-500 dark:text-gray-400">
+                    {versions[t.versionKey]}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.desc}</div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!!running}
+              onClick={() => upgrade(t.target)}
+            >
+              {running === t.target ? (
+                <>
+                  <Loader2 size={13} className="animate-spin mr-1.5" /> Upgrading…
+                </>
+              ) : (
+                'Upgrade'
+              )}
+            </Button>
+          </div>
+        ))}
+      </div>
+      {log && (
+        <div className="mt-3 space-y-2">
+          {result && (
+            <p
+              className={`fade-in-up flex items-center gap-1.5 text-sm ${
+                result === 'ok'
+                  ? 'text-green-700 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400'
+              }`}
+            >
+              {result === 'ok' ? <Check size={14} className="pop-in" /> : <AlertTriangle size={14} className="pop-in" />}
+              {result === 'ok' ? 'Upgrade completed.' : 'Upgrade failed — see log.'}
+            </p>
+          )}
+          <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-72 whitespace-pre-wrap">
+            {log}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ConfigPage() {
@@ -156,6 +306,9 @@ export default function ConfigPage() {
               </div>
             </div>
           </div>
+
+          {/* Software & upgrades */}
+          <Upgrades versions={state.versions ?? {}} onDone={load} />
 
           {/* Shortcuts */}
           <div>

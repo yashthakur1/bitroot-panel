@@ -55,6 +55,12 @@ export default function DashboardNav() {
                 <span className="font-medium text-gray-800 dark:text-gray-200">IAM</span>
               </>
             )}
+            {pathname.startsWith('/dashboard/pocketbase') && (
+              <>
+                <span className="mx-2 text-gray-400">/</span>
+                <span className="font-medium text-gray-800 dark:text-gray-200">PocketBase</span>
+              </>
+            )}
             {pathname.startsWith('/dashboard/config') && (
               <>
                 <span className="mx-2 text-gray-400">/</span>

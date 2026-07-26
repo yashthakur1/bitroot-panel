@@ -162,7 +162,7 @@ function FieldOk({ msg }: { msg: string }) {
   );
 }
 
-export default function NewProjectForm() {
+export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) {
   const [source, setSource] = useState<Source>('github');
 
   // GitHub connection
@@ -182,7 +182,9 @@ export default function NewProjectForm() {
   const [name, setName] = useState('');
   const [urlRepo, setUrlRepo] = useState('');
   const [port, setPort] = useState('');
-  const [environment, setEnvironment] = useState<'public' | 'private'>('public');
+  const [environment, setEnvironment] = useState<'public' | 'private'>(
+    initialEnv === 'private' ? 'private' : 'public',
+  );
 
   // Existing projects, for live conflict checks
   const [taken, setTaken] = useState<{ names: string[]; ports: Record<number, string> }>({
