@@ -13,6 +13,7 @@ import {
   Check,
   AlertTriangle,
 } from 'lucide-react';
+import { Button } from './ui/button';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
 import { humanUptime } from './project-list';
 
