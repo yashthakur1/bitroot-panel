@@ -9,8 +9,12 @@ import {
   AlertTriangle,
   Archive,
   Plug,
+  Loader2,
+  UserPlus,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
 import { StatCardsSkeleton } from './skeletons';
 import { humanUptime } from './project-list';
 
@@ -24,7 +28,7 @@ interface PbState {
   restarts: number;
 }
 
-const ADMIN_URL = 'http://100.127.137.83:8090/_/';
+const ADMIN_URL = 'https://pocketbase.bitroot.in/_/';
 
 export default function PocketBasePage() {
   const [state, setState] = useState<PbState | null>(null);
@@ -151,17 +155,187 @@ const posts = await pb.collection('my_app_posts').getList(1, 20);`}
         </div>
       </div>
 
-      <div>
-        <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+      <BackupsSection />
+      <SuperuserSection />
+    </div>
+  );
+}
+
+function BackupsSection() {
+  const [backups, setBackups] = useState<Array<{ name: string; size: string; modified: string }>>(
+    [],
+  );
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+
+  const load = useCallback(async () => {
+    const res = await fetch('/api/pocketbase/backups');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) setBackups(data.backups ?? []);
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function backupNow() {
+    setBusy(true);
+    setNote('Creating snapshot…');
+    try {
+      const res = await fetch('/api/pocketbase/backups', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setBackups(data.backups ?? []);
+        setNote('Snapshot created.');
+      } else {
+        setNote(data.error ?? 'backup failed');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-xl font-semibold flex items-center gap-2">
           <Archive size={18} className="text-gray-500 dark:text-gray-400" />
           Backups
         </h2>
-        <div className="border rounded-lg p-5 text-sm text-gray-600 dark:text-gray-400">
-          Nightly at 3:30 AM a cron job archives <code>pb_data</code> to{' '}
-          <code>~/backups/pocketbase-&lt;weekday&gt;.tar.gz</code> — a rolling 7-day window on
-          the phone. Restore = stop, untar, start.
-        </div>
+        <Button variant="outline" size="sm" disabled={busy} onClick={backupNow}>
+          {busy ? (
+            <>
+              <Loader2 size={13} className="animate-spin mr-1.5" /> Backing up…
+            </>
+          ) : (
+            'Back up now'
+          )}
+        </Button>
       </div>
+      <div className="border rounded-lg overflow-hidden">
+        {backups.length === 0 ? (
+          <p className="p-5 text-sm text-gray-500 dark:text-gray-400">
+            No backups yet — the nightly cron runs at 3:30 AM.
+          </p>
+        ) : (
+          <table className="min-w-full text-sm">
+            <tbody>
+              {backups.map((b) => (
+                <tr key={b.name} className="border-t first:border-t-0 dark:border-gray-800">
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-700 dark:text-gray-300">
+                    {b.name}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums">
+                    {b.size}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums">
+                    {b.modified}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+        {note && <span className="fade-in-up mr-2">{note}</span>}
+        Nightly cron keeps a rolling 7-day window; manual snapshots are timestamped. For
+        guaranteed-consistent archives use the admin UI&apos;s Settings → Backups.
+      </p>
+    </div>
+  );
+}
+
+function SuperuserSection() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch('/api/pocketbase/superuser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setNote(
+        res.ok
+          ? { ok: true, text: `Superuser "${email}" saved.` }
+          : { ok: false, text: data.error ?? data.output ?? `HTTP ${res.status}` },
+      );
+      if (res.ok) {
+        setEmail('');
+        setPassword('');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+        <UserPlus size={18} className="text-gray-500 dark:text-gray-400" />
+        Superusers
+      </h2>
+      <form onSubmit={submit} className="border rounded-lg p-5 space-y-3 max-w-lg">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Add a new admin or reset an existing one&apos;s password (runs{' '}
+          <code>pocketbase superuser upsert</code> on the phone).
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-col flex-1 min-w-48">
+            <Label htmlFor="su-email">Email</Label>
+            <Input
+              id="su-email"
+              type="email"
+              placeholder="teammate@bitroot.org"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex flex-col flex-1 min-w-48">
+            <Label htmlFor="su-pass">Password</Label>
+            <Input
+              id="su-pass"
+              type="password"
+              placeholder="min 10 characters"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={10}
+              required
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={busy || !email || password.length < 10}>
+            {busy ? (
+              <>
+                <Loader2 size={13} className="animate-spin mr-1.5" /> Saving…
+              </>
+            ) : (
+              'Save superuser'
+            )}
+          </Button>
+          {note && (
+            <span
+              className={`fade-in-up text-sm ${
+                note.ok
+                  ? 'text-green-700 dark:text-green-400'
+                  : 'text-red-600 dark:text-red-400'
+              }`}
+            >
+              {note.text}
+            </span>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
