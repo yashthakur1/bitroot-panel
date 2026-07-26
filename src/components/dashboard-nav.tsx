@@ -54,6 +54,12 @@ export default function DashboardNav() {
                 <span className="font-medium text-gray-800">IAM</span>
               </>
             )}
+            {pathname.startsWith('/dashboard/config') && (
+              <>
+                <span className="mx-2 text-gray-400">/</span>
+                <span className="font-medium text-gray-800">Config</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-2">
