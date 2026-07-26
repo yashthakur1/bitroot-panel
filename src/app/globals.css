@@ -77,9 +77,6 @@
 }
 
 /* Custom font styles for the Render UI */
-.font-roobert {
-  font-family: var(--font-roobert), system-ui, sans-serif;
-}
 
 /* Shimmer skeleton */
 @keyframes shimmer-sweep {
