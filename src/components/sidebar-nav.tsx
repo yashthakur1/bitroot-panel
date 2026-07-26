@@ -3,7 +3,15 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Box, Cloud, Database, PlusCircle, Settings, ShieldCheck } from 'lucide-react';
+import {
+  Box,
+  Cloud,
+  Database,
+  PlusCircle,
+  Recycle,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react';
 
 export default function SidebarNav() {
   const pathname = usePathname();
@@ -38,6 +46,12 @@ export default function SidebarNav() {
       href: '/dashboard/iam',
       icon: <ShieldCheck size={18} />,
       active: pathname.startsWith('/dashboard/iam'),
+    },
+    {
+      name: 'Residue',
+      href: '/dashboard/residue',
+      icon: <Recycle size={18} />,
+      active: pathname.startsWith('/dashboard/residue'),
     },
     {
       name: 'Config',

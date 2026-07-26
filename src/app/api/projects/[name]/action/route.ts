@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { assertName, ValidationError } from '@/lib/validate';
+import { recordResidue } from '@/lib/residue';
 
 const ACTIONS: Record<string, number> = {
   deploy: 600_000,
@@ -23,6 +24,47 @@ export async function POST(
     }
 
     const r = await run(`project ${action} ${name}`, timeout);
+
+    // `project remove` intentionally keeps files and the DNS record — log what
+    // survives so it shows up on the Residue page instead of silently lingering.
+    if (action === 'remove' && r.ok) {
+      const [dir, repo] = await Promise.all([
+        run(`[ -d "$HOME/Downloads/${name}" ] && echo yes || true`),
+        run(`[ -d "$HOME/repos/${name}.git" ] && echo yes || true`),
+      ]);
+      await recordResidue([
+        ...(dir.output.includes('yes')
+          ? [
+              {
+                action: `removed service "${name}"`,
+                kind: 'files' as const,
+                what: 'Project files were kept',
+                target: `~/Downloads/${name}`,
+                hint: 'Delete from the Residue page if you no longer need the code or its .env.',
+              },
+            ]
+          : []),
+        ...(repo.output.includes('yes')
+          ? [
+              {
+                action: `removed service "${name}"`,
+                kind: 'files' as const,
+                what: 'Bare deploy repo was kept',
+                target: `~/repos/${name}.git`,
+                hint: 'Keeping it lets you re-deploy with a git push; delete it to reclaim space.',
+              },
+            ]
+          : []),
+        {
+          action: `removed service "${name}"`,
+          kind: 'dns' as const,
+          what: 'Cloudflare DNS record was not deleted',
+          target: `${name}.bitroot.in`,
+          hint: 'The hostname no longer serves anything. Remove the CNAME in the Cloudflare dashboard if you want it gone.',
+        },
+      ]);
+    }
+
     return NextResponse.json({ ok: r.ok, output: r.output }, { status: r.ok ? 200 : 500 });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;

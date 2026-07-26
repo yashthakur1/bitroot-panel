@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { assertPort, ValidationError } from '@/lib/validate';
+import { recordResidue } from '@/lib/residue';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
 const TS_HOST = process.env.TAILSCALE_HOST ?? 'oneplus-6';
@@ -146,6 +147,17 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ ok: false, output: r.output }, { status: 500 });
     }
     const restart = await run('pm2 restart cloudflared', 60_000);
+
+    await recordResidue([
+      {
+        action: `detached route "${name}.${DOMAIN_SUFFIX}"`,
+        kind: 'dns',
+        what: 'Cloudflare DNS record still points at this tunnel',
+        target: `${name}.${DOMAIN_SUFFIX}`,
+        hint: 'Harmless (the hostname now returns 404) and re-attaching is instant. Delete the CNAME in Cloudflare to fully retire it.',
+      },
+    ]);
+
     return NextResponse.json({ ok: true, output: `${r.output}\n${restart.output}`.trim() });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;

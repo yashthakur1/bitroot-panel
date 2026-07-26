@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ValidationError } from '@/lib/validate';
+import { recordResidue } from '@/lib/residue';
 import {
   assertDbName,
   pbFetch,
@@ -96,7 +97,31 @@ export async function DELETE(req: NextRequest) {
     const name = assertDbName(req.nextUrl.searchParams.get('name'));
     const registry = await readRegistry();
     await writeRegistry(registry.filter((d) => d.name !== name));
-    return NextResponse.json({ ok: true });
+
+    let kept: string[] = [];
+    try {
+      const list = await pbFetch('/api/collections?perPage=200');
+      kept = (list.items ?? [])
+        .map((c: any) => c.name)
+        .filter((n: string) => n.startsWith(`${name}_`));
+    } catch {
+      // admin API unavailable; still record the generic warning
+    }
+
+    await recordResidue([
+      {
+        action: `unregistered database "${name}"`,
+        kind: 'data',
+        what:
+          kept.length > 0
+            ? `Collections and their records were kept: ${kept.join(', ')}`
+            : 'Any collections under this namespace were kept',
+        target: `pocketbase:${name}_*`,
+        hint: 'Data is never deleted from here. Drop the collections in the PocketBase admin UI if you truly want them gone.',
+      },
+    ]);
+
+    return NextResponse.json({ ok: true, keptCollections: kept });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
     return NextResponse.json({ error: (e as Error).message }, { status });

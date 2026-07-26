@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ExternalLink, RefreshCw } from 'lucide-react';
@@ -126,14 +127,24 @@ export default function ProjectDetail({
             </Button>
           )}
           {confirmRemove ? (
-            <Button
-              variant="outline"
-              className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
-              disabled={!!busyAction}
-              onClick={() => runAction('remove')}
-            >
-              {busyAction === 'remove' ? 'Removing…' : 'Really remove?'}
-            </Button>
+            <div className="flex flex-col items-end gap-1.5">
+              <Button
+                variant="outline"
+                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
+                disabled={!!busyAction}
+                onClick={() => runAction('remove')}
+              >
+                {busyAction === 'remove' ? 'Removing…' : 'Really remove?'}
+              </Button>
+              <p className="fade-in-up text-xs text-gray-500 dark:text-gray-400 max-w-xs text-right">
+                Stops and unregisters it, and drops the tunnel route. Project files, the
+                deploy repo and the DNS record are kept — they&apos;ll be listed on the{' '}
+                <Link href="/dashboard/residue" className="underline">
+                  Residue
+                </Link>{' '}
+                page.
+              </p>
+            </div>
           ) : (
             <Button
               variant="outline"
