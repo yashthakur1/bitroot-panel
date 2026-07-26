@@ -199,6 +199,7 @@ export default function NewProjectForm() {
   const [stage, setStage] = useState(0);
   const [failed, setFailed] = useState(false);
   const [started, setStarted] = useState(false);
+  const [lostConnection, setLostConnection] = useState(false);
   const outputRef = useRef<HTMLPreElement>(null);
 
   const checkGithub = useCallback(async () => {
@@ -357,11 +358,18 @@ export default function NewProjectForm() {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let full = '';
+      const display = (raw: string) =>
+        raw
+          .replaceAll('[[HB]]', '') // server heartbeats, not real output
+          .replace(/\n?\[\[EXIT:\d+\]\]/, '')
+          .split('\n')
+          .map((l) => l.split('\r').pop() ?? '') // keep last progress frame per line
+          .join('\n');
       for (;;) {
         const { done: eof, value } = await reader.read();
         if (eof) break;
         full += decoder.decode(value, { stream: true });
-        setOutput(full.replace(/\n?\[\[EXIT:\d+\]\]/, ''));
+        setOutput(display(full));
         setStage(computeStage(full, isPublic));
       }
       const ok = /\[\[EXIT:0\]\]/.test(full);
@@ -369,8 +377,10 @@ export default function NewProjectForm() {
       setFailed(!ok);
       if (ok) setStage(6);
     } catch (err) {
-      setOutput((o) => `${o}\nfailed: ${(err as Error).message}`);
-      setFailed(true);
+      // Stream broke mid-flight. The phone keeps running the deploy —
+      // say so honestly instead of pretending it failed.
+      setLostConnection(true);
+      setOutput((o) => `${o}\n(connection lost: ${(err as Error).message})`);
     } finally {
       setBusy(false);
     }
@@ -683,6 +693,21 @@ export default function NewProjectForm() {
           finished={done}
           name={name}
         />
+      )}
+
+      {lostConnection && (
+        <div className="fade-in-up border border-amber-300 bg-amber-50 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          <div style={{ textWrap: 'pretty' }}>
+            <strong>Connection to the panel dropped — the deployment is still running on
+            the phone.</strong>{' '}
+            Give it a few minutes, then check the{' '}
+            <Link href="/dashboard" className="underline">
+              projects list
+            </Link>
+            : if <code>{name}</code> appears there as online, it succeeded.
+          </div>
+        </div>
       )}
 
       {output && (

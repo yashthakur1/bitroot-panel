@@ -102,8 +102,10 @@ export async function POST(req: NextRequest) {
       repoUrl = assertRepo(body.repo);
     }
 
+    // GIT_TERMINAL_PROMPT=0: fail fast on missing credentials instead of
+    // hanging on a username prompt that can never be answered.
     const cmd =
-      `project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
+      `GIT_TERMINAL_PROMPT=0 project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
       (internal ? ' --no-tunnel' : '');
     // Stream the phone's output live so the UI can render a step timeline.
     return new Response(runStream(cmd, 600_000), {

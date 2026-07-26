@@ -61,6 +61,12 @@ export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
 // Streaming variant: returns the command's combined stdout/stderr as a web
 // ReadableStream while it runs, terminated by a "[[EXIT:<code>]]" marker so
 // the client can tell success from failure.
+//
+// Two reliability properties for long deploy pipelines:
+//  - "[[HB]]" heartbeat bytes every 15s keep proxies (Cloudflare Tunnel)
+//    from dropping the connection during silent phases like git clone.
+//  - If the client disconnects, the command KEEPS RUNNING to completion —
+//    a half-finished deploy is worse than a wasted stream.
 export function runStream(command: string, timeoutMs = 600_000): ReadableStream<Uint8Array> {
   const wrapped = `PATH="$HOME/bin:$PATH" ${command}`;
   const argv = buildArgv(wrapped);
@@ -73,14 +79,16 @@ export function runStream(command: string, timeoutMs = 600_000): ReadableStream<
         try {
           controller.enqueue(new Uint8Array(d));
         } catch {
-          // stream already closed (client went away)
+          // stream already closed (client went away); child continues
         }
       };
+      const heartbeat = setInterval(() => push(Buffer.from('[[HB]]')), 15_000);
       child.stdout?.on('data', push);
       child.stderr?.on('data', push);
       child.on('error', (e) => push(Buffer.from(`\nerror: ${e.message}\n`)));
       child.on('close', (code) => {
         clearTimeout(killer);
+        clearInterval(heartbeat);
         push(Buffer.from(`\n[[EXIT:${code ?? 1}]]`));
         try {
           controller.close();
@@ -89,8 +97,7 @@ export function runStream(command: string, timeoutMs = 600_000): ReadableStream<
         }
       });
     },
-    cancel() {
-      child.kill();
-    },
+    // Deliberately no cancel() kill: a disconnected browser must not abort
+    // a deploy in flight. The timeout above remains the only hard stop.
   });
 }
