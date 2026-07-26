@@ -21,6 +21,7 @@ export default function ProjectDetail({
   const [tab, setTab] = useState<Tab>(
     initialTab === 'logs' || initialTab === 'environment' ? initialTab : 'overview',
   );
+  const [loaded, setLoaded] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [busyAction, setBusyAction] = useState('');
   const [actionOutput, setActionOutput] = useState('');
@@ -33,6 +34,7 @@ export default function ProjectDetail({
     setProject(
       (data.projects as Project[]).find((p) => p.name === name) ?? null,
     );
+    setLoaded(true);
   }, [name]);
 
   useEffect(() => {
@@ -63,6 +65,24 @@ export default function ProjectDetail({
       setBusyAction('');
       setConfirmRemove(false);
     }
+  }
+
+  // Project not in the list and no action in flight: it was removed.
+  if (loaded && !project && !busyAction) {
+    return (
+      <div className="fade-in-up flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+          <ExternalLink size={20} className="text-gray-400" />
+        </div>
+        <h1 className="text-xl font-semibold mb-1">&quot;{name}&quot; doesn&apos;t exist</h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
+          It may have been removed, or the name changed.
+        </p>
+        <Button className="min-w-40" onClick={() => router.push('/dashboard')}>
+          Back to projects
+        </Button>
+      </div>
+    );
   }
 
   return (
