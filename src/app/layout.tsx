@@ -3,7 +3,7 @@ import "./globals.css";
 import { funnelDisplay, geist, geistMono } from "@/lib/fonts";
 
 export const metadata: Metadata = {
-  title: "Bitroot Panel",
+  title: "BitPanel",
   description: "Deploy and manage apps on the OnePlus home server.",
 };
 

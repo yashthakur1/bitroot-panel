@@ -22,7 +22,7 @@ export default function DashboardNav() {
             </div>
           </Link>
           <div className="flex items-center rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1">
-            <span className="font-display font-medium text-gray-700 dark:text-gray-300">Bitroot Panel</span>
+            <span className="font-display font-medium text-gray-700 dark:text-gray-300">BitPanel</span>
           </div>
           <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
             <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100">
