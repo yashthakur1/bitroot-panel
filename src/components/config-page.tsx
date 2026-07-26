@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
-import { Eye, EyeOff, FileCode2, Smartphone, Link2 } from 'lucide-react';
+import { Eye, EyeOff, FileCode2, Smartphone, Link2, Keyboard } from 'lucide-react';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
 import { humanUptime } from './project-list';
 
@@ -157,11 +157,44 @@ export default function ConfigPage() {
             </div>
           </div>
 
+          {/* Shortcuts */}
+          <div>
+            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+              <Keyboard size={18} className="text-gray-500 dark:text-gray-400" />
+              Keyboard shortcuts
+            </h2>
+            <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm max-w-md">
+              {(
+                [
+                  ['l', 'Open panel logs'],
+                  ['h', 'Projects list'],
+                  ['n', 'New project'],
+                ] as Array<[string, string]>
+              ).map(([key, action]) => (
+                <div key={key} className="px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-gray-700 dark:text-gray-300">{action}</span>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    <kbd className="border rounded px-1.5 py-0.5 text-xs font-mono bg-gray-50 dark:bg-gray-800/60">
+                      g
+                    </kbd>
+                    <span className="mx-1">then</span>
+                    <kbd className="border rounded px-1.5 py-0.5 text-xs font-mono bg-gray-50 dark:bg-gray-800/60">
+                      {key}
+                    </kbd>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Device */}
           <div>
             <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
               <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
               Device
+              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                OnePlus 6 · Termux · pm2
+              </span>
             </h2>
             <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
               {state.device || 'no device info'}

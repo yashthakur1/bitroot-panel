@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Box, Cloud, PlusCircle, Settings, ShieldCheck, Smartphone } from 'lucide-react';
+import { Box, Cloud, PlusCircle, Settings, ShieldCheck } from 'lucide-react';
 
 export default function SidebarNav() {
   const pathname = usePathname();
@@ -63,19 +63,6 @@ export default function SidebarNav() {
           </nav>
         </div>
 
-        <div className="mt-auto border-t pt-3 pb-3 px-3 space-y-2">
-          <div className="text-xs text-gray-400">
-            <kbd className="border rounded px-1">g</kbd>+<kbd className="border rounded px-1">l</kbd> panel logs
-            {' · '}
-            <kbd className="border rounded px-1">g</kbd>+<kbd className="border rounded px-1">h</kbd> home
-            {' · '}
-            <kbd className="border rounded px-1">g</kbd>+<kbd className="border rounded px-1">n</kbd> new
-          </div>
-          <div className="flex items-center text-xs text-gray-500 dark:text-gray-400">
-            <Smartphone size={14} className="mr-2" />
-            OnePlus 6 · Termux · pm2
-          </div>
-        </div>
       </div>
     </div>
   );
