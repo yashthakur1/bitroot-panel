@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { run } from '@/lib/runner';
+import { run, runStream } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 
@@ -105,8 +105,14 @@ export async function POST(req: NextRequest) {
     const cmd =
       `project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
       (internal ? ' --no-tunnel' : '');
-    const r = await run(cmd, 600_000);
-    return NextResponse.json({ ok: r.ok, output: r.output }, { status: r.ok ? 200 : 500 });
+    // Stream the phone's output live so the UI can render a step timeline.
+    return new Response(runStream(cmd, 600_000), {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
+      },
+    });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
     return NextResponse.json({ error: (e as Error).message }, { status });

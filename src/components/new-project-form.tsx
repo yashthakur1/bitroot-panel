@@ -1,11 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { Github, Link2, Lock, Globe, CheckCircle2 } from 'lucide-react';
+import {
+  Github,
+  Link2,
+  Lock,
+  Globe,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Check,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-react';
 import { Shimmer } from './skeletons';
 
 interface Repo {
@@ -16,6 +27,140 @@ interface Repo {
 }
 
 type Source = 'github' | 'url';
+type Errors = Partial<Record<'repo' | 'branch' | 'urlRepo' | 'name' | 'port', string>>;
+
+// Progress checkpoints matched against the phone's live `project clone` output.
+// The number of matched checkpoints drives the step timeline.
+function computeStage(text: string, isPublic: boolean): number {
+  const checkpoints: RegExp[] = [
+    /=== cloning/,
+    /cloned to |already exists — skipping clone/,
+    /registered in ecosystem|already in ecosystem/,
+    /PM2: started/,
+    isPublic
+      ? /cloudflared reloaded|tunnel route .* already exists/
+      : /skipping tunnel route/,
+    /=== setup complete/,
+  ];
+  let stage = 0;
+  for (const cp of checkpoints) {
+    if (cp.test(text)) stage += 1;
+    else break;
+  }
+  return stage;
+}
+
+type StepState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
+
+function StepIcon({ state }: { state: StepState }) {
+  if (state === 'done') return <CheckCircle2 size={18} className="text-green-600 pop-in" />;
+  if (state === 'failed') return <AlertCircle size={18} className="text-red-500 pop-in" />;
+  if (state === 'active')
+    return <Loader2 size={18} className="animate-spin text-purple-600" />;
+  if (state === 'skipped')
+    return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 border-dashed" />;
+  return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300" />;
+}
+
+function Timeline({
+  stage,
+  isPublic,
+  failed,
+  finished,
+  name,
+}: {
+  stage: number;
+  isPublic: boolean;
+  failed: boolean;
+  finished: boolean;
+  name: string;
+}) {
+  const steps: Array<{ label: string; a: number; d: number; detail?: React.ReactNode; skip?: boolean }> = [
+    { label: 'Clone repository', a: 1, d: 2 },
+    { label: 'Install dependencies', a: 2, d: 3 },
+    { label: 'Start under pm2', a: 3, d: 4 },
+    isPublic
+      ? {
+          label: 'Publish tunnel route',
+          a: 4,
+          d: 5,
+          detail: (
+            <code className="text-xs text-gray-500">{name || '<name>'}.bitroot.in</code>
+          ),
+        }
+      : { label: 'Tunnel route', a: 4, d: 5, skip: true },
+    { label: 'Live', a: 5, d: 6 },
+  ];
+
+  return (
+    <div className="fade-in-up border rounded-xl p-5">
+      {steps.map((s, i) => {
+        let state: StepState;
+        if (s.skip) state = 'skipped';
+        else if (finished && !failed) state = 'done';
+        else if (stage >= s.d) state = 'done';
+        else if (stage >= s.a) state = failed ? 'failed' : 'active';
+        else state = 'pending';
+        const last = i === steps.length - 1;
+        return (
+          <div key={s.label} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <StepIcon state={state} />
+              {!last && (
+                <div
+                  className={`w-px flex-1 my-1 transition-colors ${
+                    state === 'done' ? 'bg-green-300' : 'bg-gray-200'
+                  }`}
+                />
+              )}
+            </div>
+            <div className={`text-sm ${last ? '' : 'pb-5'}`}>
+              <span
+                className={
+                  state === 'done'
+                    ? 'text-gray-800'
+                    : state === 'active'
+                      ? 'text-gray-900 font-medium'
+                      : state === 'failed'
+                        ? 'text-red-600 font-medium'
+                        : 'text-gray-400'
+                }
+              >
+                {s.label}
+                {state === 'skipped' && (
+                  <span className="text-xs text-gray-400 ml-2">skipped — private</span>
+                )}
+                {state === 'failed' && (
+                  <span className="text-xs ml-2">failed — see log below</span>
+                )}
+              </span>
+              {s.detail && state !== 'pending' && <div>{s.detail}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return (
+    <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 mt-1.5">
+      <AlertCircle size={13} className="shrink-0" />
+      {msg}
+    </p>
+  );
+}
+
+function FieldOk({ msg }: { msg: string }) {
+  return (
+    <p className="fade-in-up flex items-center gap-1.5 text-xs text-green-700 mt-1.5">
+      <Check size={12} className="shrink-0" />
+      {msg}
+    </p>
+  );
+}
 
 export default function NewProjectForm() {
   const [source, setSource] = useState<Source>('github');
@@ -38,9 +183,23 @@ export default function NewProjectForm() {
   const [urlRepo, setUrlRepo] = useState('');
   const [port, setPort] = useState('');
   const [environment, setEnvironment] = useState<'public' | 'private'>('public');
+
+  // Existing projects, for live conflict checks
+  const [taken, setTaken] = useState<{ names: string[]; ports: Record<number, string> }>({
+    names: [],
+    ports: {},
+  });
+
+  // Submit lifecycle
+  const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [output, setOutput] = useState('');
   const [done, setDone] = useState(false);
+  const [stage, setStage] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [started, setStarted] = useState(false);
+  const outputRef = useRef<HTMLPreElement>(null);
 
   const checkGithub = useCallback(async () => {
     const res = await fetch('/api/github');
@@ -56,7 +215,66 @@ export default function NewProjectForm() {
 
   useEffect(() => {
     checkGithub();
+    // load existing names/ports for live validation
+    fetch('/api/projects')
+      .then((r) => r.json())
+      .then((d) => {
+        const names: string[] = [];
+        const ports: Record<number, string> = {};
+        for (const p of d.projects ?? []) {
+          names.push(p.name);
+          if (p.port) ports[p.port] = p.name;
+        }
+        setTaken({ names, ports });
+      })
+      .catch(() => {});
   }, [checkGithub]);
+
+  // elapsed timer while creating
+  useEffect(() => {
+    if (!busy) return;
+    setElapsed(0);
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [busy]);
+
+  useEffect(() => {
+    outputRef.current?.scrollTo(0, outputRef.current.scrollHeight);
+  }, [output]);
+
+  function clearError(field: keyof Errors) {
+    setErrors((e) => (e[field] ? { ...e, [field]: undefined } : e));
+  }
+
+  const portNum = Number(port);
+  const portConflict = port && taken.ports[portNum];
+  const portValid = port && portNum >= 1024 && portNum <= 65535 && !portConflict;
+  const nameConflict = name && taken.names.includes(name);
+  const nameValid = name && /^[a-zA-Z0-9_-]{1,40}$/.test(name) && !nameConflict;
+
+  function nextFreePort(start = 3000): number {
+    let p = start;
+    while (taken.ports[p]) p += 1;
+    return p;
+  }
+
+  function validate(): Errors {
+    const errs: Errors = {};
+    if (source === 'github') {
+      if (!repo) errs.repo = 'Pick a repository to deploy';
+      else if (!branch) errs.branch = 'Pick a branch';
+    } else if (!urlRepo) {
+      errs.urlRepo = 'A git repository URL is required';
+    }
+    if (!name) errs.name = 'Give the project a name';
+    else if (!/^[a-zA-Z0-9_-]{1,40}$/.test(name))
+      errs.name = 'Only letters, digits, dashes and underscores';
+    else if (nameConflict) errs.name = `"${name}" already exists on the server`;
+    if (!port) errs.port = 'A port is required — every app gets its own';
+    else if (!(portNum >= 1024 && portNum <= 65535)) errs.port = 'Use a port between 1024 and 65535';
+    else if (portConflict) errs.port = `Port ${port} is used by "${portConflict}"`;
+    return errs;
+  }
 
   async function connectGithub(e: React.FormEvent) {
     e.preventDefault();
@@ -83,22 +301,37 @@ export default function NewProjectForm() {
     setRepo(full);
     setBranches([]);
     setBranch('');
+    clearError('repo');
     if (!full) return;
     const r = repos?.find((x) => x.fullName === full);
-    if (!name && r) setName(r.fullName.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+    if (!name && r) {
+      setName(r.fullName.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+      clearError('name');
+    }
     const res = await fetch(`/api/github/branches?repo=${encodeURIComponent(full)}`);
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setBranches(data.branches);
       setBranch(data.defaultBranch);
+      clearError('branch');
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const errs = validate();
+    if (Object.values(errs).some(Boolean)) {
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
     setBusy(true);
     setDone(false);
-    setOutput('Cloning and setting up — this can take a few minutes…');
+    setFailed(false);
+    setStage(0);
+    setStarted(true);
+    setOutput('');
+    const isPublic = environment === 'public';
     try {
       const res = await fetch('/api/projects', {
         method: 'POST',
@@ -108,27 +341,47 @@ export default function NewProjectForm() {
           name,
           repo: source === 'github' ? repo : urlRepo,
           branch: source === 'github' ? branch : undefined,
-          port: Number(port),
+          port: portNum,
           environment,
         }),
       });
-      const data = await res.json().catch(() => ({}));
-      setOutput(data.output ?? data.error ?? `HTTP ${res.status}`);
-      setDone(res.ok);
+
+      // Validation errors come back as JSON; success streams plain text.
+      if (res.headers.get('content-type')?.includes('json')) {
+        const data = await res.json().catch(() => ({}));
+        setOutput(data.error ?? `HTTP ${res.status}`);
+        setFailed(true);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let full = '';
+      for (;;) {
+        const { done: eof, value } = await reader.read();
+        if (eof) break;
+        full += decoder.decode(value, { stream: true });
+        setOutput(full.replace(/\n?\[\[EXIT:\d+\]\]/, ''));
+        setStage(computeStage(full, isPublic));
+      }
+      const ok = /\[\[EXIT:0\]\]/.test(full);
+      setDone(ok);
+      setFailed(!ok);
+      if (ok) setStage(6);
     } catch (err) {
-      setOutput(`failed: ${(err as Error).message}`);
+      setOutput((o) => `${o}\nfailed: ${(err as Error).message}`);
+      setFailed(true);
     } finally {
       setBusy(false);
     }
   }
 
-  const ready =
-    name && port && (source === 'github' ? repo && branch : urlRepo);
-
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">New project</h1>
+        <h1 className="text-3xl font-bold tracking-tight" style={{ textWrap: 'balance' }}>
+          New project
+        </h1>
         <p className="text-gray-600 mt-2">
           Clone, install, run under pm2 — and optionally publish at{' '}
           <code>&lt;name&gt;.bitroot.in</code>.
@@ -145,8 +398,8 @@ export default function NewProjectForm() {
         ).map(([s, label, icon]) => (
           <button
             key={s}
-            onClick={() => setSource(s)}
-            className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 ${
+            onClick={() => !busy && setSource(s)}
+            className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
                 ? 'text-purple-600 border-b-2 border-purple-600'
                 : 'text-gray-600 hover:text-gray-800'
@@ -161,11 +414,11 @@ export default function NewProjectForm() {
       {source === 'github' && !ghChecked && <Shimmer className="h-24 w-full" />}
 
       {source === 'github' && ghChecked && !ghLogin && (
-        <form onSubmit={connectGithub} className="border rounded-lg p-5 space-y-3 bg-gray-50">
+        <form onSubmit={connectGithub} className="fade-in-up border rounded-xl p-5 space-y-3 bg-gray-50">
           <div className="font-medium flex items-center gap-2">
             <Github size={16} /> Connect GitHub
           </div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600" style={{ textWrap: 'pretty' }}>
             Create a{' '}
             <a
               href="https://github.com/settings/personal-access-tokens/new"
@@ -187,175 +440,263 @@ export default function NewProjectForm() {
               onChange={(e) => setPat(e.target.value)}
               className="font-mono text-sm flex-1"
             />
-            <Button type="submit" disabled={ghBusy || !pat} className="bg-black text-white hover:bg-black/90">
-              {ghBusy ? 'Connecting…' : 'Connect'}
+            <Button type="submit" disabled={ghBusy || !pat}>
+              {ghBusy ? (
+                <>
+                  <Loader2 size={14} className="animate-spin mr-1.5" /> Connecting…
+                </>
+              ) : (
+                'Connect'
+              )}
             </Button>
           </div>
-          {ghError && <p className="text-sm text-red-600">{ghError}</p>}
+          {ghError && <FieldError msg={ghError} />}
         </form>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {source === 'github' && ghLogin && (
-          <>
-            <div className="flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50">
-              <span className="flex items-center gap-2 text-gray-700">
-                <CheckCircle2 size={15} className="text-green-600" />
-                Connected as <strong>{ghLogin}</strong>
-              </span>
+      <form onSubmit={handleSubmit} noValidate>
+        <fieldset disabled={busy} className="space-y-4 disabled:opacity-70 transition-opacity">
+          {source === 'github' && ghLogin && (
+            <>
+              <div className="fade-in-up flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50">
+                <span className="flex items-center gap-2 text-gray-700">
+                  <CheckCircle2 size={15} className="text-green-600 pop-in" />
+                  Connected as <strong>{ghLogin}</strong>
+                </span>
+                <button
+                  type="button"
+                  className="text-gray-500 hover:text-red-600 transition-colors py-2 px-2 -mr-2"
+                  onClick={async () => {
+                    await fetch('/api/github', { method: 'DELETE' });
+                    setGhLogin(null);
+                    setRepos(null);
+                  }}
+                >
+                  disconnect
+                </button>
+              </div>
+
+              <div className="flex flex-col">
+                <Label htmlFor="repo">Repository</Label>
+                <select
+                  id="repo"
+                  value={repo}
+                  onChange={(e) => selectRepo(e.target.value)}
+                  className={`border rounded-md px-3 py-2 text-sm bg-white transition-colors ${
+                    errors.repo ? 'border-red-400' : ''
+                  }`}
+                >
+                  <option value="">— select a repository —</option>
+                  {(repos ?? []).map((r) => (
+                    <option key={r.fullName} value={r.fullName}>
+                      {r.fullName}
+                      {r.private ? ' (private)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <FieldError msg={errors.repo} />
+              </div>
+
+              {repo && (
+                <div className="flex flex-col fade-in-up">
+                  <Label htmlFor="branch">Branch</Label>
+                  {branches.length === 0 ? (
+                    <Shimmer className="h-9 w-64" />
+                  ) : (
+                    <select
+                      id="branch"
+                      value={branch}
+                      onChange={(e) => {
+                        setBranch(e.target.value);
+                        clearError('branch');
+                      }}
+                      className="border rounded-md px-3 py-2 text-sm bg-white w-64"
+                    >
+                      {branches.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <span className="text-xs text-gray-500 mt-1">
+                    future <code>project deploy</code> pulls the latest of this branch
+                  </span>
+                  <FieldError msg={errors.branch} />
+                </div>
+              )}
+            </>
+          )}
+
+          {source === 'url' && (
+            <div className="flex flex-col">
+              <Label htmlFor="urlrepo">Git repository URL</Label>
+              <Input
+                id="urlrepo"
+                placeholder="https://github.com/you/my-api.git"
+                value={urlRepo}
+                onChange={(e) => {
+                  setUrlRepo(e.target.value);
+                  clearError('urlRepo');
+                }}
+                className={errors.urlRepo ? 'border-red-400' : ''}
+              />
+              <FieldError msg={errors.urlRepo} />
+            </div>
+          )}
+
+          <div className="flex gap-4 items-start">
+            <div className="flex flex-col flex-1">
+              <Label htmlFor="name">Project name</Label>
+              <Input
+                id="name"
+                placeholder="my-api"
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  clearError('name');
+                }}
+                className={errors.name ? 'border-red-400' : ''}
+              />
+              {errors.name ? (
+                <FieldError msg={errors.name} />
+              ) : nameConflict ? (
+                <FieldError msg={`"${name}" already exists on the server`} />
+              ) : nameValid ? (
+                <FieldOk msg={environment === 'public' ? `${name}.bitroot.in` : 'name is free'} />
+              ) : null}
+            </div>
+            <div className="flex flex-col w-40">
+              <div className="flex items-baseline justify-between">
+                <Label htmlFor="port">Port</Label>
+                <button
+                  type="button"
+                  className="text-xs text-purple-600 hover:text-purple-800 transition-colors inline-flex items-center gap-0.5 py-1"
+                  onClick={() => {
+                    setPort(String(nextFreePort()));
+                    clearError('port');
+                  }}
+                >
+                  <Sparkles size={11} /> suggest
+                </button>
+              </div>
+              <Input
+                id="port"
+                type="number"
+                placeholder="3001"
+                value={port}
+                onChange={(e) => {
+                  setPort(e.target.value);
+                  clearError('port');
+                }}
+                min={1024}
+                max={65535}
+                className={`tabular-nums ${errors.port || portConflict ? 'border-red-400' : ''}`}
+              />
+              {errors.port ? (
+                <FieldError msg={errors.port} />
+              ) : portConflict ? (
+                <FieldError msg={`used by "${portConflict}"`} />
+              ) : portValid ? (
+                <FieldOk msg="port is free" />
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col">
+            <Label>Environment</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
               <button
                 type="button"
-                className="text-gray-500 hover:text-red-600"
-                onClick={async () => {
-                  await fetch('/api/github', { method: 'DELETE' });
-                  setGhLogin(null);
-                  setRepos(null);
-                }}
+                onClick={() => setEnvironment('public')}
+                className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
+                  environment === 'public'
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'hover:border-gray-300'
+                }`}
               >
-                disconnect
+                <div className="font-medium flex items-center gap-2 text-sm">
+                  <Globe size={15} /> Public
+                  {environment === 'public' && (
+                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Internet-facing at <code>{name || '<name>'}.bitroot.in</code> via Cloudflare
+                  Tunnel
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEnvironment('private')}
+                className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
+                  environment === 'private'
+                    ? 'border-purple-500 bg-purple-50'
+                    : 'hover:border-gray-300'
+                }`}
+              >
+                <div className="font-medium flex items-center gap-2 text-sm">
+                  <Lock size={15} /> Private
+                  {environment === 'private' && (
+                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                  )}
+                </div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Tailscale/LAN only — no public route
+                </div>
               </button>
             </div>
+          </div>
+        </fieldset>
 
-            <div className="flex flex-col">
-              <Label htmlFor="repo">Repository</Label>
-              <select
-                id="repo"
-                value={repo}
-                onChange={(e) => selectRepo(e.target.value)}
-                className="border rounded-md px-3 py-2 text-sm bg-white"
-                required
-              >
-                <option value="">— select a repository —</option>
-                {(repos ?? []).map((r) => (
-                  <option key={r.fullName} value={r.fullName}>
-                    {r.fullName}
-                    {r.private ? ' (private)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {repo && (
-              <div className="flex flex-col">
-                <Label htmlFor="branch">Branch</Label>
-                {branches.length === 0 ? (
-                  <Shimmer className="h-9 w-48" />
-                ) : (
-                  <select
-                    id="branch"
-                    value={branch}
-                    onChange={(e) => setBranch(e.target.value)}
-                    className="border rounded-md px-3 py-2 text-sm bg-white w-64"
-                  >
-                    {branches.map((b) => (
-                      <option key={b} value={b}>
-                        {b}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <span className="text-xs text-gray-500 mt-1">
-                  future <code>project deploy</code> pulls the latest of this branch
-                </span>
-              </div>
+        <div className="mt-5 flex items-center gap-3">
+          <Button type="submit" disabled={busy} className="min-w-40">
+            {busy ? (
+              <>
+                <Loader2 size={14} className="animate-spin mr-2" />
+                Creating… <span className="tabular-nums ml-1">{elapsed}s</span>
+              </>
+            ) : done ? (
+              <>
+                <Check size={14} className="mr-1.5 pop-in" /> Created
+              </>
+            ) : (
+              'Create project'
             )}
-          </>
-        )}
-
-        {source === 'url' && (
-          <div className="flex flex-col">
-            <Label htmlFor="urlrepo">Git repository URL</Label>
-            <Input
-              id="urlrepo"
-              placeholder="https://github.com/you/my-api.git"
-              value={urlRepo}
-              onChange={(e) => setUrlRepo(e.target.value)}
-              required={source === 'url'}
-            />
-          </div>
-        )}
-
-        <div className="flex gap-4">
-          <div className="flex flex-col flex-1">
-            <Label htmlFor="name">Project name</Label>
-            <Input
-              id="name"
-              placeholder="my-api"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              pattern="[a-zA-Z0-9_-]{1,40}"
-              required
-            />
-          </div>
-          <div className="flex flex-col w-32">
-            <Label htmlFor="port">Port</Label>
-            <Input
-              id="port"
-              type="number"
-              placeholder="3001"
-              value={port}
-              onChange={(e) => setPort(e.target.value)}
-              min={1024}
-              max={65535}
-              required
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col">
-          <Label>Environment</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
-            <button
-              type="button"
-              onClick={() => setEnvironment('public')}
-              className={`border rounded-lg p-4 text-left ${
-                environment === 'public' ? 'border-purple-500 bg-purple-50' : 'hover:border-gray-300'
-              }`}
+          </Button>
+          {done && (
+            <Link
+              href={`/dashboard/services/${name}`}
+              className="fade-in-up text-purple-600 hover:underline inline-flex items-center gap-1 text-sm py-2"
             >
-              <div className="font-medium flex items-center gap-2 text-sm">
-                <Globe size={15} /> Public
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                Internet-facing at <code>{name || '<name>'}.bitroot.in</code> via Cloudflare
-                Tunnel
-              </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => setEnvironment('private')}
-              className={`border rounded-lg p-4 text-left ${
-                environment === 'private' ? 'border-purple-500 bg-purple-50' : 'hover:border-gray-300'
-              }`}
-            >
-              <div className="font-medium flex items-center gap-2 text-sm">
-                <Lock size={15} /> Private
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                Tailscale/LAN only — no public route
-              </div>
-            </button>
-          </div>
+              Go to {name} <ArrowRight size={14} />
+            </Link>
+          )}
         </div>
-
-        <Button
-          type="submit"
-          className="bg-black text-white hover:bg-black/90"
-          disabled={busy || !ready}
-        >
-          {busy ? 'Creating…' : 'Create project'}
-        </Button>
       </form>
 
-      {output && (
-        <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
-          {output}
-        </pre>
+      {started && (
+        <Timeline
+          stage={stage}
+          isPublic={environment === 'public'}
+          failed={failed}
+          finished={done}
+          name={name}
+        />
       )}
 
-      {done && (
-        <Link href={`/dashboard/services/${name}`} className="text-purple-600 hover:underline">
-          Go to {name} →
-        </Link>
+      {output && (
+        <details className="fade-in-up" open={failed}>
+          <summary className="text-sm text-gray-500 hover:text-gray-800 cursor-pointer select-none transition-colors py-1">
+            {failed ? 'error log' : 'view live log'}
+          </summary>
+          <pre
+            ref={outputRef}
+            className="mt-2 bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap"
+          >
+            {output}
+          </pre>
+        </details>
       )}
     </div>
   );

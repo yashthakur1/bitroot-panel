@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import os from 'os';
 
 // Executes a command on the OnePlus server.
@@ -16,39 +16,81 @@ export interface RunResult {
   output: string;
 }
 
+function buildArgv(wrapped: string): string[] {
+  if (MODE === 'ssh') {
+    const key = process.env.SSH_KEY ?? `${os.homedir()}/.ssh/oneplus-deploy-key`;
+    const host = process.env.PHONE_HOST ?? '100.127.137.83';
+    const port = process.env.PHONE_SSH_PORT ?? '8022';
+    return [
+      'ssh',
+      '-i', key,
+      '-p', port,
+      '-o', 'IdentitiesOnly=yes',
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=10',
+      `user@${host}`,
+      wrapped,
+    ];
+  }
+  return ['sh', '-c', wrapped];
+}
+
+function childEnv(): NodeJS.ProcessEnv {
+  return MODE === 'ssh'
+    ? process.env
+    : { ...process.env, PATH: `${os.homedir()}/bin:${process.env.PATH}` };
+}
+
 export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
   const wrapped = `PATH="$HOME/bin:$PATH" ${command}`;
-  const opts = { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 };
+  const argv = buildArgv(wrapped);
 
   return new Promise((resolve) => {
-    const cb = (err: Error | null, stdout: string, stderr: string) => {
-      const output = [stdout, stderr].filter(Boolean).join('\n').trim();
-      resolve({ ok: !err, output: output || (err ? err.message : '') });
-    };
+    execFile(
+      argv[0],
+      argv.slice(1),
+      { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024, env: childEnv() },
+      (err, stdout, stderr) => {
+        const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+        resolve({ ok: !err, output: output || (err ? err.message : '') });
+      },
+    );
+  });
+}
 
-    if (MODE === 'ssh') {
-      const key = process.env.SSH_KEY ?? `${os.homedir()}/.ssh/oneplus-deploy-key`;
-      const host = process.env.PHONE_HOST ?? '100.127.137.83';
-      const port = process.env.PHONE_SSH_PORT ?? '8022';
-      execFile(
-        'ssh',
-        [
-          '-i', key,
-          '-p', port,
-          '-o', 'IdentitiesOnly=yes',
-          '-o', 'BatchMode=yes',
-          '-o', 'ConnectTimeout=10',
-          `user@${host}`,
-          wrapped,
-        ],
-        opts,
-        cb,
-      );
-    } else {
-      execFile('sh', ['-c', wrapped], {
-        ...opts,
-        env: { ...process.env, PATH: `${os.homedir()}/bin:${process.env.PATH}` },
-      }, cb);
-    }
+// Streaming variant: returns the command's combined stdout/stderr as a web
+// ReadableStream while it runs, terminated by a "[[EXIT:<code>]]" marker so
+// the client can tell success from failure.
+export function runStream(command: string, timeoutMs = 600_000): ReadableStream<Uint8Array> {
+  const wrapped = `PATH="$HOME/bin:$PATH" ${command}`;
+  const argv = buildArgv(wrapped);
+  const child = spawn(argv[0], argv.slice(1), { env: childEnv() });
+
+  return new ReadableStream({
+    start(controller) {
+      const killer = setTimeout(() => child.kill(), timeoutMs);
+      const push = (d: Buffer) => {
+        try {
+          controller.enqueue(new Uint8Array(d));
+        } catch {
+          // stream already closed (client went away)
+        }
+      };
+      child.stdout?.on('data', push);
+      child.stderr?.on('data', push);
+      child.on('error', (e) => push(Buffer.from(`\nerror: ${e.message}\n`)));
+      child.on('close', (code) => {
+        clearTimeout(killer);
+        push(Buffer.from(`\n[[EXIT:${code ?? 1}]]`));
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      });
+    },
+    cancel() {
+      child.kill();
+    },
   });
 }
