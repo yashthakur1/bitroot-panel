@@ -75,7 +75,7 @@ export default function ProjectDetail({
         <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
           <ExternalLink size={20} className="text-gray-400" />
         </div>
-        <h1 className="text-xl font-semibold mb-1">&quot;{name}&quot; doesn&apos;t exist</h1>
+        <h1 className="text-xl font-display font-medium mb-1">&quot;{name}&quot; doesn&apos;t exist</h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
           It may have been removed, or the name changed.
         </p>
@@ -90,7 +90,7 @@ export default function ProjectDetail({
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{name}</h1>
+          <h1 className="text-3xl font-display font-light tracking-tight">{name}</h1>
           <div className="flex items-center gap-4 mt-2">
             {project && <StatusBadge status={project.status} />}
             {project?.url && (

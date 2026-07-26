@@ -150,7 +150,7 @@ export default function ResiduePage() {
     <div className="space-y-8">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Residue</h1>
+          <h1 className="text-3xl font-display font-light tracking-tight">Residue</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-2xl" style={{ textWrap: 'pretty' }}>
             Nothing here is broken — these are the things the panel and its CLI deliberately
             leave behind so a removal is never destructive by surprise. Review them and
@@ -175,13 +175,13 @@ export default function ResiduePage() {
               <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 Items
               </div>
-              <div className="text-2xl font-medium mt-1 tabular-nums">{items.length}</div>
+              <div className="text-2xl font-display font-light mt-1 tabular-nums">{items.length}</div>
             </div>
             <div className="border rounded-lg p-4">
               <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 Reclaimable
               </div>
-              <div className="text-2xl font-medium mt-1 tabular-nums">
+              <div className="text-2xl font-display font-light mt-1 tabular-nums">
                 {humanBytes(reclaimable)}
               </div>
             </div>
@@ -189,13 +189,13 @@ export default function ResiduePage() {
               <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 Logged events
               </div>
-              <div className="text-2xl font-medium mt-1 tabular-nums">{ledger.length}</div>
+              <div className="text-2xl font-display font-light mt-1 tabular-nums">{ledger.length}</div>
             </div>
           </div>
 
           {/* Ledger — what panel actions knowingly left behind */}
           <div>
-            <h2 className="text-xl font-semibold mb-1 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-1 flex items-center gap-2">
               <Info size={18} className="text-gray-500 dark:text-gray-400" />
               What recent actions left behind
             </h2>
@@ -257,7 +257,7 @@ export default function ResiduePage() {
 
           {/* Live scan findings */}
           <div>
-            <h2 className="text-xl font-semibold mb-1">Found on the device</h2>
+            <h2 className="text-xl font-display font-medium mb-1">Found on the device</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               A live scan of the phone, independent of what the panel did.
             </p>

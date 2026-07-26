@@ -1,26 +1,29 @@
 import localFont from 'next/font/local'
-import { Space_Grotesk } from 'next/font/google'
 
-// PPNeueMontreal from Pangram Pangram Foundry
-export const ppNeueMontreal = localFont({
-  src: [
-    {
-      path: '../../public/fonts/PPNeueMontreal-Variable.woff2',
-      style: 'normal',
-    },
-    {
-      path: '../../public/fonts/PPNeueMontreal-Italic.woff2',
-      style: 'italic',
-    },
-  ],
-  variable: '--font-pp-neue-montreal',
+// Self-hosted variable fonts. Kept local rather than pulled from Google at
+// build time — the phone rebuilds on every deploy and shouldn't depend on
+// reaching the network for fonts.
+
+// Display: page and section headings.
+export const funnelDisplay = localFont({
+  src: '../../public/fonts/FunnelDisplay-Variable.woff2',
+  weight: '300 800',
+  variable: '--font-display',
   display: 'swap',
 })
 
-// For Roobert, we'll use Space Grotesk as a temporary replacement
-// Space Grotesk has similar geometric characteristics to Roobert
-export const roobert = Space_Grotesk({
-  subsets: ['latin'],
-  variable: '--font-roobert',
+// Sans: everything else.
+export const geist = localFont({
+  src: '../../public/fonts/Geist-Variable.woff2',
+  weight: '100 900',
+  variable: '--font-sans',
+  display: 'swap',
+})
+
+// Mono: code, logs, hostnames, ports, versions.
+export const geistMono = localFont({
+  src: '../../public/fonts/GeistMono-Variable.woff2',
+  weight: '100 900',
+  variable: '--font-mono',
   display: 'swap',
 })

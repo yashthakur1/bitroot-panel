@@ -143,7 +143,7 @@ function Upgrades({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
+        <h2 className="text-xl font-display font-medium flex items-center gap-2">
           <ArrowUpCircle size={18} className="text-gray-500 dark:text-gray-400" />
           Software &amp; upgrades
         </h2>
@@ -246,7 +246,7 @@ export default function ConfigPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Config</h1>
+        <h1 className="text-3xl font-display font-light tracking-tight">Config</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           The panel&apos;s own runtime configuration on the phone. Read-only — to change
           values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
@@ -291,7 +291,7 @@ export default function ConfigPage() {
 
           {/* .env */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <FileCode2 size={18} className="text-gray-500 dark:text-gray-400" />
               Environment (.env)
             </h2>
@@ -338,7 +338,7 @@ export default function ConfigPage() {
 
           {/* Endpoints */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Link2 size={18} className="text-gray-500 dark:text-gray-400" />
               Ways to reach this panel
             </h2>
@@ -361,7 +361,7 @@ export default function ConfigPage() {
 
           {/* Shortcuts */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Keyboard size={18} className="text-gray-500 dark:text-gray-400" />
               Keyboard shortcuts
             </h2>
@@ -391,7 +391,7 @@ export default function ConfigPage() {
 
           {/* Device */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
               Device
               <span className="text-sm font-normal text-gray-500 dark:text-gray-400">

@@ -47,7 +47,7 @@ export default function IamPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">IAM</h1>
+        <h1 className="text-3xl font-display font-light tracking-tight">IAM</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           Who can pass the Cloudflare Access gate on your public <code>bitroot.in</code>{' '}
           hostnames. Managed in Cloudflare Zero Trust; this page is a live read-only view.
@@ -75,7 +75,7 @@ export default function IamPage() {
         <>
           {/* Users */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Mail size={18} className="text-gray-500 dark:text-gray-400" />
               Users
             </h2>
@@ -114,7 +114,7 @@ export default function IamPage() {
 
           {/* Applications */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <ShieldCheck size={18} className="text-gray-500 dark:text-gray-400" />
               Protected applications
             </h2>

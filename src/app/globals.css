@@ -168,3 +168,16 @@
 .bounce-in {
   animation: bounce-in 0.3s cubic-bezier(0.2, 0, 0, 1);
 }
+
+/* Typography: Funnel Display for headings, Geist for text, Geist Mono for code */
+@layer base {
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+  }
+  h1 {
+    letter-spacing: -0.02em;
+  }
+}

@@ -41,7 +41,7 @@ export default function LoginForm() {
         <div className="w-10 h-10 bg-black rounded flex items-center justify-center">
           <span className="text-white font-bold">B</span>
         </div>
-        <h1 className="text-2xl font-medium text-gray-900 dark:text-gray-100">Bitroot Panel</h1>
+        <h1 className="text-2xl font-display font-light text-gray-900 dark:text-gray-100">Bitroot Panel</h1>
       </div>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
         Deploy and manage apps on the OnePlus server

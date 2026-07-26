@@ -388,7 +388,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight" style={{ textWrap: 'balance' }}>
+        <h1 className="text-3xl font-display font-light tracking-tight" style={{ textWrap: 'balance' }}>
           New project
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">

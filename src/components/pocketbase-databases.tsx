@@ -126,7 +126,7 @@ export default function PocketBaseDatabases() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
+        <h2 className="text-xl font-display font-medium flex items-center gap-2">
           <Boxes size={18} className="text-gray-500 dark:text-gray-400" />
           Project databases
         </h2>

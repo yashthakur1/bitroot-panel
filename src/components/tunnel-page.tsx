@@ -134,7 +134,7 @@ export default function TunnelPage() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Routes</h1>
+        <h1 className="text-3xl font-display font-light tracking-tight">Routes</h1>
         <Button variant="outline" disabled={!!busy} onClick={restartTunnel}>
           <RefreshCw className={`h-4 w-4 mr-2 ${busy === 'restart' ? 'animate-spin' : ''}`} />
           {busy === 'restart' ? 'Restarting…' : 'Restart tunnel'}
@@ -200,7 +200,7 @@ export default function TunnelPage() {
 
           {/* Public routes */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Globe size={18} className="text-gray-500 dark:text-gray-400" />
               Public routes
             </h2>
@@ -285,7 +285,7 @@ export default function TunnelPage() {
 
           {/* Add route */}
           <div className="max-w-2xl">
-            <h2 className="text-xl font-semibold mb-3">Publish a service</h2>
+            <h2 className="text-xl font-display font-medium mb-3">Publish a service</h2>
             <form onSubmit={addRoute} className="border rounded-xl p-5 space-y-3">
               <div className="flex flex-col">
                 <Label htmlFor="svc">Service</Label>
@@ -349,7 +349,7 @@ export default function TunnelPage() {
 
           {/* Private access */}
           <div>
-            <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+            <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Shield size={18} className="text-gray-500 dark:text-gray-400" />
               Private access (Tailscale)
             </h2>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ppNeueMontreal, roobert } from "@/lib/fonts";
+import { funnelDisplay, geist, geistMono } from "@/lib/fonts";
 
 export const metadata: Metadata = {
   title: "Bitroot Panel",
@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${ppNeueMontreal.variable} ${roobert.variable}`}
+      className={`${funnelDisplay.variable} ${geist.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <body className="antialiased font-sans" suppressHydrationWarning>

@@ -82,7 +82,7 @@ export default function PocketBasePage() {
     <div className="space-y-8">
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
+          <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
             <Database size={26} className="text-gray-500 dark:text-gray-400" />
             PocketBase
             {state && (
@@ -156,7 +156,7 @@ export default function PocketBasePage() {
       <PocketBaseDatabases />
 
       <div>
-        <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+        <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
           <Plug size={18} className="text-gray-500 dark:text-gray-400" />
           Endpoints
         </h2>
@@ -232,7 +232,7 @@ function BackupsSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xl font-semibold flex items-center gap-2">
+        <h2 className="text-xl font-display font-medium flex items-center gap-2">
           <Archive size={18} className="text-gray-500 dark:text-gray-400" />
           Backups
         </h2>
@@ -313,7 +313,7 @@ function SuperuserSection() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-3 flex items-center gap-2">
+      <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
         <UserPlus size={18} className="text-gray-500 dark:text-gray-400" />
         Superusers
       </h2>
