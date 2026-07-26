@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
+import Logo from './logo';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -37,11 +38,9 @@ export default function LoginForm() {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 bg-black rounded flex items-center justify-center">
-          <span className="text-white font-bold">B</span>
-        </div>
-        <h1 className="text-2xl font-display font-light text-gray-900 dark:text-gray-100">BitPanel</h1>
+      <div className="flex items-center gap-3 mb-2 text-gray-900 dark:text-gray-100">
+        <Logo size={34} />
+        <h1 className="text-2xl font-display font-light">BitPanel</h1>
       </div>
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
         Deploy and manage apps on the OnePlus server

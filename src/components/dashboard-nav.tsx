@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Plus, Globe, Settings, ShieldCheck, LogOut } from 'lucide-react';
 import ThemeToggle from './theme-toggle';
+import Logo from './logo';
 
 export default function DashboardNav() {
   const pathname = usePathname();
@@ -16,14 +17,14 @@ export default function DashboardNav() {
     <header className="border-b border-gray-200 dark:border-gray-800">
       <div className="flex items-center justify-between h-14 px-4">
         <div className="flex items-center space-x-4">
-          <Link href="/dashboard" className="flex items-center">
-            <div className="w-8 h-8 bg-black rounded flex items-center justify-center mr-1">
-              <span className="text-white font-bold text-xs">B</span>
-            </div>
+          <Link
+            href="/dashboard"
+            aria-label="BitPanel home"
+            className="flex items-center gap-2 text-gray-900 dark:text-gray-100 transition-opacity hover:opacity-70"
+          >
+            <Logo size={22} />
+            <span className="font-display font-medium">BitPanel</span>
           </Link>
-          <div className="flex items-center rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1">
-            <span className="font-display font-medium text-gray-700 dark:text-gray-300">BitPanel</span>
-          </div>
           <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
             <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100">
               Projects
