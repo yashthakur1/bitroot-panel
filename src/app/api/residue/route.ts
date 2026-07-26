@@ -19,6 +19,8 @@ const SCAN = [
   'for d in "$HOME"/Downloads/*/; do [ -d "$d" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##app_dirs"',
   'for d in "$HOME"/apps/*/; do [ -d "$d" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
+  'echo "##remotes"',
+  'for d in "$HOME"/Downloads/*/ "$HOME"/apps/*/; do [ -d "$d.git" ] || [ -d "$d/.git" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(git -C "$d" remote get-url origin 2>/dev/null)"; done',
   'echo "##repos"',
   'for d in "$HOME"/repos/*.git; do [ -d "$d" ] || continue; printf "%s|%s\\n" "$(basename "$d" .git)" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##backups"',
@@ -84,6 +86,18 @@ export async function GET() {
     if (m) listening.add(Number(m[1]));
   }
 
+  // Whether a directory's code still lives on a git remote decides how
+  // consequential deleting it is — surface that in the item detail.
+  const remotes: Record<string, string> = {};
+  for (const line of section(out, 'remotes')) {
+    const [name, url] = line.split('|');
+    if (name && url) remotes[name] = url;
+  }
+  const backedUp = (name: string) =>
+    remotes[name]
+      ? `Code is on ${remotes[name].replace(/^https:\/\//, '').replace(/\.git$/, '')} — deleting only frees local space.`
+      : 'No git remote found — this may be the only copy of the code.';
+
   const routedHosts: string[] = [];
   for (const line of section(out, 'routes')) {
     const m = line.match(/hostname:\s*(\S+)/);
@@ -99,7 +113,7 @@ export async function GET() {
       id: `projdir-${name}`,
       category: 'Orphaned project files',
       label: `~/Downloads/${name}`,
-      detail: 'No pm2 process and no port registration — left behind by `project remove`.',
+      detail: `No pm2 process and no port registration — left behind by \`project remove\`. ${backedUp(name)}`,
       size: size ?? '?',
       action: {
         type: 'rm-project-dir',
@@ -117,7 +131,7 @@ export async function GET() {
       id: `appdir-${name}`,
       category: 'Orphaned app files',
       label: `~/apps/${name}`,
-      detail: 'Deployed via git push but no pm2 process is registered for it.',
+      detail: `Deployed via git push but no pm2 process is registered for it. ${backedUp(name)}`,
       size: size ?? '?',
       action: {
         type: 'rm-app-dir',
