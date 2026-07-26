@@ -7,7 +7,7 @@ export async function GET() {
   const [health, pm2, version] = await Promise.all([
     run('curl -s -m 5 http://127.0.0.1:8090/api/health || true'),
     run('pm2 jlist'),
-    run('"$HOME/apps/pocketbase/pocketbase" --version 2>/dev/null || true'),
+    run('cat "$HOME/apps/pocketbase/VERSION" 2>/dev/null || "$HOME/apps/pocketbase/pocketbase" --version 2>/dev/null || true'),
   ]);
 
   let daemon = { status: 'unknown', uptimeMs: 0, memoryMb: 0, restarts: 0 };

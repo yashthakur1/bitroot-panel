@@ -19,7 +19,7 @@ export async function GET() {
     run('git --git-dir="$HOME/repos/bitroot-panel.git" log -1 --format="%h %s (%cr)" 2>/dev/null || true'),
     run('device-info 2>/dev/null || echo "device-info not available"', 30_000),
     run(
-      'echo "pocketbase=$($HOME/apps/pocketbase/pocketbase --version 2>/dev/null | sed s/^pocketbase.version..//)"; echo "pm2=$(pm2 --version 2>/dev/null)"; echo "node=$(node --version 2>/dev/null)"; echo "go=$(go version 2>/dev/null | cut -d" " -f3)"',
+      'echo "pocketbase=$(cat $HOME/apps/pocketbase/VERSION 2>/dev/null)"; echo "pm2=$(pm2 --version 2>/dev/null)"; echo "node=$(node --version 2>/dev/null)"; echo "go=$(go version 2>/dev/null | cut -d" " -f3)"',
       30_000,
     ),
   ]);
