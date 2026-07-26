@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { humanUptime, StatusBadge, type Project } from './project-list';
+import { Shimmer, StatCardsSkeleton } from './skeletons';
 
 type Tab = 'overview' | 'logs' | 'environment';
 
@@ -150,7 +151,7 @@ export default function ProjectDetail({
 }
 
 function Overview({ project, actionOutput }: { project: Project | null; actionOutput: string }) {
-  if (!project) return <p className="text-gray-500">Loading…</p>;
+  if (!project) return <StatCardsSkeleton count={6} />;
   const stats: Array<[string, string]> = [
     ['Status', project.status],
     ['Port', project.port ? String(project.port) : '—'],
@@ -237,12 +238,20 @@ function Logs({ name }: { name: string }) {
           Refresh
         </Button>
       </div>
-      <pre
-        ref={boxRef}
-        className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 h-[500px] overflow-auto whitespace-pre-wrap"
-      >
-        {logs || 'No logs.'}
-      </pre>
+      {!logs && loading ? (
+        <div className="border rounded-md p-4 h-[500px] space-y-3">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <Shimmer key={i} className={`h-3 ${i % 3 === 0 ? 'w-2/3' : i % 3 === 1 ? 'w-1/2' : 'w-5/6'}`} />
+          ))}
+        </div>
+      ) : (
+        <pre
+          ref={boxRef}
+          className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 h-[500px] overflow-auto whitespace-pre-wrap"
+        >
+          {logs || 'No logs.'}
+        </pre>
+      )}
     </div>
   );
 }

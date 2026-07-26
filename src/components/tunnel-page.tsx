@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Cloud, ExternalLink, RefreshCw, Lock, Globe } from 'lucide-react';
 import { humanUptime, StatusBadge } from './project-list';
+import { StatCardsSkeleton, TableSkeleton } from './skeletons';
 
 interface TunnelRoute {
   hostname: string;
@@ -115,6 +116,13 @@ export default function TunnelPage() {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {!state && !error && (
+        <>
+          <StatCardsSkeleton count={3} />
+          <TableSkeleton rows={5} cols={2} />
+        </>
+      )}
 
       {/* Daemon status */}
       {state && (

@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Box, Cloud, PlusCircle, Smartphone } from 'lucide-react';
+import { Box, Cloud, PlusCircle, ShieldCheck, Smartphone } from 'lucide-react';
 
 export default function SidebarNav() {
   const pathname = usePathname();
@@ -26,6 +26,12 @@ export default function SidebarNav() {
       href: '/dashboard/tunnel',
       icon: <Cloud size={18} />,
       active: pathname.startsWith('/dashboard/tunnel'),
+    },
+    {
+      name: 'IAM',
+      href: '/dashboard/iam',
+      icon: <ShieldCheck size={18} />,
+      active: pathname.startsWith('/dashboard/iam'),
     },
   ];
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { PlusCircle, Globe, RefreshCw, ExternalLink } from 'lucide-react';
+import { TableSkeleton } from './skeletons';
 
 export interface Project {
   name: string;
@@ -89,7 +90,15 @@ export default function ProjectList() {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {!projects && !error && <p className="text-gray-500">Loading projects…</p>}
+      {!projects && !error && (
+        <>
+          <TableSkeleton rows={4} cols={7} />
+          <div>
+            <h2 className="text-xl font-semibold mb-3 text-gray-700">System services</h2>
+            <TableSkeleton rows={2} cols={7} />
+          </div>
+        </>
+      )}
 
       {projects && (
         <>
