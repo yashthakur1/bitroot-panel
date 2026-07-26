@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
+import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 
 const SYSTEM_APPS = new Set(['cloudflared', 'deploy-webhook', 'bitroot-panel']);
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
@@ -75,16 +76,36 @@ export async function GET() {
   return NextResponse.json({ projects });
 }
 
-// Create a new project: runs `project clone <name> <repo> <port>` on the phone,
-// which clones, installs deps, registers with pm2, and adds the tunnel route.
+// Create a new project: runs `project clone <name> <repo> <port> [branch] [--no-tunnel]`
+// on the phone — clone, install deps, register with pm2, and (for public
+// environment) add the Cloudflare tunnel route.
+//
+// Two sources: `github` (repo = "owner/name"; private repos authenticate via
+// git's credential store, set up when GitHub was connected) or `url` (any git
+// URL, as before).
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const name = assertName(body.name);
     const port = assertPort(body.port);
-    const repo = assertRepo(body.repo);
+    const branch = body.branch ? assertBranch(body.branch) : '';
+    const internal = body.environment === 'private';
 
-    const r = await run(`project clone ${name} ${shq(repo)} ${port}`, 600_000);
+    let repoUrl: string;
+    if (body.source === 'github') {
+      const full = assertRepoFullName(body.repo);
+      if (!(await getGithubToken())) {
+        return NextResponse.json({ error: 'GitHub not connected' }, { status: 400 });
+      }
+      repoUrl = `https://github.com/${full}.git`;
+    } else {
+      repoUrl = assertRepo(body.repo);
+    }
+
+    const cmd =
+      `project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
+      (internal ? ' --no-tunnel' : '');
+    const r = await run(cmd, 600_000);
     return NextResponse.json({ ok: r.ok, output: r.output }, { status: r.ok ? 200 : 500 });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
