@@ -21,6 +21,7 @@ interface Site {
   served: boolean;
   branch: string;
   url: string | null;
+  urls?: string[];
 }
 
 export default function StaticSiteDetail({ name }: { name: string }) {
@@ -130,17 +131,30 @@ export default function StaticSiteDetail({ name }: { name: string }) {
               static
             </span>
           </h1>
-          {site?.url && (
-            <a
-              href={site.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-accent-600 dark:text-accent-400 hover:underline text-sm inline-flex items-center gap-1 mt-2"
-            >
-              {site.url.replace('https://', '')}
-              <ExternalLink size={12} />
-            </a>
-          )}
+          {site && (site.urls?.length ?? 0) > 0 ? (
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              {site.urls!.map((u) => (
+                <a
+                  key={u}
+                  href={u}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-accent-600 dark:text-accent-400 hover:underline text-sm inline-flex items-center gap-1"
+                >
+                  {u.replace('https://', '')}
+                  <ExternalLink size={12} />
+                </a>
+              ))}
+            </div>
+          ) : site ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              Private — reachable over Tailscale only.{' '}
+              <Link href="/dashboard/tunnel?tab=publish" className="underline">
+                Publish it
+              </Link>{' '}
+              to give it a public hostname.
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button disabled={!!busy} onClick={deploy}>

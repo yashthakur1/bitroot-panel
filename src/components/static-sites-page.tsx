@@ -24,6 +24,7 @@ interface Site {
   served: boolean;
   branch: string;
   url: string | null;
+  urls?: string[];
 }
 
 interface NginxState {
@@ -180,7 +181,13 @@ export default function StaticSitesPage({ initialTab }: { initialTab?: string })
                             <ExternalLink size={11} />
                           </a>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-600">private</span>
+                          <Link
+                            href="/dashboard/tunnel?tab=publish"
+                            className="text-gray-400 dark:text-gray-600 hover:text-accent-600 dark:hover:text-accent-400 transition-colors"
+                            title="Private — click to publish a public hostname"
+                          >
+                            private
+                          </Link>
                         )}
                       </td>
                     </tr>

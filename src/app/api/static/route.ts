@@ -33,22 +33,45 @@ export async function GET() {
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
   ]);
 
-  const routed = new Set(
-    [...cfg.output.matchAll(/hostname:\s*([\w-]+)\./g)].map((m) => m[1]),
-  );
+  // Match routes to sites by PORT, not by name. A hostname is free to differ
+  // from the site name (parenthing-website → parenthing-website-waitlist), and
+  // assuming they match meant a routed site kept showing as private.
+  const portToHosts: Record<number, string[]> = {};
+  let pendingHost: string | null = null;
+  for (const raw of cfg.output.split('\n')) {
+    const line = raw.trim();
+    const h = line.match(/^-\s*hostname:\s*(\S+)/);
+    if (h) {
+      pendingHost = h[1];
+      continue;
+    }
+    const svc = line.match(/^(?:-\s*)?service:\s*\w+:\/\/localhost:(\d+)/);
+    if (svc) {
+      if (pendingHost) {
+        const port = Number(svc[1]);
+        (portToHosts[port] ??= []).push(pendingHost);
+      }
+      pendingHost = null;
+    }
+  }
 
   const sites = list.output
     .split('\n')
     .map((line) => line.split('|'))
     .filter((p) => p.length === 5 && p[0])
-    .map(([name, port, size, state, branch]) => ({
-      name,
-      port: Number(port),
-      size,
-      served: state === 'served',
-      branch,
-      url: routed.has(name) ? `https://${name}.${DOMAIN_SUFFIX}` : null,
-    }));
+    .map(([name, port, size, state, branch]) => {
+      const hosts = portToHosts[Number(port)] ?? [];
+      return {
+        name,
+        port: Number(port),
+        size,
+        served: state === 'served',
+        branch,
+        url: hosts.length > 0 ? `https://${hosts[0]}` : null,
+        // a port can carry several hostnames; the detail page shows them all
+        urls: hosts.map((h) => `https://${h}`),
+      };
+    });
 
   return NextResponse.json({ sites });
 }
