@@ -9,6 +9,7 @@ import {
   Loader2,
   Lock,
   Package,
+  Pin,
   Terminal,
   X,
 } from 'lucide-react';
@@ -17,6 +18,9 @@ import { Button } from './ui/button';
 export interface CliApp {
   name: string;
   version: string;
+  latest: string | null;
+  pinnedTo?: string;
+  pinReason?: string;
 }
 
 export interface Tool {
@@ -166,6 +170,7 @@ export default function SystemPanel({
                 </span>
               </th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Version</th>
+              <th className="px-4 py-3 font-medium whitespace-nowrap">Latest</th>
               <th className="px-4 py-3 font-medium whitespace-nowrap">Installed with</th>
             </tr>
           </thead>
@@ -179,12 +184,39 @@ export default function SystemPanel({
                   <div className="flex items-center gap-2.5">
                     <Terminal size={16} className="text-gray-500 dark:text-gray-400" />
                     <span className="font-medium text-gray-800 dark:text-gray-200">{a.name}</span>
+                    {a.pinReason && (
+                      <span
+                        title={a.pinReason}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded border bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-900 cursor-help"
+                      >
+                        <Pin size={11} /> Pinned
+                      </span>
+                    )}
                   </div>
+                  {a.pinReason && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-xl text-pretty">
+                      {a.pinReason}
+                    </p>
+                  )}
                 </td>
-                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 tabular-nums">
+                <td className="px-4 py-3.5 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300 tabular-nums align-top">
                   {a.version || '—'}
                 </td>
-                <td className="px-4 py-3.5 whitespace-nowrap">
+                <td className="px-4 py-3.5 whitespace-nowrap text-sm tabular-nums align-top">
+                  {!a.latest ? (
+                    <span className="text-gray-400 dark:text-gray-600">unknown</span>
+                  ) : a.latest === a.version ? (
+                    <span className="text-gray-500 dark:text-gray-400">up to date</span>
+                  ) : (
+                    // A held-back package is not an invitation to upgrade, so the
+                    // newer version is stated plainly rather than in accent.
+                    <span className={a.pinReason ? 'text-gray-500 dark:text-gray-400' : 'text-accent-600 dark:text-accent-400'}>
+                      {a.latest}
+                      {a.pinReason && ' (held back)'}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3.5 whitespace-nowrap align-top">
                   <span className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-300 text-xs font-medium px-2 py-1 rounded">
                     npm -g
                   </span>

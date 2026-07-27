@@ -232,3 +232,20 @@ export function assertSafePkg(pkg: string): string {
   if (!SAFE_PKG.test(pkg)) throw new Error(`unsafe package name: ${pkg}`);
   return pkg;
 }
+
+// Globally installed CLI apps are discovered from npm rather than declared, so
+// this only annotates the ones deliberately held back from their latest
+// release. Without it the panel would show an update as simply available and
+// invite someone to apply one that cannot run on this device.
+export interface CliPin {
+  version: string;
+  reason: string;
+}
+
+export const CLI_PINS: Record<string, CliPin> = {
+  '@anthropic-ai/claude-code': {
+    version: '2.1.112',
+    reason:
+      'Claude Code 2.1.113 replaced its JavaScript entry point with a platform-native binary, and no android-arm64 build is published. The linux-arm64 build needs /lib/ld-linux-aarch64.so.1, which Android has no equivalent of, so it cannot start here. 2.1.112 is the last release that runs on this device; DISABLE_AUTOUPDATER=1 in ~/.bashrc keeps the updater from undoing the pin.',
+  },
+};

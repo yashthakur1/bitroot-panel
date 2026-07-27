@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runCached } from '@/lib/runner';
-import { CATALOG, assertSafePkg } from '@/lib/catalog';
+import { CATALOG, CLI_PINS, assertSafePkg } from '@/lib/catalog';
 
 export interface CliApp {
   name: string;
   version: string;
+  latest: string | null;
+  pinnedTo?: string;
+  pinReason?: string;
 }
 
 export interface CatalogStatus {
@@ -62,7 +65,7 @@ export async function GET(req: NextRequest) {
   const pkgNames = pkgEntries.map((e) => assertSafePkg(e.pkg));
   npmEntries.forEach((e) => assertSafePkg(e.pkg));
 
-  const [policy, globals, npmLatest] = await Promise.all([
+  const [policy, globals, npmLatest, globalLatest] = await Promise.all([
     // One call covers every package: ~50ms, versus a process per package.
     runCached(`apt-cache policy ${pkgNames.join(' ')} 2>/dev/null || true`, shortTtl),
     runCached('npm ls -g --depth=0 --json 2>/dev/null || true', shortTtl),
@@ -72,6 +75,13 @@ export async function GET(req: NextRequest) {
       npmEntries
         .map((e) => `printf '${e.pkg}|%s\\n' "$(npm view ${e.pkg} version 2>/dev/null)"`)
         .join('; ') || 'true',
+      longTtl,
+    ),
+    // Names come from npm itself, so discovery and lookup happen in the same
+    // shell; the queries run concurrently because each is a registry round
+    // trip of about a second.
+    runCached(
+      `npm ls -g --depth=0 --json 2>/dev/null | python3 -c "import sys,json;print(chr(10).join(json.load(sys.stdin).get('dependencies',{}).keys()))" | while read -r p; do ( printf '%s|%s\\n' "$p" "$(npm view "$p" version 2>/dev/null)" ) & done; wait`,
       longTtl,
     ),
   ]);
@@ -87,12 +97,28 @@ export async function GET(req: NextRequest) {
     for (const [name, meta] of Object.entries<{ version?: string }>(deps)) {
       const version = meta?.version ?? '';
       npmInstalled[name] = version;
-      cliApps.push({ name, version });
+      const pin = CLI_PINS[name];
+      cliApps.push({
+        name,
+        version,
+        latest: null,
+        pinnedTo: pin?.version,
+        pinReason: pin?.reason,
+      });
     }
   } catch {
     // leave the list empty rather than failing the whole page
   }
   cliApps.sort((a, b) => a.name.localeCompare(b.name));
+
+  // A package with no answer (private registry, offline) stays null rather
+  // than being reported as up to date.
+  const globalLatestMap: Record<string, string | null> = {};
+  for (const line of globalLatest.output.split('\n')) {
+    const [name, ...rest] = line.trim().split('|');
+    if (name) globalLatestMap[name] = clean(rest.join('|'));
+  }
+  for (const a of cliApps) a.latest = globalLatestMap[a.name] ?? null;
 
   const npmLatestMap: Record<string, string | null> = {};
   for (const line of npmLatest.output.split('\n')) {
