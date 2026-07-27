@@ -36,7 +36,8 @@ const SCAN = [
   'echo "##ports"',
   'cat "$HOME/bin/ports.conf" 2>/dev/null | grep -E "^[a-zA-Z0-9_-]+=[0-9]+$" || true',
   'echo "##listening"',
-  'ss -tln 2>/dev/null | grep LISTEN || true',
+  // Android blocks netlink, so ss sees nothing; probe each registered port.
+  'for e in $(grep -E "^[a-zA-Z0-9_-]+=[0-9]+$" "$HOME/bin/ports.conf" 2>/dev/null); do p=${e#*=}; (timeout 1 bash -c "</dev/tcp/127.0.0.1/$p" 2>/dev/null && echo "$p") & done; wait',
   'echo "##routes"',
   'grep -E "hostname:|service:" "$HOME/.cloudflared/config.yml" 2>/dev/null || true',
 ].join('; ');
@@ -80,11 +81,11 @@ export async function GET() {
     if (n && p) registeredPorts[n] = Number(p);
   }
 
-  const listening = new Set<number>();
-  for (const line of section(out, 'listening')) {
-    const m = line.match(/[:*](\d{2,5})\s/);
-    if (m) listening.add(Number(m[1]));
-  }
+  const listening = new Set<number>(
+    section(out, 'listening')
+      .map((l) => Number(l.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0),
+  );
 
   // Whether a directory's code still lives on a git remote decides how
   // consequential deleting it is — surface that in the item detail.

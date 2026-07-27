@@ -22,11 +22,10 @@ export interface Project {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function GET() {
-  const [pm2, ports, tunnel, listeners, statics] = await Promise.all([
+  const [pm2, ports, tunnel, statics] = await Promise.all([
     run('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
-    run('ss -tln 2>/dev/null || netstat -tln 2>/dev/null || true'),
     run('static-site list 2>/dev/null || true'),
   ]);
 
@@ -84,11 +83,10 @@ export async function GET() {
     const envPort = Number(a.pm2_env?.env?.PORT);
     if (envPort) portsInUse[envPort] ??= `pm2 app "${a.name}"`;
   }
-  for (const line of listeners.output.split('\n')) {
-    if (!/LISTEN/.test(line)) continue;
-    const m = line.match(/[:*](\d{2,5})\s/);
-    if (m) portsInUse[Number(m[1])] ??= 'a listening process';
-  }
+  // Note: enumerating listening sockets is impossible here — Android denies
+  // netlink to apps, so ss/netstat return nothing. Ports are therefore tracked
+  // from what the panel manages (registry, tunnel routes, pm2), and liveness is
+  // probed directly where it matters (see the residue scan).
 
   const projects: Project[] = apps.map((a: any) => ({
     name: a.name,
