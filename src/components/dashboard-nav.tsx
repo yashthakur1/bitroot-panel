@@ -51,7 +51,7 @@ function ProfileMenu() {
   return (
     <div className="relative group">
       <button aria-label="Profile" className="w-10 h-10 flex items-center justify-center">
-        <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center transition-transform group-hover:scale-105">
+        <div className="w-8 h-8 bg-accent-600 rounded-full flex items-center justify-center transition-transform group-hover:scale-105">
           <span className="text-white font-medium text-sm">Y</span>
         </div>
       </button>
@@ -60,13 +60,13 @@ function ProfileMenu() {
       <div className="hidden group-hover:block absolute right-0 top-full pt-2 z-50">
         <div className="bounce-in w-64 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-[0_8px_24px_rgba(0,0,0,0.10),0_2px_6px_rgba(0,0,0,0.06)] p-2">
           <div className="flex items-center gap-3 p-3">
-            <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 bg-accent-600 rounded-full flex items-center justify-center shrink-0">
               <span className="text-white font-medium">Y</span>
             </div>
             <div className="min-w-0">
               <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
                 Yash Thakur
-                <span className="ml-2 text-[10px] font-semibold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded-full align-middle">
+                <span className="ml-2 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full align-middle">
                   admin
                 </span>
               </div>

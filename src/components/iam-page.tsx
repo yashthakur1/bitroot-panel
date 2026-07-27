@@ -111,7 +111,7 @@ export default function IamPage({ initialTab }: { initialTab?: string }) {
                           {u.apps.map((a) => (
                             <span
                               key={a}
-                              className="text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-full"
+                              className="text-xs font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-2 py-0.5 rounded-full"
                             >
                               {a}
                             </span>

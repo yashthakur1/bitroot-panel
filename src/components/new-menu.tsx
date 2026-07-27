@@ -51,7 +51,7 @@ export default function NewMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 active:bg-purple-700 text-white font-medium text-sm rounded-md px-4 h-10 transition-[background-color,scale] active:scale-[0.96]"
+        className="flex items-center gap-1.5 bg-accent-600 hover:bg-accent-500 active:bg-accent-700 text-white font-medium text-sm rounded-md px-4 h-10 transition-[background-color,scale] active:scale-[0.96]"
       >
         <Plus size={15} />
         New
@@ -77,7 +77,7 @@ export default function NewMenu() {
                       <span className="opacity-60">{item.icon}</span>
                       <span className="flex-1">{item.label}</span>
                       {item.beta && (
-                        <span className="text-[10px] font-semibold uppercase bg-purple-600/80 text-white px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] font-semibold uppercase bg-accent-600/80 text-white px-1.5 py-0.5 rounded">
                           beta
                         </span>
                       )}

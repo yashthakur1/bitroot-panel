@@ -98,7 +98,7 @@ export default function ProjectDetail({
                 href={project.url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-purple-600 dark:text-purple-400 hover:underline text-sm inline-flex items-center gap-1"
+                className="text-accent-600 dark:text-accent-400 hover:underline text-sm inline-flex items-center gap-1"
               >
                 {project.url.replace('https://', '')}
                 <ExternalLink size={12} />
@@ -165,7 +165,7 @@ export default function ProjectDetail({
             onClick={() => setTab(t)}
             className={`py-2 px-3 text-sm font-medium capitalize -mb-px ${
               tab === t
-                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600'
+                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
@@ -262,7 +262,7 @@ function Logs({ name }: { name: string }) {
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
-              className="accent-purple-600"
+              className="accent-accent-600"
               checked={auto}
               onChange={(e) => setAuto(e.target.checked)}
             />

@@ -19,7 +19,7 @@ export function Tabs<T extends string>({
           onClick={() => onChange(t.key)}
           className={`py-2 px-3 text-sm font-medium -mb-px whitespace-nowrap transition-colors ${
             active === t.key
-              ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
+              ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600 dark:border-accent-400'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
           }`}
         >

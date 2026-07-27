@@ -66,7 +66,7 @@ const KIND_STYLE: Record<string, { icon: React.ReactNode; label: string; cls: st
   data: {
     icon: <Database size={12} />,
     label: 'data kept',
-    cls: 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+    cls: 'bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border-accent-200 dark:border-accent-800',
   },
   config: {
     icon: <FileClock size={12} />,

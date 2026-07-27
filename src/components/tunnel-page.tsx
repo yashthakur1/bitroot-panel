@@ -242,7 +242,7 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                             href={`https://${r.hostname}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1"
+                            className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1"
                           >
                             {r.hostname}
                             <ExternalLink size={12} />
@@ -256,7 +256,7 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm">
                         {r.attachedTo ? (
-                          <span className="text-xs font-medium bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-full">
+                          <span className="text-xs font-medium bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-2 py-0.5 rounded-full">
                             {r.attachedTo}
                           </span>
                         ) : (
@@ -385,7 +385,14 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                         {s.name}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-700 dark:text-gray-300">
-                        http://{state.tailscale.host}:{s.port}
+                        <a
+                          href={`http://${state.tailscale.host}.tailf9a49f.ts.net:${s.port}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent-600 dark:text-accent-400 hover:underline"
+                        >
+                          {state.tailscale.host}.tailf9a49f.ts.net:{s.port}
+                        </a>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-500 dark:text-gray-400">
                         http://{state.tailscale.ip}:{s.port}

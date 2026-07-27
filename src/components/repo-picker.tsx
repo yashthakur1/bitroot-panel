@@ -218,7 +218,7 @@ export default function RepoPicker({
                           {relativeTime(r.pushedAt)}
                         </span>
                         {isSelected && (
-                          <Check size={14} className="text-purple-600 dark:text-purple-400 shrink-0 pop-in" />
+                          <Check size={14} className="text-accent-600 dark:text-accent-400 shrink-0 pop-in" />
                         )}
                       </button>
                     );

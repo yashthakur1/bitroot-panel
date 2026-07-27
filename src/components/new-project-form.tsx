@@ -60,7 +60,7 @@ function StepIcon({ state }: { state: StepState }) {
   if (state === 'done') return <CheckCircle2 size={18} className="text-green-600 pop-in" />;
   if (state === 'failed') return <AlertCircle size={18} className="text-red-500 pop-in" />;
   if (state === 'active')
-    return <Loader2 size={18} className="animate-spin text-purple-600 dark:text-purple-400" />;
+    return <Loader2 size={18} className="animate-spin text-accent-600 dark:text-accent-400" />;
   if (state === 'skipped')
     return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 dark:border-gray-800 border-dashed" />;
   return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />;
@@ -425,7 +425,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             onClick={() => !busy && setSource(s)}
             className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
-                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600'
+                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
@@ -444,7 +444,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
             Manage accounts on the{' '}
-            <Link href="/dashboard/git" className="text-purple-600 dark:text-purple-400 hover:underline">
+            <Link href="/dashboard/git" className="text-accent-600 dark:text-accent-400 hover:underline">
               Git connections
             </Link>{' '}
             page, or paste one here. Create a{' '}
@@ -452,7 +452,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
               href="https://github.com/settings/personal-access-tokens/new"
               target="_blank"
               rel="noreferrer"
-              className="text-purple-600 dark:text-purple-400 hover:underline"
+              className="text-accent-600 dark:text-accent-400 hover:underline"
             >
               fine-grained personal access token
             </a>{' '}
@@ -611,7 +611,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 <Label htmlFor="port">Port</Label>
                 <button
                   type="button"
-                  className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 transition-colors inline-flex items-center gap-0.5 py-1"
+                  className="text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors inline-flex items-center gap-0.5 py-1"
                   onClick={() => {
                     setPort(String(nextFreePort()));
                     clearError('port');
@@ -651,14 +651,14 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 onClick={() => setEnvironment('public')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'public'
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
                     : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Globe size={15} /> Public
                   {environment === 'public' && (
-                    <Check size={14} className="text-purple-600 dark:text-purple-400 ml-auto pop-in" />
+                    <Check size={14} className="text-accent-600 dark:text-accent-400 ml-auto pop-in" />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -671,14 +671,14 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 onClick={() => setEnvironment('private')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'private'
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
                     : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Lock size={15} /> Private
                   {environment === 'private' && (
-                    <Check size={14} className="text-purple-600 dark:text-purple-400 ml-auto pop-in" />
+                    <Check size={14} className="text-accent-600 dark:text-accent-400 ml-auto pop-in" />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -707,7 +707,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
           {done && (
             <Link
               href={`/dashboard/services/${name}`}
-              className="fade-in-up text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
+              className="fade-in-up text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
             >
               Go to {name} <ArrowRight size={14} />
             </Link>

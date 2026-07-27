@@ -171,7 +171,7 @@ function Upgrades({
                     </span>
                   )}
                   {c?.updateAvailable ? (
-                    <span className="pop-in inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded-full">
+                    <span className="pop-in inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full">
                       <ArrowUpCircle size={10} />
                       {c.latest ? `update → ${c.latest}` : c.current}
                     </span>
@@ -365,7 +365,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
             <div className="border rounded-lg divide-y text-sm">
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
                 <span className="text-gray-700 dark:text-gray-300">Public (Cloudflare Access + password)</span>
-                <a href="https://panel.bitroot.in" className="font-mono text-purple-600 dark:text-purple-400 hover:underline">
+                <a href="https://panel.bitroot.in" className="font-mono text-accent-600 dark:text-accent-400 hover:underline">
                   panel.bitroot.in
                 </a>
               </div>

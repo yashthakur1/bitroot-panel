@@ -174,7 +174,7 @@ export default function StaticSitesPage({ initialTab }: { initialTab?: string })
                             href={s.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1"
+                            className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1"
                           >
                             {s.url.replace('https://', '')}
                             <ExternalLink size={11} />

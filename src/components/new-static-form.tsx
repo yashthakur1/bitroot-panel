@@ -93,7 +93,7 @@ function Timeline({
               ) : state === 'failed' ? (
                 <AlertCircle size={18} className="text-red-500 pop-in" />
               ) : state === 'active' ? (
-                <Loader2 size={18} className="animate-spin text-purple-600 dark:text-purple-400" />
+                <Loader2 size={18} className="animate-spin text-accent-600 dark:text-accent-400" />
               ) : (
                 <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />
               )}
@@ -335,7 +335,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             onClick={() => !busy && setSource(s)}
             className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
-                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600'
+                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
@@ -349,7 +349,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       {source === 'github' && ghChecked && !ghLogin && (
         <p className="border rounded-lg p-4 text-sm text-gray-600 dark:text-gray-400">
           GitHub isn&apos;t connected yet —{' '}
-          <Link href="/dashboard/new-service" className="text-purple-600 dark:text-purple-400 hover:underline">
+          <Link href="/dashboard/new-service" className="text-accent-600 dark:text-accent-400 hover:underline">
             connect it on the New project page
           </Link>
           , or use the Git URL tab.
@@ -432,7 +432,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                     }}
                     className={`text-xs px-2.5 py-1.5 rounded-full border transition-[background-color,border-color,scale] active:scale-[0.96] ${
                       active
-                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300'
+                        ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300'
                         : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
                     }`}
                   >
@@ -487,7 +487,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 <Label htmlFor="s-port">Port</Label>
                 <button
                   type="button"
-                  className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-800 inline-flex items-center gap-0.5 py-1"
+                  className="text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 inline-flex items-center gap-0.5 py-1"
                   onClick={() => setPort(String(nextFreePort()))}
                 >
                   <Sparkles size={11} /> suggest
@@ -525,14 +525,14 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 onClick={() => setEnvironment('public')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'public'
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
                     : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Globe size={15} /> Public
                   {environment === 'public' && (
-                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                    <Check size={14} className="text-accent-600 ml-auto pop-in" />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -544,14 +544,14 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 onClick={() => setEnvironment('private')}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
                   environment === 'private'
-                    ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
                     : 'hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Lock size={15} /> Private
                   {environment === 'private' && (
-                    <Check size={14} className="text-purple-600 ml-auto pop-in" />
+                    <Check size={14} className="text-accent-600 ml-auto pop-in" />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -580,7 +580,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           {done && (
             <Link
               href="/dashboard"
-              className="fade-in-up text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
+              className="fade-in-up text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
             >
               Back to overview <ArrowRight size={14} />
             </Link>

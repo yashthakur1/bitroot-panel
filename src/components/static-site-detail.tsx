@@ -135,7 +135,7 @@ export default function StaticSiteDetail({ name }: { name: string }) {
               href={site.url}
               target="_blank"
               rel="noreferrer"
-              className="text-purple-600 dark:text-purple-400 hover:underline text-sm inline-flex items-center gap-1 mt-2"
+              className="text-accent-600 dark:text-accent-400 hover:underline text-sm inline-flex items-center gap-1 mt-2"
             >
               {site.url.replace('https://', '')}
               <ExternalLink size={12} />
@@ -211,9 +211,18 @@ export default function StaticSiteDetail({ name }: { name: string }) {
       <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
         <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
           <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
-          <span className="font-mono text-gray-800 dark:text-gray-200">
-            http://oneplus-6:{site?.port ?? '—'}
-          </span>
+          {site ? (
+            <a
+              href={`http://oneplus-6.tailf9a49f.ts.net:${site.port}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
+            >
+              oneplus-6.tailf9a49f.ts.net:{site.port}
+            </a>
+          ) : (
+            <span className="font-mono text-gray-800 dark:text-gray-200">—</span>
+          )}
         </div>
         <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
           <span className="text-gray-700 dark:text-gray-300">Served from</span>

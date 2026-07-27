@@ -192,7 +192,7 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
                       <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
                         {c.label}
                         {c.primary && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded-full">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full">
                             <Star size={9} /> primary
                           </span>
                         )}
@@ -321,7 +321,7 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
                 href="https://github.com/settings/personal-access-tokens/new"
                 target="_blank"
                 rel="noreferrer"
-                className="text-purple-600 dark:text-purple-400 hover:underline"
+                className="text-accent-600 dark:text-accent-400 hover:underline"
               >
                 fine-grained token settings
               </a>

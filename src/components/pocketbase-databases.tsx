@@ -173,7 +173,7 @@ export default function PocketBaseDatabases() {
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 pb-2">
               <input
                 type="checkbox"
-                className="accent-purple-600"
+                className="accent-accent-600"
                 checked={withAuth}
                 onChange={(e) => setWithAuth(e.target.checked)}
               />
@@ -322,7 +322,7 @@ const items = await pb.collection('${db.name}_items').getList(1, 20);`;
               href={`${db.publicUrl}/_/#/collections`}
               target="_blank"
               rel="noreferrer"
-              className="text-xs text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1 px-1 py-1"
+              className="text-xs text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1 px-1 py-1"
             >
               manage in admin <ExternalLink size={10} />
             </a>

@@ -182,7 +182,7 @@ export default function ProjectList() {
                 onClick={() => setTab(key)}
                 className={`px-3.5 py-2 text-sm font-medium transition-colors ${
                   tab === key
-                    ? 'bg-purple-600 text-white'
+                    ? 'bg-accent-600 text-white'
                     : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
                 }`}
               >
@@ -199,7 +199,7 @@ export default function ProjectList() {
               placeholder="Search services"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-800 bg-transparent rounded-lg w-full text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 transition-shadow"
+              className="pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-800 bg-transparent rounded-lg w-full text-sm focus:outline-none focus:ring-1 focus:ring-accent-500 transition-shadow"
             />
           </div>
 
@@ -255,7 +255,7 @@ export default function ProjectList() {
                             {p.name}
                           </Link>
                           {busyRow === p.name && (
-                            <Loader2 size={13} className="animate-spin text-purple-500" />
+                            <Loader2 size={13} className="animate-spin text-accent-500" />
                           )}
                         </div>
                       </td>
@@ -279,7 +279,7 @@ export default function ProjectList() {
                             href={p.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-purple-600 dark:text-purple-400 hover:underline inline-flex items-center gap-1"
+                            className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1"
                           >
                             {p.url.replace('https://', '')}
                             <ExternalLink size={11} />

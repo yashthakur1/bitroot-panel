@@ -40,6 +40,9 @@ interface PbState {
 }
 
 const ADMIN_URL = 'https://pocketbase.bitroot.in/_/';
+// Full MagicDNS name: browsers treat a single-label host like "oneplus-6" as a
+// search term, so the short form looks broken when clicked.
+const TS_FQDN = 'oneplus-6.tailf9a49f.ts.net';
 
 type Tab = 'overview' | 'databases' | 'backups' | 'access';
 
@@ -140,7 +143,7 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
             onClick={() => setTab(t.key)}
             className={`py-2 px-3 text-sm font-medium -mb-px transition-colors ${
               tab === t.key
-                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
+                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600 dark:border-accent-400'
                 : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
             }`}
           >
@@ -192,30 +195,48 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
             Endpoints
           </h2>
           <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
-            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-              <span className="text-gray-700 dark:text-gray-300">
-                Internal (apps on the phone)
-              </span>
+            <div className="px-4 py-3 flex justify-between items-start flex-wrap gap-2">
+              <div>
+                <div className="text-gray-700 dark:text-gray-300">Internal</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  For apps running on the phone — not reachable from your browser
+                </div>
+              </div>
               <span className="font-mono text-gray-800 dark:text-gray-200">
                 {state?.internalUrl ?? 'http://127.0.0.1:8090'}
               </span>
             </div>
-            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-              <span className="text-gray-700 dark:text-gray-300">Public (HTTPS via tunnel)</span>
+            <div className="px-4 py-3 flex justify-between items-start flex-wrap gap-2">
+              <div>
+                <div className="text-gray-700 dark:text-gray-300">Public</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  HTTPS through the Cloudflare tunnel, reachable anywhere
+                </div>
+              </div>
               <a
-                href={state?.publicUrl ?? 'https://pocketbase.bitroot.in'}
+                href={`${state?.publicUrl ?? 'https://pocketbase.bitroot.in'}/_/`}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-purple-600 dark:text-purple-400 hover:underline"
+                className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
               >
                 {(state?.publicUrl ?? 'https://pocketbase.bitroot.in').replace('https://', '')}
               </a>
             </div>
-            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-              <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
-              <span className="font-mono text-gray-800 dark:text-gray-200">
-                http://oneplus-6:8090
-              </span>
+            <div className="px-4 py-3 flex justify-between items-start flex-wrap gap-2">
+              <div>
+                <div className="text-gray-700 dark:text-gray-300">Private (Tailscale)</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  Any device on your tailnet — HTTP, but carried inside WireGuard
+                </div>
+              </div>
+              <a
+                href={`http://${TS_FQDN}:8090/_/`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
+              >
+                {TS_FQDN}:8090
+              </a>
             </div>
           </div>
         </div>

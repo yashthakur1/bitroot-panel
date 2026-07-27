@@ -15,6 +15,20 @@ export default {
         mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       colors: {
+        // Brand accent (#0e70ff at 600) — referenced as accent-* everywhere.
+        accent: {
+          50: '#eff6ff',
+          100: '#dbeafe',
+          200: '#bfdbfe',
+          300: '#93c5fd',
+          400: '#4a97ff',
+          500: '#2b82ff',
+          600: '#0e70ff',
+          700: '#0b5ad6',
+          800: '#0c4aad',
+          900: '#103f88',
+          950: '#0a2652',
+        },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
@@ -36,10 +50,6 @@ export default {
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))'
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))'
         },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',

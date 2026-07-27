@@ -119,7 +119,7 @@ export default function SidebarNav() {
               href={item.href}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
                 item.match(pathname)
-                  ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 font-medium'
+                  ? 'bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 font-medium'
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
@@ -152,7 +152,7 @@ export default function SidebarNav() {
                     <span
                       className={
                         item.match(pathname)
-                          ? 'text-purple-600 dark:text-purple-400'
+                          ? 'text-accent-600 dark:text-accent-400'
                           : 'text-gray-400 dark:text-gray-500'
                       }
                     >
