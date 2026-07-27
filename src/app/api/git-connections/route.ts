@@ -6,6 +6,7 @@ import {
   assertConnectionId,
   connectionScope,
   getConnectionToken,
+  legacyTokenStatus,
   listConnections,
   removeConnection,
   setPrimary,
@@ -24,7 +25,8 @@ export async function GET() {
       return { ...c, ...scope };
     }),
   );
-  return NextResponse.json({ connections: detailed });
+  const staleToken = detailed.length === 0 ? await legacyTokenStatus() : 'none';
+  return NextResponse.json({ connections: detailed, staleToken: staleToken === 'invalid' });
 }
 
 export async function POST(req: NextRequest) {

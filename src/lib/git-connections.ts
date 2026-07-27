@@ -93,7 +93,25 @@ export async function migrateLegacyToken(): Promise<void> {
       },
     ]);
   } catch {
-    // token no longer valid — leave it be rather than registering something broken
+    // Token no longer valid (typically: it was regenerated on GitHub, which
+    // mints a new value and kills the old one). Leave it unregistered — but
+    // legacyTokenStatus() reports it so the UI can explain the gap.
+  }
+}
+
+// Distinguishes "never connected" from "connected, but the stored token has
+// since been revoked or regenerated" — very different problems for the user.
+export async function legacyTokenStatus(): Promise<'none' | 'invalid'> {
+  const conns = await readRegistry();
+  if (conns.length > 0) return 'none';
+  const legacy = await run(`cat ${LEGACY_TOKEN} 2>/dev/null || true`);
+  const token = legacy.output.trim();
+  if (!token) return 'none';
+  try {
+    await githubUser(token);
+    return 'none';
+  } catch {
+    return 'invalid';
   }
 }
 

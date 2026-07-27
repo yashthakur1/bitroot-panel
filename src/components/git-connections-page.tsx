@@ -38,6 +38,7 @@ type Tab = 'connections' | 'add';
 export default function GitConnectionsPage({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(initialTab === 'add' ? 'add' : 'connections');
   const [conns, setConns] = useState<Connection[] | null>(null);
+  const [staleToken, setStaleToken] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [confirmRemove, setConfirmRemove] = useState('');
@@ -53,6 +54,7 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setConns(data.connections ?? []);
+      setStaleToken(Boolean(data.staleToken));
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -147,7 +149,19 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
         <>
           {!conns && <TableSkeleton rows={2} cols={4} />}
 
-          {conns && conns.length === 0 && (
+          {staleToken && (
+            <div className="fade-in-up border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
+              <AlertCircle size={16} className="shrink-0 mt-0.5" />
+              <div style={{ textWrap: 'pretty' }}>
+                <strong>A previously connected GitHub token is no longer accepted.</strong>{' '}
+                GitHub rejects it with 401, which normally means the token was regenerated
+                or revoked — regenerating mints a brand-new value, so the copy stored here
+                stopped working. Add the current token below and deploys will work again.
+              </div>
+            </div>
+          )}
+
+          {conns && conns.length === 0 && !staleToken && (
             <div className="border rounded-lg p-8 text-center">
               <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
                 No git accounts connected yet.
