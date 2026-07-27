@@ -94,7 +94,7 @@ export default function StaticSiteDetail({ name }: { name: string }) {
         body: JSON.stringify({ action: 'remove' }),
       });
       if (res.ok) {
-        router.push('/dashboard');
+        router.push('/dashboard/static');
         return;
       }
       const data = await res.json().catch(() => ({}));

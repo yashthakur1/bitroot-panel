@@ -127,10 +127,13 @@ export async function POST(req: NextRequest) {
     if (!add.ok) {
       return NextResponse.json({ ok: false, output: add.output }, { status: 500 });
     }
-    const restart = await run('pm2 restart cloudflared', 60_000);
+    // SIGHUP, not a restart: cloudflared re-reads its ingress rules in place.
+    // Restarting would drop the tunnel carrying this very request, and the
+    // browser would see a Cloudflare 530 even though the change succeeded.
+    const reload = await run('pkill -HUP -x cloudflared || true', 30_000);
     return NextResponse.json({
-      ok: restart.ok,
-      output: `${add.output}\n${restart.output}`.trim(),
+      ok: true,
+      output: `${add.output}\n  cloudflared reloaded${reload.output ? `\n${reload.output}` : ''}`.trim(),
     });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
@@ -146,7 +149,7 @@ export async function DELETE(req: NextRequest) {
     if (!r.ok) {
       return NextResponse.json({ ok: false, output: r.output }, { status: 500 });
     }
-    const restart = await run('pm2 restart cloudflared', 60_000);
+    const reload = await run('pkill -HUP -x cloudflared || true', 30_000);
 
     await recordResidue([
       {
@@ -158,7 +161,10 @@ export async function DELETE(req: NextRequest) {
       },
     ]);
 
-    return NextResponse.json({ ok: true, output: `${r.output}\n${restart.output}`.trim() });
+    return NextResponse.json({
+      ok: true,
+      output: `${r.output}\n  cloudflared reloaded${reload.output ? `\n${reload.output}` : ''}`.trim(),
+    });
   } catch (e) {
     const status = e instanceof ValidationError ? 400 : 500;
     return NextResponse.json({ error: (e as Error).message }, { status });

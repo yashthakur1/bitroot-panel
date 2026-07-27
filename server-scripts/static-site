@@ -121,7 +121,9 @@ cmd_create() {
     echo "  skipping tunnel route (private)"
   else
     tunnel-add "$name" "$port" >/dev/null 2>&1 || echo "  (tunnel route already present)"
-    pm2 restart cloudflared >/dev/null 2>&1 || true
+    # SIGHUP reloads ingress in place; a restart would drop every live tunnel
+    # connection, including the one serving the panel that triggered this.
+    pkill -HUP -x cloudflared 2>/dev/null || true
     echo "  published at https://$name.$DOMAIN_SUFFIX"
   fi
   echo "=== setup complete ==="
@@ -153,7 +155,7 @@ cmd_remove() {
   echo "=== removing $name ==="
   rm -f "$NGINX_SITES/$name.conf"
   reload_nginx
-  tunnel-remove "$name" >/dev/null 2>&1 && pm2 restart cloudflared >/dev/null 2>&1 || true
+  tunnel-remove "$name" >/dev/null 2>&1 && { pkill -HUP -x cloudflared 2>/dev/null || true; }
   sed -i "/^${name}=/d" "$PORTS_CONF" 2>/dev/null || true
   echo "  NOTE: files at $dir were NOT deleted"
   echo "removed: $name"

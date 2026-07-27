@@ -678,10 +678,10 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           </Button>
           {done && (
             <Link
-              href="/dashboard"
+              href="/dashboard/static"
               className="fade-in-up text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1 text-sm py-2"
             >
-              Back to overview <ArrowRight size={14} />
+              View static sites <ArrowRight size={14} />
             </Link>
           )}
         </div>
