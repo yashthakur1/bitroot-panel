@@ -73,6 +73,43 @@ export function runCached(command: string, ttlMs = 3000): Promise<RunResult> {
   return result;
 }
 
+// Raw byte stream of a file under $HOME on the phone. Unlike runStream this
+// adds no heartbeats or exit markers — anything injected would corrupt a
+// binary payload. The caller must have validated the path.
+export function readHomeFile(relativePath: string): ReadableStream<Uint8Array> {
+  const argv = buildArgv(`cat "$HOME/${relativePath}"`);
+  const child = spawn(argv[0], argv.slice(1), { env: childEnv() });
+
+  return new ReadableStream({
+    start(controller) {
+      child.stdout?.on('data', (d: Buffer) => {
+        try {
+          controller.enqueue(new Uint8Array(d));
+        } catch {
+          // client went away
+        }
+      });
+      child.on('error', () => {
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      });
+      child.on('close', () => {
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      });
+    },
+    cancel() {
+      child.kill();
+    },
+  });
+}
+
 // Streaming variant: returns the command's combined stdout/stderr as a web
 // ReadableStream while it runs, terminated by a "[[EXIT:<code>]]" marker so
 // the client can tell success from failure.

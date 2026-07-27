@@ -13,6 +13,7 @@ import {
   KeyRound,
   Loader2,
   UserPlus,
+  Download,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -348,6 +349,15 @@ function BackupsSection() {
                   <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400 tabular-nums">
                     {b.modified}
                   </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <a
+                      href={`/api/pocketbase/backups/download?name=${encodeURIComponent(b.name)}`}
+                      download
+                      className="inline-flex items-center gap-1.5 text-xs text-accent-600 dark:text-accent-400 hover:underline"
+                    >
+                      <Download size={13} /> Download
+                    </a>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -356,8 +366,10 @@ function BackupsSection() {
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
         {note && <span className="fade-in-up mr-2">{note}</span>}
-        Nightly cron keeps a rolling 7-day window; manual snapshots are timestamped. For
-        guaranteed-consistent archives use the admin UI&apos;s Settings → Backups.
+        Nightly cron keeps a rolling 7-day window; manual snapshots are timestamped.
+        Downloading gives you a point-in-time copy — untar it and open{' '}
+        <code>pb_data/data.db</code> in any SQLite client. Edits to that copy stay local;
+        they are never written back to the phone.
       </p>
     </div>
   );
