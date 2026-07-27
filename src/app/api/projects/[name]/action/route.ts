@@ -23,6 +23,16 @@ export async function POST(
       return NextResponse.json({ error: 'unknown action' }, { status: 400 });
     }
 
+    // Checked before the action runs: afterwards the route is already gone, so
+    // we could not tell whether a DNS record was ever created for this name.
+    const wasRouted =
+      action === 'remove' &&
+      (
+        await run(
+          `grep -c "hostname: ${name}\\." "$HOME/.cloudflared/config.yml" 2>/dev/null || echo 0`,
+        )
+      ).output.trim() !== '0';
+
     const r = await run(`project ${action} ${name}`, timeout);
 
     // `project remove` intentionally keeps files and the DNS record — log what
@@ -55,13 +65,17 @@ export async function POST(
               },
             ]
           : []),
-        {
-          action: `removed service "${name}"`,
-          kind: 'dns' as const,
-          what: 'Cloudflare DNS record was not deleted',
-          target: `${name}.bitroot.in`,
-          hint: 'The hostname no longer serves anything. Remove the CNAME in the Cloudflare dashboard if you want it gone.',
-        },
+        ...(wasRouted
+          ? [
+              {
+                action: `removed service "${name}"`,
+                kind: 'dns' as const,
+                what: 'Cloudflare DNS record was not deleted',
+                target: `${name}.bitroot.in`,
+                hint: 'The hostname no longer serves anything. Remove the CNAME in the Cloudflare dashboard if you want it gone.',
+              },
+            ]
+          : []),
       ]);
     }
 
