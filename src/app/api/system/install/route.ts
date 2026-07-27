@@ -24,7 +24,12 @@ export async function POST(req: NextRequest) {
       ? // -y alone still stops on a modified config file; force-confold keeps
         // the existing one so an install can never block on a prompt nobody
         // can answer.
-        `DEBIAN_FRONTEND=noninteractive pkg install -y -o Dpkg::Options::=--force-confold ${pkg}`
+        //
+        // Status-Fd matters more than it looks: apt prints no progress meter
+        // when stdout is a pipe rather than a terminal, so a slow download is
+        // several minutes of total silence. This emits dlstatus/pmstatus lines
+        // the dialog can turn into progress.
+        `DEBIAN_FRONTEND=noninteractive pkg install -y -o APT::Status-Fd=1 -o Dpkg::Options::=--force-confold ${pkg}`
       : `npm install -g ${pkg}@latest`;
 
   return new Response(runStream(cmd, 900_000), {

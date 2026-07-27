@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowUpCircle,
@@ -29,6 +29,18 @@ export interface Tool {
   locked?: string;
   installed: string | null;
   candidate: string | null;
+}
+
+const STATUS_LINE = /^(dl|pm)status:/;
+
+// apt status lines are "<kind>:<id>:<percent>:<description>", and the
+// description itself may contain colons.
+const pctOf = (line: string) => Number(line.split(':')[2]) || 0;
+const textOf = (line: string) => line.split(':').slice(3).join(':').trim();
+
+function humanElapsed(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
 }
 
 const CATEGORY_LABEL: Record<Tool['category'], string> = {
@@ -62,11 +74,25 @@ export default function SystemPanel({
   const [installing, setInstalling] = useState<Tool | null>(null);
   const [log, setLog] = useState('');
   const [result, setResult] = useState<'' | 'ok' | 'fail'>('');
+  const [progress, setProgress] = useState<{ pct: number | null; text: string } | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
+  const [nowTs, setNowTs] = useState(0);
+
+  // A slow mirror means minutes between lines of output. Without a ticking
+  // clock the dialog is indistinguishable from a hung one.
+  useEffect(() => {
+    if (!installing || result !== '') return;
+    const id = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [installing, result]);
 
   async function install(t: Tool) {
     setInstalling(t);
     setLog('');
     setResult('');
+    setProgress(null);
+    setStartedAt(Date.now());
+    setNowTs(Date.now());
     try {
       const res = await fetch('/api/system/install', {
         method: 'POST',
@@ -86,14 +112,31 @@ export default function SystemPanel({
         const { done, value } = await reader.read();
         if (done) break;
         full += decoder.decode(value, { stream: true });
-        setLog(
-          full
-            .replaceAll('[[HB]]', '')
-            .replace(/\n?\[\[EXIT:\d+\]\]/, '')
-            .split('\n')
-            .map((l) => l.split('\r').pop() ?? '')
-            .join('\n'),
-        );
+        const cleaned = full
+          .replaceAll('[[HB]]', '')
+          .replace(/\n?\[\[EXIT:\d+\]\]/, '')
+          .split('\n')
+          .map((l) => l.split('\r').pop() ?? '');
+
+        // apt emits these continuously; they drive the progress bar and would
+        // otherwise bury the readable output under hundreds of repeats.
+        const complete = full.endsWith('\n') ? cleaned : cleaned.slice(0, -1);
+        const status = complete.filter((l) => STATUS_LINE.test(l));
+        const dl = status.filter((l) => l.startsWith('dlstatus:'));
+        const pm = status.filter((l) => l.startsWith('pmstatus:'));
+        const last = pm[pm.length - 1] ?? dl[dl.length - 1];
+        if (last) {
+          // Both phases report 0-100 of themselves, so they are folded into one
+          // monotonic number: fetching fills the first three quarters (it is
+          // nearly all of the wall time on this connection) and dpkg the rest.
+          // A cached package skips straight to 75, which is where it truly is.
+          const own = Math.min(100, Math.max(0, pctOf(last)));
+          setProgress({
+            pct: pm.length ? 75 + own * 0.25 : own * 0.75,
+            text: textOf(last),
+          });
+        }
+        setLog(cleaned.filter((l) => !STATUS_LINE.test(l)).join('\n'));
       }
       const ok = /\[\[EXIT:0\]\]/.test(full);
       setResult(ok ? 'ok' : 'fail');
@@ -195,6 +238,8 @@ export default function SystemPanel({
           tool={installing}
           log={log}
           result={result}
+          progress={progress}
+          elapsedMs={nowTs - startedAt}
           onClose={() => {
             setInstalling(null);
             setLog('');
@@ -279,14 +324,28 @@ function InstallDialog({
   tool,
   log,
   result,
+  progress,
+  elapsedMs,
   onClose,
 }: {
   tool: Tool;
   log: string;
   result: '' | 'ok' | 'fail';
+  progress: { pct: number | null; text: string } | null;
+  elapsedMs: number;
   onClose: () => void;
 }) {
   const running = result === '';
+  const logRef = useRef<HTMLPreElement>(null);
+
+  // A streaming log that stays pinned to the top hides the very lines it is
+  // streaming; follow the tail instead.
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log]);
+
+  const pct = result === 'ok' ? 100 : (progress?.pct ?? null);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={running ? undefined : onClose} />
@@ -321,7 +380,38 @@ function InstallDialog({
           </button>
         </div>
 
-        <pre className="bg-gray-950 text-gray-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-80 whitespace-pre-wrap">
+        <div className="space-y-1.5">
+          <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
+            {pct === null ? (
+              // No percentage to report yet (apt has not spoken, or npm never
+              // will) — a moving bar says "working" without inventing a number.
+              <div className="h-full w-1/3 rounded-full bg-accent-500 animate-indeterminate" />
+            ) : (
+              <div
+                className="h-full rounded-full bg-accent-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span className="truncate">
+              {result === 'ok'
+                ? 'Done'
+                : result === 'fail'
+                  ? 'Stopped'
+                  : progress?.text || 'Reading package lists…'}
+            </span>
+            <span className="tabular-nums shrink-0">
+              {pct !== null && `${Math.round(pct)}% · `}
+              {humanElapsed(elapsedMs)}
+            </span>
+          </div>
+        </div>
+
+        <pre
+          ref={logRef}
+          className="bg-gray-950 text-gray-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-72 whitespace-pre-wrap scroll-smooth"
+        >
           {log || 'starting…'}
         </pre>
 

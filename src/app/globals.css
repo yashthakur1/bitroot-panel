@@ -178,3 +178,13 @@
     letter-spacing: -0.02em;
   }
 }
+
+/* Indeterminate install progress: used while apt has not yet reported a
+   percentage, and for npm installs which never report one. */
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.animate-indeterminate {
+  animation: indeterminate 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
