@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { run, runCached } from '@/lib/runner';
 import { assertName, shq, ValidationError } from '@/lib/validate';
 import { dismissResidue, readLedger } from '@/lib/residue';
+import { deleteDnsRecord, dnsConfigured, listTunnelRecords } from '@/lib/cloudflare';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -211,27 +212,49 @@ export async function GET() {
     });
   }
 
-  // 5. DNS records the panel created that no longer have a route. These can
-  // only be deleted in the Cloudflare dashboard — the panel's token is
-  // Access-read-only — so they are listed as manual work, not a Clean button.
+  // 5. DNS records pointing at the tunnel with no ingress rule behind them.
+  // Read from Cloudflare directly, so records created outside the panel are
+  // caught too — and deletable now that the token carries DNS write.
   const routedSet = new Set(routedHosts);
-  for (const host of section(out, 'dnscreated')) {
-    if (!host.includes('.') || routedSet.has(host)) continue;
-    items.push({
-      id: `dns-${host}`,
-      category: 'Cloudflare DNS records',
-      label: host,
-      detail:
-        'A CNAME still points at your tunnel, but nothing serves this hostname — visitors get a 404.',
-      size: '—',
-      manual: true,
-      hint: 'Delete the CNAME in the Cloudflare dashboard (DNS → Records), or re-attach a service to this hostname from the Routes page. Then dismiss this.',
-      action: {
-        type: 'forget-dns',
-        target: host,
-        danger: 'Only stops BitPanel tracking this hostname — the CNAME itself is untouched',
-      },
-    });
+  if (dnsConfigured()) {
+    try {
+      for (const rec of await listTunnelRecords()) {
+        if (routedSet.has(rec.name)) continue;
+        items.push({
+          id: `dns-${rec.name}`,
+          category: 'Cloudflare DNS records',
+          label: rec.name,
+          detail:
+            'CNAME points at your tunnel but no ingress rule serves it — visitors get a 404.',
+          size: '—',
+          hint: 'Deleting removes the record from Cloudflare. Publishing a service on this hostname later recreates it automatically.',
+          action: {
+            type: 'delete-dns',
+            target: rec.id,
+            danger: `Deletes the ${rec.name} CNAME from Cloudflare`,
+          },
+        });
+      }
+    } catch {
+      // DNS unreachable or token lacks access — fall back to the local record
+      for (const host of section(out, 'dnscreated')) {
+        if (!host.includes('.') || routedSet.has(host)) continue;
+        items.push({
+          id: `dns-${host}`,
+          category: 'Cloudflare DNS records',
+          label: host,
+          detail: 'CNAME likely still points at your tunnel with nothing serving it.',
+          size: '—',
+          manual: true,
+          hint: 'Could not reach the Cloudflare API — delete it in the dashboard (DNS → Records), then dismiss this.',
+          action: {
+            type: 'forget-dns',
+            target: host,
+            danger: 'Only stops BitPanel tracking this hostname',
+          },
+        });
+      }
+    }
   }
 
   // 6. Backups (informational; oldest are candidates for pruning)
@@ -357,6 +380,16 @@ const CLEANUPS: Record<string, (target: string) => string> = {
 export async function POST(req: NextRequest) {
   try {
     const { type, target } = await req.json();
+
+    // Handled through the Cloudflare API rather than a shell command.
+    if (type === 'delete-dns') {
+      if (typeof target !== 'string' || !/^[a-f0-9]{32}$/.test(target)) {
+        throw new ValidationError('invalid DNS record id');
+      }
+      await deleteDnsRecord(target);
+      return NextResponse.json({ ok: true, output: 'DNS record deleted.' });
+    }
+
     const build = CLEANUPS[type];
     if (!build) {
       return NextResponse.json({ error: 'unknown cleanup action' }, { status: 400 });
