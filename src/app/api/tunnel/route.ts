@@ -14,6 +14,11 @@ function assertSubdomain(name: unknown): string {
   return name;
 }
 
+// Ports served by something other than a pm2 app or registry entry.
+const WELL_KNOWN: Record<number, string> = {
+  8022: 'sshd (Termux)',
+};
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // Tunnel overview: cloudflared state, ingress routes annotated with the
@@ -48,6 +53,7 @@ export async function GET() {
     hostname: string;
     service: string;
     port: number | null;
+    scheme: string;
     attachedTo: string | null;
   }> = [];
   let pendingHost: string | null = null;
@@ -61,13 +67,18 @@ export async function GET() {
     const s = line.match(/^(?:-\s*)?service:\s*(\S+)/);
     if (s) {
       if (pendingHost) {
-        const portMatch = s[1].match(/:(\d+)$/);
+        // Match the port from any scheme (http://, https://, ssh://, tcp://…);
+        // only http was recognised before, so the SSH route — which works —
+        // was displayed as unattached.
+        const portMatch = s[1].match(/:(\d+)(?:\/|$)/);
         const port = portMatch ? Number(portMatch[1]) : null;
+        const scheme = s[1].split('://')[0];
         routes.push({
           hostname: pendingHost,
           service: s[1],
           port,
-          attachedTo: port ? (portToService[port] ?? null) : null,
+          scheme,
+          attachedTo: port ? (portToService[port] ?? WELL_KNOWN[port] ?? null) : null,
         });
       }
       pendingHost = null;

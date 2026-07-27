@@ -23,6 +23,7 @@ interface TunnelRoute {
   hostname: string;
   service: string;
   port: number | null;
+  scheme?: string;
   attachedTo: string | null;
 }
 
@@ -282,7 +283,7 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                       className="border-t dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
                     >
                       <td className="px-4 py-3 whitespace-nowrap">
-                        {r.service.startsWith('http://') ? (
+                        {r.scheme === 'http' || r.scheme === 'https' ? (
                           <a
                             href={`https://${r.hostname}`}
                             target="_blank"
