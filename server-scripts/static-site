@@ -75,8 +75,13 @@ build_site() {
   . "$dir/.staticrc"
   cd "$dir/src"
   if [ -f package.json ]; then
-    echo "  installing dependencies..."
-    npm install --no-audit --no-fund 2>&1 | tail -3
+    # --include=dev with NODE_ENV cleared: build tools (vite, tsc, tailwind…)
+    # are devDependencies, and an inherited NODE_ENV=production silently omits
+    # them, which fails later as "vite: not found".
+    echo "  installing dependencies (including dev)..."
+    # unpiped so a failing install actually stops the deploy
+    env -u NODE_ENV npm install --include=dev --no-audit --no-fund \
+      || die "dependency install failed — the live site was left untouched"
     if [ -n "$BUILD_CMD" ]; then
       echo "  building: $BUILD_CMD"
       NODE_OPTIONS=--max-old-space-size=2048 sh -c "$BUILD_CMD"

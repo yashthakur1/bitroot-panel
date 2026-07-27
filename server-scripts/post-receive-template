@@ -1,0 +1,51 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Deploys on git push: checkout -> npm install -> (npm run build) -> pm2 restart.
+# Apps with a "build" script get a full dependency install + build; others get
+# a lean production install. Running apps are restarted in place (env preserved).
+set -e
+REPO="$PWD"
+NAME=$(basename "$REPO" .git)
+WORK="$HOME/apps/$NAME"
+PORT=$(cat "$REPO/PORT" 2>/dev/null || echo 3000)
+mkdir -p "$WORK"
+while read old new ref; do
+  branch=${ref#refs/heads/}
+  git --work-tree="$WORK" --git-dir="$REPO" checkout -f "$branch"
+done
+cd "$WORK"
+unset GIT_DIR
+
+HAS_BUILD=0
+HAS_START=0
+if [ -f package.json ]; then
+  node -e "const s=require('./package.json').scripts||{}; process.exit(s.build?0:1)" && HAS_BUILD=1 || true
+  node -e "const s=require('./package.json').scripts||{}; process.exit(s.start?0:1)" && HAS_START=1 || true
+  echo "==> installing dependencies"
+  if [ "$HAS_BUILD" = 1 ]; then
+    # build tools live in devDependencies; never let an inherited
+    # NODE_ENV=production omit them
+    env -u NODE_ENV npm install --include=dev --no-audit --no-fund
+  else
+    npm install --omit=dev --no-audit --no-fund
+  fi
+fi
+
+if [ "$HAS_BUILD" = 1 ]; then
+  echo "==> building"
+  NODE_OPTIONS=--max-old-space-size=2048 npm run build
+fi
+
+if pm2 describe "$NAME" >/dev/null 2>&1; then
+  echo "==> restarting $NAME"
+  pm2 restart "$NAME" --update-env
+elif [ "$HAS_START" = 1 ]; then
+  echo "==> starting via npm start (PORT=$PORT)"
+  PORT=$PORT pm2 start npm --name "$NAME" -- start
+elif [ -f index.js ]; then
+  echo "==> starting index.js (PORT=$PORT)"
+  PORT=$PORT pm2 start index.js --name "$NAME"
+else
+  echo "==> no start script or index.js found; nothing started"
+fi
+pm2 save >/dev/null 2>&1 || true
+echo "==> deployed '$NAME' on port $PORT"

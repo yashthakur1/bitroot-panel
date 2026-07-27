@@ -111,6 +111,7 @@ export default function ProjectDetail({
             className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
             disabled={!!busyAction}
             onClick={() => runAction('deploy')}
+            title="Pull the latest commit on this branch, reinstall, rebuild if needed, then restart"
           >
             {busyAction === 'deploy' ? 'Deploying…' : 'Deploy'}
           </Button>

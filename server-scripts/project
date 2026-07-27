@@ -167,12 +167,21 @@ install_and_build() {
   node -e "const s=require('$dir/package.json').scripts||{};process.exit(s.build?0:1)" 2>/dev/null && has_build=1
   if [ "$has_build" = 1 ]; then
     echo "  installing dependencies (including dev — project has a build step)..."
-    (cd "$dir" && npm install --no-audit --no-fund 2>&1 | tail -3)
+    # NODE_ENV cleared explicitly: if it is inherited as production, npm drops
+    # devDependencies and the build then fails on a missing tool.
+    #
+    # No "| tail" here: a pipeline reports the exit status of its LAST command,
+    # so piping to tail hid npm failures from `set -e` and a broken build would
+    # sail through to a restart.
+    (cd "$dir" && env -u NODE_ENV npm install --include=dev --no-audit --no-fund) \
+      || die "dependency install failed — the running app was left untouched"
     echo "  building..."
-    (cd "$dir" && NODE_OPTIONS=--max-old-space-size=2048 npm run build 2>&1 | tail -8)
+    (cd "$dir" && NODE_OPTIONS=--max-old-space-size=2048 npm run build) \
+      || die "build failed — the running app was left untouched"
   else
     echo "  installing dependencies..."
-    (cd "$dir" && npm install --omit=dev --no-audit --no-fund 2>&1 | tail -3)
+    (cd "$dir" && npm install --omit=dev --no-audit --no-fund) \
+      || die "dependency install failed — the running app was left untouched"
   fi
 }
 
