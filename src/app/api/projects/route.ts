@@ -13,13 +13,8 @@ const SYSTEM_APPS = new Set([
 ]);
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
 
-// Command-line tools installed on the device. They are system entries like the
-// daemons above, but they are not processes: nothing runs, holds a port or can
-// be restarted, so the only state worth reporting is which version is present.
-const TOOLS = [
-  { name: 'bit-cli', probe: 'bit-cli --version' },
-] as const;
-
+// Installed CLI apps and packages are not processes and are reported by
+// /api/system instead; this endpoint stays about things pm2 and nginx run.
 export interface Project {
   name: string;
   status: string;
@@ -30,27 +25,17 @@ export interface Project {
   port: number | null;
   url: string | null;
   system: boolean;
-  type?: 'node' | 'static' | 'tool';
-  version?: string;
+  type?: 'node' | 'static';
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function GET() {
-  const [pm2, ports, tunnel, statics, tools] = await Promise.all([
+  const [pm2, ports, tunnel, statics] = await Promise.all([
     runCached('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
     run('static-site list 2>/dev/null || true'),
-    // One "name|version" line per tool, empty version meaning not installed.
-    // Each probe boots a whole CLI, which is far too costly to repeat on the
-    // live poll for a value that only changes on an upgrade — hence the cache.
-    runCached(
-      TOOLS.map(
-        (t) => `printf '${t.name}|%s\\n' "$(${t.probe} 2>/dev/null | tail -1)"`,
-      ).join('; '),
-      60_000,
-    ),
   ]);
 
   // Static sites are served by the shared nginx, so they have no pm2 entry.
@@ -143,31 +128,6 @@ export async function GET() {
       url: portsInUse[s.port]?.startsWith('tunnel') ? `https://${s.name}.${DOMAIN_SUFFIX}` : null,
       system: false,
       type: 'static',
-    });
-  }
-
-  const toolVersions: Record<string, string> = {};
-  for (const line of tools.output.split('\n')) {
-    const [name, ...rest] = line.trim().split('|');
-    if (!name) continue;
-    // Strip anything a CLI might decorate its version with, ANSI included.
-    const v = rest.join('|').replace(/\x1b\[[0-9;]*m/g, '').trim();
-    toolVersions[name] = v;
-  }
-  for (const t of TOOLS) {
-    const version = toolVersions[t.name] ?? '';
-    projects.push({
-      name: t.name,
-      status: version ? 'installed' : 'missing',
-      cpu: 0,
-      memoryMb: 0,
-      uptimeMs: 0,
-      restarts: 0,
-      port: null,
-      url: null,
-      system: true,
-      type: 'tool',
-      version: version || undefined,
     });
   }
 
