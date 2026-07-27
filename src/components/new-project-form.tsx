@@ -18,6 +18,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { Shimmer } from './skeletons';
+import RepoPicker from './repo-picker';
 
 interface Repo {
   fullName: string;
@@ -25,6 +26,7 @@ interface Repo {
   defaultBranch: string;
   connectionId?: string;
   connectionLabel?: string;
+  pushedAt?: string;
   description?: string;
 }
 
@@ -526,23 +528,12 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
               <div className="flex flex-col">
                 <Label htmlFor="repo">Repository</Label>
-                <select
-                  id="repo"
+                <RepoPicker
+                  repos={repos}
                   value={repo}
-                  onChange={(e) => selectRepo(e.target.value)}
-                  className={`border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 transition-colors ${
-                    errors.repo ? 'border-red-400 dark:border-red-700' : ''
-                  }`}
-                >
-                  <option value="">— select a repository —</option>
-                  {(repos ?? []).map((r) => (
-                    <option key={r.fullName} value={r.fullName}>
-                      {r.fullName}
-                      {r.private ? ' · private' : ''}
-                      {r.connectionLabel ? ` · ${r.connectionLabel}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onSelect={selectRepo}
+                  error={Boolean(errors.repo)}
+                />
                 <FieldError msg={errors.repo} />
               </div>
 
