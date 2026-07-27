@@ -1,70 +1,65 @@
 import { NextResponse } from 'next/server';
+import { getSuperadmin, listApps } from '@/lib/access';
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-// IAM overview: reads Cloudflare Access apps + policies for the zone and
-// aggregates them into a per-user view. Requires CF_API_TOKEN and CF_ZONE_ID
-// in the panel's environment (read access to Access apps is enough).
-
-function subjectLabel(inc: any): string {
-  if (inc.email?.email) return inc.email.email;
-  if (inc.email_domain?.domain) return `anyone @${inc.email_domain.domain}`;
-  if (inc.everyone !== undefined) return 'everyone';
-  if (inc.group?.id) return `group:${inc.group.id}`;
-  return JSON.stringify(inc);
-}
+// IAM overview: who can pass the Cloudflare Access gate, aggregated per person
+// and per application, plus whether this token may edit those policies.
 
 export async function GET() {
-  const token = process.env.CF_API_TOKEN;
-  const zone = process.env.CF_ZONE_ID;
-  if (!token || !zone) {
-    return NextResponse.json({ configured: false, apps: [], users: [] });
-  }
+  const superadmin = await getSuperadmin();
 
-  let data: any;
+  let apps;
   try {
-    const res = await fetch(
-      `https://api.cloudflare.com/client/v4/zones/${zone}/access/apps`,
-      { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' },
-    );
-    data = await res.json();
+    apps = await listApps();
   } catch (e) {
     return NextResponse.json(
-      { configured: true, error: `Cloudflare API unreachable: ${(e as Error).message}` },
-      { status: 502 },
+      { configured: false, error: (e as Error).message, apps: [], users: [], superadmin },
+      { status: 200 },
     );
   }
 
-  if (!data.success) {
-    return NextResponse.json(
-      { configured: true, error: data.errors?.[0]?.message ?? 'Cloudflare API error' },
-      { status: 502 },
-    );
-  }
-
-  const apps = (data.result ?? []).map((a: any) => ({
-    name: a.name,
-    domain: a.domain,
-    sessionDuration: a.session_duration,
-    policies: (a.policies ?? []).map((p: any) => ({
-      name: p.name,
-      decision: p.decision,
-      subjects: (p.include ?? []).map(subjectLabel),
-    })),
-  }));
-
-  const userMap: Record<string, Set<string>> = {};
+  const userMap: Record<string, Array<{ id: string; name: string }>> = {};
   for (const app of apps) {
     for (const p of app.policies) {
       if (p.decision !== 'allow') continue;
-      for (const s of p.subjects) {
-        (userMap[s] ??= new Set()).add(app.name);
+      for (const email of p.emails) {
+        (userMap[email] ??= []).push({ id: app.id, name: app.name });
       }
     }
   }
-  const users = Object.entries(userMap)
-    .map(([email, appNames]) => ({ email, apps: [...appNames] }))
-    .sort((a, b) => a.email.localeCompare(b.email));
 
-  return NextResponse.json({ configured: true, apps, users });
+  const users = Object.entries(userMap)
+    .map(([email, list]) => ({
+      email,
+      apps: list,
+      superadmin: email === superadmin,
+    }))
+    .sort((a, b) =>
+      a.superadmin === b.superadmin ? a.email.localeCompare(b.email) : a.superadmin ? -1 : 1,
+    );
+
+  return NextResponse.json({
+    configured: true,
+    superadmin,
+    users,
+    apps: apps.map((a) => ({
+      id: a.id,
+      name: a.name,
+      domain: a.domain,
+      sessionDuration: a.sessionDuration,
+      policies: a.policies.map((p) => ({
+        name: p.name,
+        decision: p.decision,
+        subjects: [
+          ...p.emails,
+          ...p.otherRules.map((r) =>
+            r.email_domain?.domain
+              ? `anyone @${r.email_domain.domain}`
+              : r.everyone !== undefined
+                ? 'everyone'
+                : 'other rule',
+          ),
+        ],
+      })),
+    })),
+  });
 }
