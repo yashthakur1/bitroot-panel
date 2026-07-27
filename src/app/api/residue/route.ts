@@ -118,9 +118,9 @@ export async function GET() {
     if (pm2Names.has(name) || registeredPorts[name]) continue;
     items.push({
       id: `projdir-${name}`,
-      category: 'Orphaned project files',
+      category: 'Orphaned project files (legacy location)',
       label: `~/Downloads/${name}`,
-      detail: `No pm2 process and no port registration — left behind by \`project remove\`. ${backedUp(name)}`,
+      detail: `In the old ~/Downloads location with no pm2 process and no port registration. ${backedUp(name)}`,
       size: size ?? '?',
       action: {
         type: 'rm-project-dir',
