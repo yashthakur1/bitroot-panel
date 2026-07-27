@@ -10,14 +10,22 @@ export default function DashboardNav() {
   return (
     <header className="border-b border-gray-200 dark:border-gray-800">
       <div className="flex items-center justify-between h-14 px-4">
-        <Link
-          href="/dashboard"
-          aria-label="BitPanel home"
-          className="flex items-center gap-2 text-gray-900 dark:text-gray-100 transition-opacity hover:opacity-70"
-        >
-          <Logo size={22} />
-          <span className="font-display font-medium">BitPanel</span>
-        </Link>
+        <div className="flex items-center gap-2.5">
+          <Link
+            href="/dashboard"
+            aria-label="BitPanel home"
+            className="flex items-center gap-2 text-gray-900 dark:text-gray-100 transition-opacity hover:opacity-70"
+          >
+            <Logo size={22} />
+            <span className="font-display font-medium">BitPanel</span>
+          </Link>
+          <span
+            title="OnePlus 6 · Termux"
+            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400"
+          >
+            Dev Server
+          </span>
+        </div>
 
         <div className="flex items-center space-x-2">
           <Link href="/dashboard/new-service">
