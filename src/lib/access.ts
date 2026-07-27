@@ -89,19 +89,36 @@ export async function listApps(): Promise<AccessApp[]> {
   }));
 }
 
-// A no-op write is the only reliable way to know whether the token may edit
-// policies — Cloudflare exposes no capability endpoint.
+// Cloudflare has no capability endpoint, so probe by writing to a policy id
+// that cannot exist: 403 means the token lacks permission, 404 means it has
+// permission and the record simply is not there. This never modifies a real
+// policy — an earlier version re-wrote a live one on every page load, which
+// worked but filled the audit log with phantom edits.
+let writeProbe: { at: number; result: boolean } | null = null;
+
 export async function canWritePolicies(): Promise<boolean> {
+  if (writeProbe && Date.now() - writeProbe.at < 60_000) return writeProbe.result;
+  let result = false;
   try {
     const apps = await listApps();
     const app = apps.find((a) => a.policies.length > 0);
-    if (!app) return false;
-    const policy = app.policies[0];
-    await writePolicy(app.id, policy, policy.emails);
-    return true;
+    if (app) {
+      const res = await fetch(
+        `https://api.cloudflare.com/client/v4/zones/${ZONE}/access/apps/${app.id}/policies/00000000-0000-0000-0000-000000000000`,
+        {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'probe', decision: 'allow', include: [] }),
+          cache: 'no-store',
+        },
+      );
+      result = res.status !== 403;
+    }
   } catch {
-    return false;
+    result = false;
   }
+  writeProbe = { at: Date.now(), result };
+  return result;
 }
 
 async function writePolicy(
