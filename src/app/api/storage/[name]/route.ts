@@ -55,16 +55,19 @@ export async function PATCH(
         await setWebsite(bucket.id, false);
         return NextResponse.json({ error: `route failed: ${add.output}` }, { status: 500 });
       }
-      // SIGHUP rather than restart: cloudflared rereads ingress in place, and a
-      // restart would drop the tunnel carrying this very request.
-      await run('pkill -HUP -x cloudflared || true', 30_000);
+      // SIGHUP is not enough: cloudflared re-reads the file but does not pick up
+      // a hostname that was not there when it started, so the request falls
+      // through to the catch-all 404. It needs a real restart - detached and
+      // slightly delayed, so this response is already on its way out before the
+      // tunnel carrying it blinks.
+      await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push(`published at https://${name}.${DOMAIN_SUFFIX}`);
     }
 
     if (body.access === 'private') {
       await setWebsite(bucket.id, false);
       await run(`tunnel-remove ${name}`, 60_000);
-      await run('pkill -HUP -x cloudflared || true', 30_000);
+      await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push('unpublished; objects are reachable over Tailscale only');
       await recordResidue([
         {
@@ -112,7 +115,7 @@ export async function DELETE(
     const wasPublic = bucket.websiteAccess;
     if (wasPublic) {
       await run(`tunnel-remove ${name}`, 60_000);
-      await run('pkill -HUP -x cloudflared || true', 30_000);
+      await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push('removed the tunnel route');
     }
 
