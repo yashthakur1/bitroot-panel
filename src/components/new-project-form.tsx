@@ -432,7 +432,11 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             <Github size={16} /> Connect GitHub
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
-            Create a{' '}
+            Manage accounts on the{' '}
+            <Link href="/dashboard/git" className="text-purple-600 dark:text-purple-400 hover:underline">
+              Git connections
+            </Link>{' '}
+            page, or paste one here. Create a{' '}
             <a
               href="https://github.com/settings/personal-access-tokens/new"
               target="_blank"

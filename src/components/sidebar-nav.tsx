@@ -7,6 +7,7 @@ import {
   Box,
   Cloud,
   Database,
+  Github,
   PanelsTopLeft,
   Plus,
   Recycle,
@@ -59,6 +60,12 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
   {
     title: 'Infrastructure',
     items: [
+      {
+        name: 'Git connections',
+        href: '/dashboard/git',
+        icon: <Github size={18} />,
+        match: (p) => p.startsWith('/dashboard/git'),
+      },
       {
         name: 'PocketBase',
         href: '/dashboard/pocketbase',

@@ -1,16 +1,14 @@
 import { run } from './runner';
 import { shq, ValidationError } from './validate';
+import { addConnection, getPrimaryToken, listConnections, removeConnection } from './git-connections';
 
-// GitHub connection for the panel. The token is a fine-grained (or classic)
-// personal access token, stored on the phone at ~/.config/bitroot-panel/github-token
-// with 600 perms. Never committed, never sent to the browser.
+// GitHub access for the panel. Tokens live in the git-connections registry on
+// the phone (600 files, never sent to the browser); this module is the thin
+// GitHub-specific layer over it.
 
-const TOKEN_PATH = '"$HOME/.config/bitroot-panel/github-token"';
-
+// Git operations use whichever connection is marked primary.
 export async function getGithubToken(): Promise<string | null> {
-  const r = await run(`cat ${TOKEN_PATH} 2>/dev/null || true`);
-  const t = r.output.trim();
-  return t || null;
+  return getPrimaryToken();
 }
 
 export function assertGithubToken(token: unknown): string {
@@ -25,20 +23,13 @@ export function assertGithubToken(token: unknown): string {
 }
 
 export async function saveGithubToken(token: string): Promise<void> {
-  await run(
-    `mkdir -p "$HOME/.config/bitroot-panel" && printf %s ${shq(token)} > ${TOKEN_PATH} && chmod 600 ${TOKEN_PATH}`,
-  );
-  // Register with git's credential store (standard mechanism) so clone/pull of
-  // private repos over https://github.com/... authenticates automatically.
-  const credLine = shq(`https://x-access-token:${token}@github.com`);
-  await run(
-    `touch "$HOME/.git-credentials" && sed -i "/github.com/d" "$HOME/.git-credentials" && printf "%s\\n" ${credLine} >> "$HOME/.git-credentials" && chmod 600 "$HOME/.git-credentials" && git config --global credential.helper store`,
-  );
+  await addConnection(token);
 }
 
 export async function deleteGithubToken(): Promise<void> {
-  await run(`rm -f ${TOKEN_PATH}`);
-  await run(`sed -i "/github.com/d" "$HOME/.git-credentials" 2>/dev/null || true`);
+  for (const c of await listConnections()) {
+    await removeConnection(c.id);
+  }
 }
 
 export function assertRepoFullName(full: unknown): string {
