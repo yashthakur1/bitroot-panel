@@ -132,9 +132,18 @@ cmd_deploy() {
   local dir="$SITES_DIR/$name"
   [ -d "$dir" ] || die "no static site named '$name'"
   echo "=== deploying $name ==="
-  (cd "$dir/src" && git pull --ff-only)
+  (cd "$dir/src" && git pull --ff-only) || die "git pull failed (diverged? uncommitted changes?)"
   build_site "$name" "$dir"
+
+  # Re-assert the serving config every time. A create that failed part-way
+  # (build error, interrupted clone) leaves no vhost, so a later successful
+  # deploy would otherwise build fine and still serve nothing.
+  # shellcheck disable=SC1091
+  . "$dir/.staticrc"
+  register_port "$name" "$PORT"
+  write_vhost "$name" "$PORT" "$dir/public"
   reload_nginx
+  echo "  serving on port $PORT"
   echo "=== deployed $name ==="
 }
 
