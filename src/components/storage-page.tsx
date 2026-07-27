@@ -13,10 +13,12 @@ import {
   Plus,
   RefreshCw,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { TableSkeleton } from './skeletons';
+import UploadDialog from './upload-dialog';
 
 interface BucketKey {
   accessKeyId: string;
@@ -68,6 +70,7 @@ export default function StoragePage() {
   const [newName, setNewName] = useState('');
   const [newTier, setNewTier] = useState(5);
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
+  const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
   const [newKey, setNewKey] = useState<{ accessKeyId: string; secretAccessKey: string } | null>(
     null,
   );
@@ -267,6 +270,15 @@ export default function StoragePage() {
                       )}
                     </Button>
 
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setUploadTo(b)}
+                      className="active:scale-[0.96] transition-transform"
+                    >
+                      <Upload size={14} className="mr-1.5" /> Upload
+                    </Button>
+
                     <Button size="sm" variant="outline" onClick={() => setKeyFor(b)}>
                       <Key size={14} className="mr-1.5" /> Key
                     </Button>
@@ -406,6 +418,15 @@ export default function StoragePage() {
             </Button>
           </div>
         </Dialog>
+      )}
+
+      {uploadTo && (
+        <UploadDialog
+          bucket={uploadTo.name}
+          isPublic={uploadTo.access === 'public'}
+          onClose={() => setUploadTo(null)}
+          onDone={load}
+        />
       )}
 
       {keyFor && (

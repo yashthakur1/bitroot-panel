@@ -4,6 +4,9 @@
 // being scraped out of formatted text - and the panel runs on the same device,
 // so this is a loopback call rather than a shell round trip.
 
+import { run } from './runner';
+import { shq } from './validate';
+
 const ADMIN = process.env.GARAGE_ADMIN_URL ?? 'http://127.0.0.1:3903';
 const TOKEN = process.env.GARAGE_ADMIN_TOKEN ?? '';
 
@@ -198,4 +201,60 @@ export function assertTier(value: unknown): TierGb {
     throw new Error(`tier must be one of ${TIERS_GB.join(', ')} GB`);
   }
   return gb as TierGb;
+}
+
+// ─── The panel's own upload credential ──────────────────────────
+//
+// Uploading through the panel needs real S3 auth, which the admin API does not
+// provide. Rather than borrow a user's key - whose deletion would silently
+// break uploads - the panel keeps one of its own, created on first use and
+// granted per bucket as needed.
+
+
+const KEY_FILE = '"$HOME/.config/bitroot-panel/garage-upload-key.json"';
+const KEY_NAME = 'bitpanel-uploader';
+
+export interface UploadCredential {
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+async function readStoredKey(): Promise<UploadCredential | null> {
+  const r = await run(`cat ${KEY_FILE} 2>/dev/null || true`);
+  const text = r.output.trim();
+  if (!text) return null;
+  try {
+    const d = JSON.parse(text);
+    return d.accessKeyId && d.secretAccessKey ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function uploadCredential(): Promise<UploadCredential> {
+  const stored = await readStoredKey();
+  if (stored) {
+    // A key file can outlive the key itself, if someone pruned keys by hand.
+    const keys = (await ga('/v2/ListKeys')) as any[];
+    if (keys.some((k) => k.id === stored.accessKeyId)) return stored;
+  }
+
+  const created = await createKey(KEY_NAME);
+  const cred: UploadCredential = {
+    accessKeyId: created.accessKeyId,
+    secretAccessKey: created.secretAccessKey,
+  };
+  await run(
+    `mkdir -p "$HOME/.config/bitroot-panel" && printf %s ${shq(
+      JSON.stringify(cred, null, 2),
+    )} > ${KEY_FILE} && chmod 600 ${KEY_FILE}`,
+  );
+  return cred;
+}
+
+// Idempotent: Garage accepts the same grant repeatedly.
+export async function ensureUploadAccess(bucketId: string): Promise<UploadCredential> {
+  const cred = await uploadCredential();
+  await allowKey(bucketId, cred.accessKeyId, { read: true, write: true, owner: false });
+  return cred;
 }
