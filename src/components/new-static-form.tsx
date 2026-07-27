@@ -30,6 +30,16 @@ interface Repo {
   pushedAt?: string;
 }
 
+interface Detection {
+  framework: string;
+  buildCmd: string;
+  outDir: string;
+  static: boolean;
+  server: boolean;
+  notes: string[];
+  packageManager: string;
+}
+
 type Source = 'github' | 'url';
 type Errors = Partial<Record<'repo' | 'urlRepo' | 'name' | 'port' | 'outDir', string>>;
 
@@ -144,6 +154,8 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
   const [branch, setBranch] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
   const [connectionId, setConnectionId] = useState('');
+  const [detection, setDetection] = useState<Detection | null>(null);
+  const [detecting, setDetecting] = useState(false);
   const [urlRepo, setUrlRepo] = useState('');
 
   const [name, setName] = useState('');
@@ -216,8 +228,30 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     if (res.ok) {
       setBranches(data.branches);
       setBranch(data.defaultBranch);
+      detect(full, data.defaultBranch, conn);
     }
   }
+
+  // Ask the repository what it is, then fill in the two fields nobody
+  // remembers: build command and output folder.
+  const detect = useCallback(async (full: string, br: string, conn: string) => {
+    setDetecting(true);
+    setDetection(null);
+    try {
+      const res = await fetch(
+        `/api/github/detect?repo=${encodeURIComponent(full)}&branch=${encodeURIComponent(br)}` +
+          (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+      );
+      const d = await res.json().catch(() => null);
+      if (res.ok && d) {
+        setDetection(d);
+        setBuildCmd(d.buildCmd);
+        setOutDir(d.outDir);
+      }
+    } finally {
+      setDetecting(false);
+    }
+  }, []);
 
   const portNum = Number(port);
   const portConflict = port ? taken.ports[portNum] : undefined;
@@ -383,7 +417,10 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                     <select
                       id="s-branch"
                       value={branch}
-                      onChange={(e) => setBranch(e.target.value)}
+                      onChange={(e) => {
+                        setBranch(e.target.value);
+                        detect(repo, e.target.value, connectionId);
+                      }}
                       className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 w-64"
                     >
                       {branches.map((b) => (
@@ -413,6 +450,50 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                   <AlertCircle size={13} /> {errors.urlRepo}
                 </p>
               )}
+            </div>
+          )}
+
+          {(detecting || detection) && (
+            <div className="fade-in-up border rounded-xl p-4 space-y-2">
+              {detecting ? (
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                  <Loader2 size={14} className="animate-spin" /> Inspecting the repository…
+                </div>
+              ) : detection ? (
+                <>
+                  <div className="flex items-center gap-2 text-sm flex-wrap">
+                    <Sparkles size={14} className="text-accent-600 dark:text-accent-400" />
+                    <span className="text-gray-700 dark:text-gray-300">Detected</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      {detection.framework}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      · {detection.packageManager}
+                      {detection.buildCmd ? ` · ${detection.buildCmd}` : ' · no build step'}
+                      {` · output ${detection.outDir}`}
+                    </span>
+                  </div>
+                  {detection.server && (
+                    <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                      <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                      <span>
+                        {detection.notes[0] ??
+                          'This project needs a running server, so a static site will not work.'}{' '}
+                        <Link href="/dashboard/new-service" className="underline">
+                          Create it as a project instead
+                        </Link>
+                        .
+                      </span>
+                    </p>
+                  )}
+                  {!detection.server &&
+                    detection.notes.map((n) => (
+                      <p key={n} className="text-xs text-gray-500 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
+                        {n}
+                      </p>
+                    ))}
+                </>
+              ) : null}
             </div>
           )}
 

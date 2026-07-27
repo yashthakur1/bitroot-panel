@@ -30,6 +30,17 @@ interface Repo {
   description?: string;
 }
 
+interface Detection {
+  framework: string;
+  buildCmd: string;
+  outDir: string;
+  hasStart: boolean;
+  static: boolean;
+  server: boolean;
+  notes: string[];
+  packageManager: string;
+}
+
 type Source = 'github' | 'url';
 type Errors = Partial<Record<'repo' | 'branch' | 'urlRepo' | 'name' | 'port', string>>;
 
@@ -183,6 +194,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   const [repo, setRepo] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
   const [connectionId, setConnectionId] = useState('');
+  const [detection, setDetection] = useState<Detection | null>(null);
+  const [detecting, setDetecting] = useState(false);
   const [branch, setBranch] = useState('');
 
   // Common fields
@@ -328,8 +341,26 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       setBranches(data.branches);
       setBranch(data.defaultBranch);
       clearError('branch');
+      detect(full, data.defaultBranch, conn);
     }
   }
+
+  // Inspect the repository so the form can say what it found — and warn when a
+  // repo has no way to start a process.
+  const detect = useCallback(async (full: string, br: string, conn: string) => {
+    setDetecting(true);
+    setDetection(null);
+    try {
+      const res = await fetch(
+        `/api/github/detect?repo=${encodeURIComponent(full)}&branch=${encodeURIComponent(br)}` +
+          (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+      );
+      const d = await res.json().catch(() => null);
+      if (res.ok && d) setDetection(d);
+    } finally {
+      setDetecting(false);
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -562,6 +593,56 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                   <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     future <code>project deploy</code> pulls the latest of this branch
                   </span>
+                  {(detecting || detection) && (
+                    <div className="fade-in-up mt-3 border rounded-xl p-4 space-y-2">
+                      {detecting ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                          <Loader2 size={14} className="animate-spin" /> Inspecting the
+                          repository…
+                        </div>
+                      ) : detection ? (
+                        <>
+                          <div className="flex items-center gap-2 text-sm flex-wrap">
+                            <Sparkles size={14} className="text-accent-600 dark:text-accent-400" />
+                            <span className="text-gray-700 dark:text-gray-300">Detected</span>
+                            <span className="font-medium text-gray-900 dark:text-gray-100">
+                              {detection.framework}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              · {detection.packageManager}
+                              {detection.buildCmd
+                                ? ` · builds with ${detection.buildCmd}`
+                                : ' · no build step'}
+                            </span>
+                          </div>
+                          {!detection.hasStart && (
+                            <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                              <span>
+                                No <code>start</code> script, so pm2 has nothing to run.
+                                {detection.static && (
+                                  <>
+                                    {' '}
+                                    This looks like a static site —{' '}
+                                    <Link href="/dashboard/new-static" className="underline">
+                                      create it as a static site
+                                    </Link>{' '}
+                                    to serve it through nginx with no Node process.
+                                  </>
+                                )}
+                              </span>
+                            </p>
+                          )}
+                          {detection.hasStart &&
+                            detection.notes.map((n) => (
+                              <p key={n} className="text-xs text-gray-500 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
+                                {n}
+                              </p>
+                            ))}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                   <FieldError msg={errors.branch} />
                 </div>
               )}
