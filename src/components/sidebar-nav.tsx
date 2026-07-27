@@ -3,17 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Box,
-  Cloud,
-  Database,
-  Github,
-  PanelsTopLeft,
-  Plus,
-  Recycle,
-  Settings,
-  ShieldCheck,
-} from 'lucide-react';
+import { Box, Cloud, Database, Github, HardDrive, PanelsTopLeft, Plus, Recycle, Settings, ShieldCheck } from 'lucide-react';
 
 interface Item {
   name: string;
@@ -71,6 +61,12 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
         href: '/dashboard/pocketbase',
         icon: <Database size={18} />,
         match: (p) => p.startsWith('/dashboard/pocketbase'),
+      },
+      {
+        name: 'Storage',
+        href: '/dashboard/storage',
+        icon: <HardDrive size={18} />,
+        match: (p) => p.startsWith('/dashboard/storage'),
       },
       {
         name: 'Routes',
