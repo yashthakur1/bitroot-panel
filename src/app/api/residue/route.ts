@@ -40,6 +40,8 @@ const SCAN = [
   'echo "##listening"',
   // Android blocks netlink, so ss sees nothing; probe each registered port.
   'for e in $(grep -E "^[a-zA-Z0-9_-]+=[0-9]+$" "$HOME/bin/ports.conf" 2>/dev/null); do p=${e#*=}; (timeout 1 bash -c "</dev/tcp/127.0.0.1/$p" 2>/dev/null && echo "$p") & done; wait',
+  'echo "##tmp"',
+  'for e in "$HOME"/tmp/*; do [ -e "$e" ] || continue; printf "%s|%s\\n" "$(basename "$e")" "$(du -sh "$e" 2>/dev/null | cut -f1)"; done',
   'echo "##static_dirs"',
   'for d in "$HOME"/apps/static/*/; do [ -d "$d" ] || continue; n=$(basename "$d"); [ -f "$HOME/etc/nginx/sites/$n.conf" ] && continue; printf "%s|%s\\n" "$n" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##dnscreated"',
@@ -253,6 +255,27 @@ export async function GET() {
     });
   }
 
+  // 5b. Scratch space: anything left in ~/tmp by a download, build workspace
+  // or test run. Nothing here is load-bearing — the tools that use it recreate
+  // what they need.
+  for (const line of section(out, 'tmp')) {
+    const [name, size] = line.split('|');
+    if (!name) continue;
+    items.push({
+      id: `tmp-${name}`,
+      category: 'Temporary files',
+      label: `~/tmp/${name}`,
+      detail: 'Scratch space from a download, build workspace or test run.',
+      size: size ?? '?',
+      hint: 'Safe to delete — anything that needs it will recreate it.',
+      action: {
+        type: 'rm-tmp',
+        target: name,
+        danger: `Deletes ~/tmp/${name}`,
+      },
+    });
+  }
+
   // 6. Caches and logs that only ever grow
   const [pm2logs] = section(out, 'pm2logs');
   if (pm2logs && pm2logs !== '0') {
@@ -318,6 +341,7 @@ const CLEANUPS: Record<string, (target: string) => string> = {
   'rm-app-dir': (t) => `rm -rf "$HOME/apps/${t}"`,
   'rm-repo': (t) => `rm -rf "$HOME/repos/${t}.git"`,
   'rm-static-dir': (t) => `rm -rf "$HOME/apps/static/${t}"`,
+  'rm-tmp': (t) => `rm -rf "$HOME/tmp/"${shq(t)}`,
   'deregister-port': (t) => `sed -i "/^${t}=/d" "$HOME/bin/ports.conf"`,
   'rm-backup': (t) => `rm -f "$HOME/backups/"${shq(t)}`,
   'rm-bak': (t) => `rm -f "$HOME/bin/"${shq(t)}`,
@@ -356,6 +380,11 @@ export async function POST(req: NextRequest) {
       } catch {
         return NextResponse.json({ error: 'could not verify pm2 state' }, { status: 500 });
       }
+    } else if (type === 'rm-tmp') {
+      if (typeof target !== 'string' || !/^[\w.-]{1,80}$/.test(target) || target.includes('..')) {
+        throw new ValidationError('invalid temporary file name');
+      }
+      safeTarget = target;
     } else if (type === 'forget-dns') {
       if (typeof target !== 'string' || !/^[a-z0-9.-]{1,80}$/.test(target)) {
         throw new ValidationError('invalid hostname');

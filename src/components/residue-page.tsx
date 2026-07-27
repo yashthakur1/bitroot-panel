@@ -50,6 +50,7 @@ const CATEGORY_ICON: Record<string, React.ReactNode> = {
   'Logs & caches': <ScrollText size={16} />,
   'Script backups': <FileClock size={16} />,
   'Cloudflare DNS records': <Cloud size={16} />,
+  'Temporary files': <FileClock size={16} />,
 };
 
 const KIND_STYLE: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
