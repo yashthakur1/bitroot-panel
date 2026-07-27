@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from './ui/button';
 import { StatCardsSkeleton } from './skeletons';
+import RemoveDialog, { type RemoveOptions } from './remove-dialog';
 import {
   PanelsTopLeft,
   ExternalLink,
@@ -85,14 +86,13 @@ export default function StaticSiteDetail({ name }: { name: string }) {
     }
   }
 
-  async function remove() {
+  async function remove(opts: RemoveOptions) {
     setBusy('remove');
-    setConfirmRemove(false);
     try {
       const res = await fetch(`/api/static/${name}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove' }),
+        body: JSON.stringify({ action: 'remove', ...opts }),
       });
       if (res.ok) {
         router.push('/dashboard/static');
@@ -122,6 +122,17 @@ export default function StaticSiteDetail({ name }: { name: string }) {
 
   return (
     <div className="space-y-6">
+      {confirmRemove && (
+        <RemoveDialog
+          name={name}
+          kind="static site"
+          hosts={(site?.urls ?? []).map((u) => u.replace('https://', ''))}
+          filesPath={`~/apps/static/${name}`}
+          busy={busy === 'remove'}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={(opts) => remove(opts)}
+        />
+      )}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
@@ -168,35 +179,14 @@ export default function StaticSiteDetail({ name }: { name: string }) {
               </>
             )}
           </Button>
-          {confirmRemove ? (
-            <div className="flex flex-col items-end gap-1.5">
-              <Button
-                variant="outline"
-                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400"
-                disabled={!!busy}
-                onClick={remove}
-              >
-                {busy === 'remove' ? 'Removing…' : 'Really remove?'}
-              </Button>
-              <p className="fade-in-up text-xs text-gray-500 dark:text-gray-400 max-w-xs text-right">
-                Drops the nginx vhost, tunnel route and port. Source and built files are
-                kept and listed on{' '}
-                <Link href="/dashboard/residue" className="underline">
-                  Residue
-                </Link>
-                .
-              </p>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              className="text-red-600 dark:text-red-400"
-              disabled={!!busy}
-              onClick={() => setConfirmRemove(true)}
-            >
-              Remove
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            className="text-red-600 dark:text-red-400"
+            disabled={!!busy}
+            onClick={() => setConfirmRemove(true)}
+          >
+            Remove
+          </Button>
         </div>
       </div>
 

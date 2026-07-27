@@ -9,6 +9,7 @@ import { Input } from './ui/input';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { humanUptime, StatusBadge, type Project } from './project-list';
 import { Shimmer, StatCardsSkeleton } from './skeletons';
+import RemoveDialog, { type RemoveOptions } from './remove-dialog';
 
 type Tab = 'overview' | 'logs' | 'environment';
 
@@ -43,6 +44,29 @@ export default function ProjectDetail({
     load();
   }, [load]);
   useLivePoll(load);
+
+  async function removeWith(opts: RemoveOptions) {
+    setBusyAction('remove');
+    setActionOutput('Removing…');
+    try {
+      const res = await fetch(`/api/projects/${name}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove', ...opts }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        router.push('/dashboard');
+        return;
+      }
+      setActionOutput(data.output ?? data.error ?? `HTTP ${res.status}`);
+    } catch (e) {
+      setActionOutput(`failed: ${(e as Error).message}`);
+    } finally {
+      setBusyAction('');
+      setConfirmRemove(false);
+    }
+  }
 
   async function runAction(action: string) {
     setBusyAction(action);
@@ -88,6 +112,18 @@ export default function ProjectDetail({
 
   return (
     <div className="space-y-6">
+      {confirmRemove && (
+        <RemoveDialog
+          name={name}
+          kind="project"
+          hosts={project?.url ? [project.url.replace('https://', '')] : []}
+          filesPath={`~/apps/${name}`}
+          repoPath={`~/repos/${name}.git`}
+          busy={busyAction === 'remove'}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={(opts) => removeWith(opts)}
+        />
+      )}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-display font-light tracking-tight">{name}</h1>
@@ -127,26 +163,7 @@ export default function ProjectDetail({
               {busyAction === 'start' ? 'Starting…' : 'Start'}
             </Button>
           )}
-          {confirmRemove ? (
-            <div className="flex flex-col items-end gap-1.5">
-              <Button
-                variant="outline"
-                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
-                disabled={!!busyAction}
-                onClick={() => runAction('remove')}
-              >
-                {busyAction === 'remove' ? 'Removing…' : 'Really remove?'}
-              </Button>
-              <p className="fade-in-up text-xs text-gray-500 dark:text-gray-400 max-w-xs text-right">
-                Stops and unregisters it, and drops the tunnel route. Project files, the
-                deploy repo and the DNS record are kept — they&apos;ll be listed on the{' '}
-                <Link href="/dashboard/residue" className="underline">
-                  Residue
-                </Link>{' '}
-                page.
-              </p>
-            </div>
-          ) : (
+          {(
             <Button
               variant="outline"
               className="text-red-600 dark:text-red-400"

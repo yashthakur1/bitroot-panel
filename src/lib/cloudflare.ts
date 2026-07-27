@@ -45,6 +45,20 @@ export async function deleteDnsRecord(id: string): Promise<void> {
   await cf(`/dns_records/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+// Delete the tunnel CNAMEs for the given hostnames. Returns what it removed,
+// so the caller can report precisely rather than claiming a clean sweep.
+export async function deleteRecordsForHosts(hosts: string[]): Promise<string[]> {
+  if (hosts.length === 0 || !dnsConfigured()) return [];
+  const wanted = new Set(hosts);
+  const removed: string[] = [];
+  for (const rec of await listTunnelRecords()) {
+    if (!wanted.has(rec.name)) continue;
+    await deleteDnsRecord(rec.id);
+    removed.push(rec.name);
+  }
+  return removed;
+}
+
 export function dnsConfigured(): boolean {
   return Boolean(ZONE && TOKEN);
 }
