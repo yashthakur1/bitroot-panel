@@ -1,0 +1,70 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Rebuild PocketBase from the latest release using Termux Go and swap it in.
+set -e
+echo "==> current: $($HOME/apps/pocketbase/pocketbase --version 2>/dev/null || echo none)"
+mkdir -p "$HOME/tmp/pb-build"
+cd "$HOME/tmp/pb-build"
+cat > main.go <<'EOF'
+package main
+
+import (
+	"log"
+	"os"
+	"path/filepath"
+
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+)
+
+// pb_public lives next to the binary, so the static root works no matter what
+// working directory pm2 happens to start us from.
+func publicDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "./pb_public"
+	}
+	return filepath.Join(filepath.Dir(exe), "pb_public")
+}
+
+func main() {
+	app := pocketbase.New()
+
+	// A custom build does not get the official binary's static handler, so add
+	// it explicitly: anything not matched by the API or admin UI falls through
+	// to pb_public.
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		se.Router.GET("/{path...}", apis.Static(os.DirFS(publicDir()), false))
+		return se.Next()
+	})
+
+	if err := app.Start(); err != nil {
+		log.Fatal(err)
+	}
+}
+EOF
+[ -f go.mod ] || go mod init pbserver >/dev/null
+echo "==> fetching latest pocketbase"
+go get github.com/pocketbase/pocketbase@latest
+go mod tidy >/dev/null 2>&1 || true
+echo "==> building (a few minutes on this chipset)"
+go build -p 2 -o pocketbase.new .
+echo "==> swapping binary and restarting"
+pm2 stop pocketbase >/dev/null 2>&1 || true
+cp "$HOME/apps/pocketbase/pocketbase" "$HOME/apps/pocketbase/pocketbase.prev" 2>/dev/null || true
+mv pocketbase.new "$HOME/apps/pocketbase/pocketbase"
+pm2 restart pocketbase >/dev/null 2>&1 || pm2 start pocketbase >/dev/null 2>&1
+sleep 4
+if curl -s -m 8 http://127.0.0.1:8090/api/health | grep -q healthy; then
+  echo "==> health check OK"
+  rm -f "$HOME/apps/pocketbase/pocketbase.prev"
+else
+  echo "==> HEALTH CHECK FAILED — rolling back"
+  mv "$HOME/apps/pocketbase/pocketbase.prev" "$HOME/apps/pocketbase/pocketbase"
+  pm2 restart pocketbase >/dev/null 2>&1
+  exit 1
+fi
+PBVER=$(grep "github.com/pocketbase/pocketbase " go.mod | grep -oE "v[0-9]+\\.[0-9]+\\.[0-9]+" | head -1)
+[ -n "$PBVER" ] && echo "$PBVER" > "$HOME/apps/pocketbase/VERSION"
+echo "==> now: ${PBVER:-unknown}"
+echo "==> done"

@@ -1,0 +1,38 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# tunnel-remove <name> — drop an ingress route from the cloudflared config.
+# The DNS CNAME is left in place (removing it needs an API token); the hostname
+# simply stops resolving to a service and falls through to the catch-all 404.
+NAME=$1
+if [ -z "$NAME" ]; then echo "Usage: tunnel-remove <name>"; exit 1; fi
+CONFIG="$HOME/.cloudflared/config.yml"
+python3 - "$CONFIG" "$NAME" <<'PYEOF'
+import sys
+
+config_file, name = sys.argv[1], sys.argv[2]
+hostname = f"{name}.bitroot.in"
+
+with open(config_file) as f:
+    lines = f.readlines()
+
+out, skip, removed = [], 0, False
+for i, line in enumerate(lines):
+    if skip:
+        skip -= 1
+        continue
+    if f"hostname: {hostname}" in line:
+        removed = True
+        skip = 1  # also drop the following "service:" line
+        # drop a preceding comment line that belongs to this entry
+        if out and out[-1].strip().startswith("#") and name in out[-1]:
+            out.pop()
+        continue
+    out.append(line)
+
+if not removed:
+    print(f"  no route found for {hostname}")
+    sys.exit(2)
+
+with open(config_file, "w") as f:
+    f.writelines(out)
+print(f"  removed route: {hostname}")
+PYEOF

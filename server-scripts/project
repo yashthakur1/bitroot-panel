@@ -1,0 +1,535 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# project — OnePlus cloud server project manager
+# Usage: project <command> [args]
+# Commands: add, clone, deploy, start, stop, restart, status, logs, url, env, remove
+
+set -e
+
+# Deployed services live under ~/apps alongside git-push apps and ~/apps/static
+# sites. (Older projects lived in ~/Downloads; project_dir falls back there so
+# anything not yet migrated keeps working.)
+PROJECTS_DIR="$HOME/apps"
+LEGACY_PROJECTS_DIR="$HOME/Downloads"
+BIN_DIR="$HOME/bin"
+PORTS_CONF="$BIN_DIR/ports.conf"
+ECOSYSTEM="$HOME/ecosystem.config.js"
+CLOUDFLARE_CONFIG="$HOME/.cloudflared/config.yml"
+DOMAIN_SUFFIX="bitroot.in"
+
+# ─── helpers ──────────────────────────────────────────────────────────────────
+
+die() { echo "error: $*" >&2; exit 1; }
+
+require_name() {
+  [ -n "$1" ] || die "project name required"
+}
+
+project_dir() {
+  if [ ! -d "$PROJECTS_DIR/$1" ] && [ -d "$LEGACY_PROJECTS_DIR/$1" ]; then
+    echo "$LEGACY_PROJECTS_DIR/$1"
+  else
+    echo "$PROJECTS_DIR/$1"
+  fi
+}
+
+# Port registry — reads/writes $PORTS_CONF
+get_port() {
+  local name="$1"
+  grep "^${name}=" "$PORTS_CONF" 2>/dev/null | cut -d= -f2
+}
+
+register_port() {
+  local name="$1" port="$2"
+  # validate port not already taken by a different project
+  local existing
+  existing=$(grep "=${port}$" "$PORTS_CONF" 2>/dev/null | cut -d= -f1)
+  if [ -n "$existing" ] && [ "$existing" != "$name" ]; then
+    die "port $port already used by project '$existing' — pick another"
+  fi
+  # upsert
+  if grep -q "^${name}=" "$PORTS_CONF" 2>/dev/null; then
+    sed -i "s/^${name}=.*/${name}=${port}/" "$PORTS_CONF"
+  else
+    echo "${name}=${port}" >> "$PORTS_CONF"
+  fi
+}
+
+deregister_port() {
+  local name="$1"
+  sed -i "/^${name}=/d" "$PORTS_CONF"
+}
+
+next_free_port() {
+  local start="${1:-3000}"
+  local port=$start
+  while grep -q "=${port}$" "$PORTS_CONF" 2>/dev/null; do
+    port=$((port + 1))
+  done
+  echo "$port"
+}
+
+# Cloudflare tunnel helpers
+tunnel_add_route() {
+  local name="$1" port="$2"
+  local entry="  - hostname: ${name}.${DOMAIN_SUFFIX}\n    service: http://localhost:${port}"
+  # Check if already present
+  if grep -q "${name}.${DOMAIN_SUFFIX}" "$CLOUDFLARE_CONFIG" 2>/dev/null; then
+    echo "  tunnel route for ${name}.${DOMAIN_SUFFIX} already exists"
+    return
+  fi
+  # Insert before the final catch-all line (service: http_status:404 or similar)
+  # We append before the last ingress entry
+  python3 - "$CLOUDFLARE_CONFIG" "$name" "$port" "$DOMAIN_SUFFIX" <<'PYEOF'
+import sys, re
+
+config_file, name, port, domain = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+with open(config_file, 'r') as f:
+    content = f.read()
+
+new_entry = f"  - hostname: {name}.{domain}\n    service: http://localhost:{port}\n"
+
+# Insert before last ingress entry (catch-all)
+# Find the last "  - " that has no hostname (catch-all service)
+lines = content.split('\n')
+insert_at = None
+for i, line in enumerate(lines):
+    if line.strip().startswith('- service:') or (line.strip().startswith('- hostname:') is False and '- service:' in line):
+        insert_at = i
+        break
+
+if insert_at is None:
+    # fallback: find last "- hostname:" and insert after its block
+    for i in range(len(lines)-1, -1, -1):
+        if '- hostname:' in lines[i]:
+            insert_at = i + 2
+            break
+
+if insert_at is None:
+    insert_at = len(lines) - 1
+
+lines.insert(insert_at, f"  - hostname: {name}.{domain}")
+lines.insert(insert_at + 1, f"    service: http://localhost:{port}")
+
+with open(config_file, 'w') as f:
+    f.write('\n'.join(lines))
+print(f"  added route: {name}.{domain} → localhost:{port}")
+PYEOF
+}
+
+tunnel_remove_route() {
+  local name="$1"
+  python3 - "$CLOUDFLARE_CONFIG" "$name" "$DOMAIN_SUFFIX" <<'PYEOF'
+import sys
+
+config_file, name, domain = sys.argv[1], sys.argv[2], sys.argv[3]
+hostname = f"{name}.{domain}"
+
+with open(config_file, 'r') as f:
+    lines = f.readlines()
+
+new_lines = []
+skip_next = False
+for line in lines:
+    if skip_next:
+        skip_next = False
+        continue
+    if hostname in line:
+        skip_next = True  # skip the "service:" line that follows
+        continue
+    new_lines.append(line)
+
+with open(config_file, 'w') as f:
+    f.writelines(new_lines)
+print(f"  removed route: {hostname}")
+PYEOF
+}
+
+restart_cloudflared() {
+  pkill -HUP cloudflared 2>/dev/null || true
+  echo "  cloudflared reloaded"
+}
+
+# PM2 helpers
+pm2_app_exists() {
+  pm2 list 2>/dev/null | grep -q "$1"
+}
+
+# ─── build helpers (added by BitPanel) ───────────────────────────────────────
+
+# Install dependencies, and build when the project defines a build script.
+# A project with a build needs devDependencies, so an --omit=dev install would
+# break it — that is why this branches instead of always installing prod-only.
+install_and_build() {
+  local dir="$1"
+  [ -f "$dir/package.json" ] || return 0
+  local has_build=0
+  node -e "const s=require('$dir/package.json').scripts||{};process.exit(s.build?0:1)" 2>/dev/null && has_build=1
+  if [ "$has_build" = 1 ]; then
+    echo "  installing dependencies (including dev — project has a build step)..."
+    (cd "$dir" && npm install --no-audit --no-fund 2>&1 | tail -3)
+    echo "  building..."
+    (cd "$dir" && NODE_OPTIONS=--max-old-space-size=2048 npm run build 2>&1 | tail -8)
+  else
+    echo "  installing dependencies..."
+    (cd "$dir" && npm install --omit=dev --no-audit --no-fund 2>&1 | tail -3)
+  fi
+}
+
+# Verify the app is actually up after a restart rather than assuming success.
+health_check() {
+  local name="$1" port
+  port=$(get_port "$name")
+  sleep 3
+  local status
+  status=$(pm2 jlist 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const a=JSON.parse(d).find(x=>x.name===process.argv[1]);console.log(a?a.pm2_env.status:'missing')}catch(e){console.log('unknown')}})" "$name" 2>/dev/null)
+  if [ "$status" != "online" ]; then
+    echo "  WARNING: pm2 reports '$status' — inspect with: project logs $name"
+    return 1
+  fi
+  if [ -z "$port" ]; then
+    echo "  health: online"
+    return 0
+  fi
+  # Android blocks netlink, so ss/netstat see nothing here — probe the socket
+  # directly instead. Retry: an app may still be warming up.
+  local i
+  for i in 1 2 3 4 5 6; do
+    if timeout 2 bash -c "</dev/tcp/127.0.0.1/$port" 2>/dev/null; then
+      echo "  health: online, accepting connections on $port"
+      return 0
+    fi
+    sleep 2
+  done
+  echo "  WARNING: online in pm2 but nothing is accepting on $port after 12s"
+  return 1
+}
+
+# ─── commands ─────────────────────────────────────────────────────────────────
+
+cmd_add() {
+  # project add <name> <port> [start-command]
+  local name="$1" port="$2" cmd="${3:-npm start}"
+  require_name "$name"
+  [ -n "$port" ] || die "port required"
+  local dir
+  dir=$(project_dir "$name")
+  [ -d "$dir" ] || die "directory $dir does not exist — run 'project clone' first"
+
+  register_port "$name" "$port"
+
+  # Add to ecosystem.config.js
+  node - "$ECOSYSTEM" "$name" "$dir" "$port" "$cmd" <<'JSEOF'
+const fs = require('fs');
+const file = process.argv[2];
+const [,, name, dir, port, cmd] = process.argv;
+
+let config = { apps: [] };
+try { config = require(file); } catch(e) {}
+
+const exists = config.apps.find(a => a.name === name);
+if (!exists) {
+  config.apps.push({
+    name,
+    cwd: dir,
+    script: cmd.split(' ')[0],
+    args: cmd.split(' ').slice(1).join(' ') || undefined,
+    env: { PORT: port, NODE_ENV: 'production' },
+    restart_delay: 3000,
+    max_restarts: 10
+  });
+  const out = 'module.exports = ' + JSON.stringify(config, null, 2) + ';\n';
+  fs.writeFileSync(file, out);
+  console.log(`  registered ${name} (port ${port}) in ecosystem.config.js`);
+} else {
+  console.log(`  ${name} already in ecosystem.config.js`);
+}
+JSEOF
+
+  pm2 start "$ECOSYSTEM" --only "$name" 2>/dev/null || pm2 restart "$name" 2>/dev/null || true
+  pm2 save
+  echo "added: $name on port $port"
+}
+
+cmd_clone() {
+  # project clone <name> <repo-url> <port> [branch] [--no-tunnel]
+  local name="$1" repo="$2" port="$3" branch="$4" tunnelflag="$5"
+  require_name "$name"
+  [ -n "$repo" ] || die "repo URL required"
+  [ -n "$port" ] || die "port required — use 'project clone <name> <repo> <port>'"
+
+  local dir
+  dir=$(project_dir "$name")
+
+  echo "=== cloning $name ==="
+
+  # 1. clone repo
+  if [ -d "$dir" ]; then
+    echo "  directory $dir already exists — skipping clone"
+  else
+    if [ -n "$branch" ]; then
+      git clone --progress -b "$branch" "$repo" "$dir"
+    else
+      git clone --progress "$repo" "$dir"
+    fi
+    echo "  cloned to $dir"
+  fi
+
+  # 2. install deps (and build, if the project has one)
+  install_and_build "$dir"
+
+  # 3. register port
+  register_port "$name" "$port"
+
+  # 4. add to PM2 ecosystem
+  node - "$ECOSYSTEM" "$name" "$dir" "$port" <<'JSEOF'
+const fs = require('fs');
+const [,, file, name, dir, port] = process.argv;
+
+let src = '';
+try { src = fs.readFileSync(file, 'utf8'); } catch(e) {}
+let config = { apps: [] };
+try { config = eval(src.replace('module.exports =', '(')) || config; } catch(e) {}
+if (!Array.isArray(config.apps)) config.apps = [];
+
+const exists = config.apps.find(a => a.name === name);
+if (!exists) {
+  config.apps.push({
+    name,
+    cwd: dir,
+    script: 'npm',
+    args: 'start',
+    env: { PORT: port, NODE_ENV: 'production' },
+    restart_delay: 3000,
+    max_restarts: 10
+  });
+  const out = 'module.exports = ' + JSON.stringify(config, null, 2) + ';\n';
+  fs.writeFileSync(file, out);
+  console.log('  registered in ecosystem.config.js');
+} else {
+  console.log('  already in ecosystem.config.js');
+}
+JSEOF
+
+  # 5. start with PM2
+  pm2 start "$ECOSYSTEM" --only "$name" 2>/dev/null || pm2 restart "$name"
+  pm2 save
+  echo "  PM2: started $name"
+
+  # 6. add Cloudflare tunnel route (unless internal-only)
+  if [ "$tunnelflag" = "--no-tunnel" ]; then
+    echo "  skipping tunnel route (internal / Tailscale only)"
+  else
+    tunnel_add_route "$name" "$port"
+    restart_cloudflared
+  fi
+
+  # 7. summary
+  echo ""
+  echo "=== setup complete ==="
+  echo "  name:  $name"
+  echo "  dir:   $dir"
+  echo "  port:  $port"
+  echo "  url:   https://${name}.${DOMAIN_SUFFIX}"
+  echo ""
+  echo "=== checklist ==="
+  echo "  [ ] add GET /health endpoint → { status: 'ok', uptime: process.uptime() }"
+  echo "  [ ] set env vars: project env $name KEY=VALUE"
+  echo "  [ ] add GitHub Actions caller: see ~/bitroot-oneplus-docs/bitroot-employee-setup.md"
+  echo ""
+  echo "live at https://${name}.${DOMAIN_SUFFIX}"
+}
+
+cmd_deploy() {
+  # project deploy <name>
+  local name="$1"
+  require_name "$name"
+  local dir
+  dir=$(project_dir "$name")
+  [ -d "$dir" ] || die "project directory $dir not found"
+
+  echo "=== deploying $name ==="
+
+  # 1. pull latest
+  echo "  pulling latest..."
+  # --ff-only: never create a surprise merge commit on the server; a diverged
+  # checkout should fail loudly instead of silently merging.
+  (cd "$dir" && git pull --ff-only) || die "git pull failed (diverged? uncommitted changes?)"
+
+  # 2. install deps (and build, if the project has one)
+  install_and_build "$dir"
+
+  # 3. restart (or start if not running)
+  echo "  restarting..."
+  if pm2 restart "$name" 2>/dev/null; then
+    true
+  else
+    echo "  (not running — starting fresh)"
+    pm2 start "$ECOSYSTEM" --only "$name" 2>/dev/null || \
+    pm2 start "$dir/server.js" --name "$name" --cwd "$dir" 2>/dev/null || true
+  fi
+  pm2 save
+
+  health_check "$name" || true
+
+  echo "=== deployed $name ==="
+}
+
+cmd_env() {
+  # project env <name> <KEY=VALUE> [KEY=VALUE ...]
+  local name="$1"
+  require_name "$name"
+  shift
+  [ $# -gt 0 ] || die "at least one KEY=VALUE required"
+  local dir
+  dir=$(project_dir "$name")
+  [ -d "$dir" ] || die "project directory $dir not found"
+
+  local env_file="$dir/.env"
+
+  for kv in "$@"; do
+    local key="${kv%%=*}"
+    local val="${kv#*=}"
+    if grep -q "^${key}=" "$env_file" 2>/dev/null; then
+      sed -i "s/^${key}=.*/${key}=${val}/" "$env_file"
+      echo "  updated $key"
+    else
+      echo "${key}=${val}" >> "$env_file"
+      echo "  added $key"
+    fi
+  done
+
+  echo "  .env written to $env_file"
+  echo "  restart to apply: project restart $name"
+}
+
+cmd_remove() {
+  # project remove <name>
+  local name="$1"
+  require_name "$name"
+
+  echo "=== removing $name ==="
+
+  # 1. stop + delete from PM2
+  pm2 delete "$name" 2>/dev/null || echo "  (not in PM2 or already removed)"
+  pm2 save
+
+  # 2. remove tunnel route
+  tunnel_remove_route "$name"
+  restart_cloudflared
+
+  # 3. deregister port
+  deregister_port "$name"
+
+  # 4. update ecosystem.config.js
+  node - "$ECOSYSTEM" "$name" <<'JSEOF'
+const fs = require('fs');
+const [,, file, name] = process.argv;
+let src = '';
+try { src = fs.readFileSync(file, 'utf8'); } catch(e) { process.exit(0); }
+let config = { apps: [] };
+try { config = eval(src.replace('module.exports =', '(')) || config; } catch(e) {}
+config.apps = config.apps.filter(a => a.name !== name);
+const out = 'module.exports = ' + JSON.stringify(config, null, 2) + ';\n';
+fs.writeFileSync(file, out);
+console.log('  removed from ecosystem.config.js');
+JSEOF
+
+  echo "  NOTE: project files at $(project_dir $name) were NOT deleted"
+  echo "  To delete: rm -rf $(project_dir $name)"
+  echo "removed: $name"
+}
+
+cmd_start() {
+  local name="$1"
+  require_name "$name"
+  pm2 start "$ECOSYSTEM" --only "$name" 2>/dev/null || pm2 start "$name"
+  pm2 save
+}
+
+cmd_stop() {
+  local name="$1"
+  require_name "$name"
+  pm2 stop "$name"
+}
+
+cmd_restart() {
+  local name="$1"
+  require_name "$name"
+  pm2 restart "$name"
+}
+
+cmd_logs() {
+  local name="$1"
+  require_name "$name"
+  pm2 logs "$name" --lines 50
+}
+
+cmd_status() {
+  echo "=== projects ==="
+  pm2 list
+  echo ""
+  echo "=== port registry ==="
+  if [ -f "$PORTS_CONF" ]; then
+    while IFS='=' read -r name port; do
+      [ -n "$name" ] && [ -n "$port" ] || continue
+      # skip comments and anything that is not name=port
+      case "$name" in \#*) continue ;; esac
+      case "$port" in ''|*[!0-9]*) continue ;; esac
+      printf "  %-20s port %-6s  https://%s.%s\n" "$name" "$port" "$name" "$DOMAIN_SUFFIX"
+    done < "$PORTS_CONF"
+  else
+    echo "  (no ports registered)"
+  fi
+}
+
+cmd_url() {
+  local name="$1"
+  require_name "$name"
+  local port
+  port=$(get_port "$name")
+  if [ -n "$port" ]; then
+    echo "https://${name}.${DOMAIN_SUFFIX}  (localhost:${port})"
+  else
+    echo "no URL registered for $name"
+  fi
+}
+
+# ─── dispatch ─────────────────────────────────────────────────────────────────
+
+COMMAND="${1:-}"
+shift 2>/dev/null || true
+
+case "$COMMAND" in
+  add)      cmd_add "$@" ;;
+  clone)    cmd_clone "$@" ;;
+  deploy)   cmd_deploy "$@" ;;
+  env)      cmd_env "$@" ;;
+  remove)   cmd_remove "$@" ;;
+  start)    cmd_start "$@" ;;
+  stop)     cmd_stop "$@" ;;
+  restart)  cmd_restart "$@" ;;
+  logs)     cmd_logs "$@" ;;
+  status)   cmd_status ;;
+  url)      cmd_url "$@" ;;
+  *)
+    cat <<EOF
+usage: project <command> [args]
+
+commands:
+  clone  <name> <repo-url> <port>   clone + register + start + add tunnel
+  deploy <name>                     git pull + install/build + restart + health check
+  env    <name> <KEY=VALUE> ...     write env vars to ~/Downloads/<name>/.env
+  remove <name>                     pm2 delete + remove tunnel + deregister port
+
+  add     <name> <port> [cmd]       register existing dir with PM2
+  start   <name>                    start project
+  stop    <name>                    stop project
+  restart <name>                    restart project
+  logs    <name>                    tail PM2 logs
+  status                            show all projects + URLs
+  url     <name>                    print project URL
+EOF
+    exit 1
+    ;;
+esac

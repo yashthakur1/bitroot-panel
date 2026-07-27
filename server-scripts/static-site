@@ -1,0 +1,178 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# static-site — build-and-serve static sites through nginx (no pm2 process).
+# Usage: static-site <command> [args]
+#   create <name> <port> <repo> [branch] [--no-tunnel]   env: BUILD_CMD, OUT_DIR
+#   deploy <name>          git pull + rebuild + reload
+#   remove <name>          drop vhost + tunnel route + port registration
+#   list                   registered sites
+set -e
+
+SITES_DIR="$HOME/apps/static"
+NGINX_SITES="$HOME/etc/nginx/sites"
+PORTS_CONF="$HOME/bin/ports.conf"
+DOMAIN_SUFFIX="bitroot.in"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+reload_nginx() {
+  nginx -t >/dev/null 2>&1 || { nginx -t; die "nginx config test failed"; }
+  # nginx runs under pm2 (daemon off), so prefer a signal reload and fall back
+  # to pm2 if there is no master to signal.
+  if nginx -s reload >/dev/null 2>&1; then
+    echo "  nginx reloaded"
+  elif pm2 describe nginx >/dev/null 2>&1; then
+    pm2 restart nginx >/dev/null 2>&1
+    echo "  nginx restarted via pm2"
+  else
+    nginx
+    echo "  nginx started"
+  fi
+}
+
+write_vhost() {
+  local name="$1" port="$2" root="$3"
+  cat > "$NGINX_SITES/$name.conf" <<EOF
+# $name — managed by BitPanel
+server {
+    listen $port;
+    server_name $name.$DOMAIN_SUFFIX _;
+    root $root;
+    index index.html;
+    access_log $HOME/var/log/nginx/$name.access.log;
+    error_log  $HOME/var/log/nginx/$name.error.log;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # hashed build assets are safe to cache hard
+    location ~* \.(js|css|woff2?|png|jpe?g|gif|svg|ico|webp|avif)\$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files \$uri =404;
+    }
+
+    # SPA fallback: unknown paths serve index.html
+    location / {
+        try_files \$uri \$uri/ \$uri.html /index.html;
+    }
+}
+EOF
+}
+
+register_port() {
+  local name="$1" port="$2"
+  local existing
+  existing=$(grep "=${port}\$" "$PORTS_CONF" 2>/dev/null | cut -d= -f1 || true)
+  [ -n "$existing" ] && [ "$existing" != "$name" ] && die "port $port already used by '$existing'"
+  grep -q "^${name}=" "$PORTS_CONF" 2>/dev/null \
+    && sed -i "s/^${name}=.*/${name}=${port}/" "$PORTS_CONF" \
+    || echo "${name}=${port}" >> "$PORTS_CONF"
+}
+
+build_site() {
+  local name="$1" dir="$2"
+  # shellcheck disable=SC1091
+  . "$dir/.staticrc"
+  cd "$dir/src"
+  if [ -f package.json ]; then
+    echo "  installing dependencies..."
+    npm install --no-audit --no-fund 2>&1 | tail -3
+    if [ -n "$BUILD_CMD" ]; then
+      echo "  building: $BUILD_CMD"
+      NODE_OPTIONS=--max-old-space-size=2048 sh -c "$BUILD_CMD"
+    fi
+  fi
+  [ -d "$dir/src/$OUT_DIR" ] || die "build output '$OUT_DIR' not found in the repo"
+  rm -rf "$dir/public"
+  cp -r "$dir/src/$OUT_DIR" "$dir/public"
+  echo "  published $(du -sh "$dir/public" | cut -f1) from $OUT_DIR"
+}
+
+cmd_create() {
+  local name="$1" port="$2" repo="$3" branch="$4" tunnelflag="$5"
+  [ -n "$name" ] && [ -n "$port" ] && [ -n "$repo" ] || die "usage: static-site create <name> <port> <repo> [branch]"
+  local dir="$SITES_DIR/$name"
+  [ -d "$dir" ] && die "static site '$name' already exists"
+
+  echo "=== creating static site $name ==="
+  mkdir -p "$dir"
+  # %q so values with spaces (build commands) survive being sourced back
+  printf 'BUILD_CMD=%q\nOUT_DIR=%q\nPORT=%q\nREPO=%q\nBRANCH=%q\n' \
+    "${BUILD_CMD:-npm run build}" "${OUT_DIR:-dist}" "$port" "$repo" "${branch:-}" > "$dir/.staticrc"
+
+  echo "  cloning..."
+  if [ -n "$branch" ]; then
+    git clone --progress -b "$branch" "$repo" "$dir/src"
+  else
+    git clone --progress "$repo" "$dir/src"
+  fi
+
+  build_site "$name" "$dir"
+  register_port "$name" "$port"
+  write_vhost "$name" "$port" "$dir/public"
+  reload_nginx
+
+  if [ "$tunnelflag" = "--no-tunnel" ]; then
+    echo "  skipping tunnel route (private)"
+  else
+    tunnel-add "$name" "$port" >/dev/null 2>&1 || echo "  (tunnel route already present)"
+    pm2 restart cloudflared >/dev/null 2>&1 || true
+    echo "  published at https://$name.$DOMAIN_SUFFIX"
+  fi
+  echo "=== setup complete ==="
+}
+
+cmd_deploy() {
+  local name="$1"
+  local dir="$SITES_DIR/$name"
+  [ -d "$dir" ] || die "no static site named '$name'"
+  echo "=== deploying $name ==="
+  (cd "$dir/src" && git pull --ff-only)
+  build_site "$name" "$dir"
+  reload_nginx
+  echo "=== deployed $name ==="
+}
+
+cmd_remove() {
+  local name="$1"
+  local dir="$SITES_DIR/$name"
+  echo "=== removing $name ==="
+  rm -f "$NGINX_SITES/$name.conf"
+  reload_nginx
+  tunnel-remove "$name" >/dev/null 2>&1 && pm2 restart cloudflared >/dev/null 2>&1 || true
+  sed -i "/^${name}=/d" "$PORTS_CONF" 2>/dev/null || true
+  echo "  NOTE: files at $dir were NOT deleted"
+  echo "removed: $name"
+}
+
+cmd_list() {
+  for d in "$SITES_DIR"/*/; do
+    [ -f "$d/.staticrc" ] || continue
+    local n
+    n=$(basename "$d")
+    # shellcheck disable=SC1091
+    . "$d/.staticrc"
+    printf '%s|%s|%s|%s|%s\n' "$n" "$PORT" "$(du -sh "$d/public" 2>/dev/null | cut -f1)" \
+      "$([ -f "$NGINX_SITES/$n.conf" ] && echo served || echo unserved)" "$BRANCH"
+  done
+}
+
+COMMAND="${1:-}"
+shift 2>/dev/null || true
+case "$COMMAND" in
+  create) cmd_create "$@" ;;
+  deploy) cmd_deploy "$@" ;;
+  remove) cmd_remove "$@" ;;
+  list)   cmd_list ;;
+  *)
+    cat <<EOF
+usage: static-site <command> [args]
+
+  create <name> <port> <repo> [branch] [--no-tunnel]   BUILD_CMD/OUT_DIR via env
+  deploy <name>     git pull + rebuild + nginx reload
+  remove <name>     drop vhost, tunnel route and port (keeps files)
+  list              registered sites
+EOF
+    exit 1
+    ;;
+esac
