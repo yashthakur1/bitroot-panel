@@ -20,7 +20,7 @@ const SCAN = [
   'echo "##project_dirs"',
   'for d in "$HOME"/Downloads/*/; do [ -d "$d" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##app_dirs"',
-  'for d in "$HOME"/apps/*/; do [ -d "$d" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
+  'for d in "$HOME"/apps/*/; do [ -d "$d" ] || continue; n=$(basename "$d"); [ "$n" = "static" ] && continue; printf "%s|%s\\n" "$n" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##remotes"',
   'for d in "$HOME"/Downloads/*/ "$HOME"/apps/*/; do [ -d "$d.git" ] || [ -d "$d/.git" ] || continue; printf "%s|%s\\n" "$(basename "$d")" "$(git -C "$d" remote get-url origin 2>/dev/null)"; done',
   'echo "##repos"',
@@ -40,6 +40,8 @@ const SCAN = [
   'echo "##listening"',
   // Android blocks netlink, so ss sees nothing; probe each registered port.
   'for e in $(grep -E "^[a-zA-Z0-9_-]+=[0-9]+$" "$HOME/bin/ports.conf" 2>/dev/null); do p=${e#*=}; (timeout 1 bash -c "</dev/tcp/127.0.0.1/$p" 2>/dev/null && echo "$p") & done; wait',
+  'echo "##static_dirs"',
+  'for d in "$HOME"/apps/static/*/; do [ -d "$d" ] || continue; n=$(basename "$d"); [ -f "$HOME/etc/nginx/sites/$n.conf" ] && continue; printf "%s|%s\\n" "$n" "$(du -sh "$d" 2>/dev/null | cut -f1)"; done',
   'echo "##dnscreated"',
   'cat "$HOME/.config/bitpanel/dns-created.txt" 2>/dev/null || true',
   'echo "##routes"',
@@ -144,6 +146,26 @@ export async function GET() {
         target: name,
         danger: `Permanently deletes ~/apps/${name} including its .env`,
       },
+      hint: 'If this was a git-push app, its deploy repo under ~/repos may also be listed below.',
+    });
+  }
+
+  // 2b. Static sites whose nginx vhost is gone
+  for (const line of section(out, 'static_dirs')) {
+    const [name, size] = line.split('|');
+    if (!name) continue;
+    items.push({
+      id: `staticdir-${name}`,
+      category: 'Orphaned static sites',
+      label: `~/apps/static/${name}`,
+      detail: `Removed from nginx, so nothing serves it — the source and built files remain. ${backedUp(name)}`,
+      size: size ?? '?',
+      hint: 'Deleting frees the space; keeping it lets you re-create the site without cloning again.',
+      action: {
+        type: 'rm-static-dir',
+        target: name,
+        danger: `Permanently deletes ~/apps/static/${name} (source and build output)`,
+      },
     });
   }
 
@@ -240,6 +262,7 @@ export async function GET() {
       label: 'pm2 logs',
       detail: 'Accumulated stdout/stderr for every app. Flushing keeps apps running.',
       size: pm2logs,
+      hint: 'Flush after you have read anything you need — running apps keep logging normally.',
       action: { type: 'flush-pm2-logs', target: 'all', danger: 'Truncates all pm2 log files' },
     });
   }
@@ -251,6 +274,7 @@ export async function GET() {
       label: 'npm cache',
       detail: 'Rebuilt automatically on the next install — safe to clear, costs download time.',
       size: npmCache,
+      hint: 'Clearing costs nothing but slower first installs afterwards.',
       action: { type: 'clean-npm-cache', target: 'all', danger: 'Clears the npm cache' },
     });
   }
@@ -262,6 +286,7 @@ export async function GET() {
       label: 'Go module cache',
       detail: 'Only needed while rebuilding PocketBase; re-downloaded on the next upgrade.',
       size: goCache,
+      hint: 'Only needed during a PocketBase upgrade — it re-downloads automatically.',
       action: { type: 'clean-go-cache', target: 'all', danger: 'Clears ~/go/pkg/mod' },
     });
   }
@@ -281,6 +306,7 @@ export async function GET() {
         target: file,
         danger: 'Deletes the rollback copy of that script',
       },
+      hint: 'Keep the most recent one until you are happy the upgraded script behaves.',
     });
   }
 
@@ -291,6 +317,7 @@ const CLEANUPS: Record<string, (target: string) => string> = {
   'rm-project-dir': (t) => `rm -rf "$HOME/Downloads/${t}"`,
   'rm-app-dir': (t) => `rm -rf "$HOME/apps/${t}"`,
   'rm-repo': (t) => `rm -rf "$HOME/repos/${t}.git"`,
+  'rm-static-dir': (t) => `rm -rf "$HOME/apps/static/${t}"`,
   'deregister-port': (t) => `sed -i "/^${t}=/d" "$HOME/bin/ports.conf"`,
   'rm-backup': (t) => `rm -f "$HOME/backups/"${shq(t)}`,
   'rm-bak': (t) => `rm -f "$HOME/bin/"${shq(t)}`,
@@ -312,7 +339,9 @@ export async function POST(req: NextRequest) {
     }
 
     let safeTarget = 'all';
-    if (['rm-project-dir', 'rm-app-dir', 'rm-repo', 'deregister-port'].includes(type)) {
+    if (
+      ['rm-project-dir', 'rm-app-dir', 'rm-repo', 'rm-static-dir', 'deregister-port'].includes(type)
+    ) {
       safeTarget = assertName(target);
       const check = await runCached('pm2 jlist');
       try {
