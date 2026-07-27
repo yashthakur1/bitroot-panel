@@ -3,7 +3,13 @@ import { run, runCached, runStream } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 
-const SYSTEM_APPS = new Set(['cloudflared', 'deploy-webhook', 'bitroot-panel']);
+const SYSTEM_APPS = new Set([
+  'cloudflared',
+  'deploy-webhook',
+  'bitroot-panel',
+  'nginx',
+  'pocketbase',
+]);
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
 
 export interface Project {

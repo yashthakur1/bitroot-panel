@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, Mail, Lock } from 'lucide-react';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
+import { Tabs } from './ui/tabs';
 
 interface AccessPolicy {
   name: string;
@@ -24,7 +25,10 @@ interface IamState {
   users: Array<{ email: string; apps: string[] }>;
 }
 
-export default function IamPage() {
+type Tab = 'users' | 'apps';
+
+export default function IamPage({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(initialTab === 'apps' ? 'apps' : 'users');
   const [state, setState] = useState<IamState | null>(null);
   const [error, setError] = useState('');
 
@@ -54,6 +58,15 @@ export default function IamPage() {
         </p>
       </div>
 
+      <Tabs
+        tabs={[
+          { key: 'users', label: 'Users', count: state?.users.length },
+          { key: 'apps', label: 'Protected applications', count: state?.apps.length },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {!state && !error && (
@@ -74,7 +87,7 @@ export default function IamPage() {
       {state?.configured && (
         <>
           {/* Users */}
-          <div>
+          <div className={tab === 'users' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Mail size={18} className="text-gray-500 dark:text-gray-400" />
               Users
@@ -113,7 +126,7 @@ export default function IamPage() {
           </div>
 
           {/* Applications */}
-          <div>
+          <div className={tab === 'apps' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <ShieldCheck size={18} className="text-gray-500 dark:text-gray-400" />
               Protected applications

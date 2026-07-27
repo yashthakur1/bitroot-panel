@@ -2,83 +2,26 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Plus, Globe, Settings, ShieldCheck, LogOut } from 'lucide-react';
+import { Plus, Settings, ShieldCheck, LogOut } from 'lucide-react';
 import ThemeToggle from './theme-toggle';
 import Logo from './logo';
 
 export default function DashboardNav() {
-  const pathname = usePathname();
-
-  const serviceMatch = pathname.match(/^\/dashboard\/services\/([^/]+)/);
-  const isNewService = pathname.includes('/new-service');
-
   return (
     <header className="border-b border-gray-200 dark:border-gray-800">
       <div className="flex items-center justify-between h-14 px-4">
-        <div className="flex items-center space-x-4">
-          <Link
-            href="/dashboard"
-            aria-label="BitPanel home"
-            className="flex items-center gap-2 text-gray-900 dark:text-gray-100 transition-opacity hover:opacity-70"
-          >
-            <Logo size={22} />
-            <span className="font-display font-medium">BitPanel</span>
-          </Link>
-          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-            <Link href="/dashboard" className="hover:text-gray-900 dark:hover:text-gray-100">
-              Projects
-            </Link>
-            {serviceMatch && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200 flex items-center">
-                  <Globe size={14} className="mr-1" />
-                  {serviceMatch[1]}
-                </span>
-              </>
-            )}
-            {isNewService && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">New project</span>
-              </>
-            )}
-            {pathname.startsWith('/dashboard/tunnel') && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">Routes</span>
-              </>
-            )}
-            {pathname.startsWith('/dashboard/iam') && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">IAM</span>
-              </>
-            )}
-            {pathname.startsWith('/dashboard/pocketbase') && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">PocketBase</span>
-              </>
-            )}
-            {pathname.startsWith('/dashboard/residue') && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">Residue</span>
-              </>
-            )}
-            {pathname.startsWith('/dashboard/config') && (
-              <>
-                <span className="mx-2 text-gray-400">/</span>
-                <span className="font-medium text-gray-800 dark:text-gray-200">Config</span>
-              </>
-            )}
-          </div>
-        </div>
+        <Link
+          href="/dashboard"
+          aria-label="BitPanel home"
+          className="flex items-center gap-2 text-gray-900 dark:text-gray-100 transition-opacity hover:opacity-70"
+        >
+          <Logo size={22} />
+          <span className="font-display font-medium">BitPanel</span>
+        </Link>
+
         <div className="flex items-center space-x-2">
           <Link href="/dashboard/new-service">
-            <button className="flex items-center bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 rounded-md px-2 py-1.5 border">
+            <button className="flex items-center bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 rounded-md px-2 py-1.5 border border-gray-200 dark:border-gray-800 transition-colors">
               <Plus className="h-4 w-4 mr-1" />
               <span className="text-sm font-medium">New</span>
             </button>
@@ -99,10 +42,7 @@ function ProfileMenu() {
 
   return (
     <div className="relative group">
-      <button
-        aria-label="Profile"
-        className="w-10 h-10 flex items-center justify-center"
-      >
+      <button aria-label="Profile" className="w-10 h-10 flex items-center justify-center">
         <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center transition-transform group-hover:scale-105">
           <span className="text-white font-medium text-sm">Y</span>
         </div>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { TableSkeleton } from './skeletons';
+import { Tabs } from './ui/tabs';
 import {
   Trash2,
   Loader2,
@@ -91,7 +92,10 @@ function humanBytes(n: number): string {
   return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)}${units[i]}`;
 }
 
-export default function ResiduePage() {
+type Tab = 'found' | 'ledger';
+
+export default function ResiduePage({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(initialTab === 'ledger' ? 'ledger' : 'found');
   const [items, setItems] = useState<ResidueItem[] | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [error, setError] = useState('');
@@ -196,8 +200,17 @@ export default function ResiduePage() {
             </div>
           </div>
 
+          <Tabs
+            tabs={[
+              { key: 'found', label: 'Found on device', count: items.length },
+              { key: 'ledger', label: 'Recent actions', count: ledger.length },
+            ]}
+            active={tab}
+            onChange={setTab}
+          />
+
           {/* Ledger — what panel actions knowingly left behind */}
-          <div>
+          <div className={tab === 'ledger' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-1 flex items-center gap-2">
               <Info size={18} className="text-gray-500 dark:text-gray-400" />
               What recent actions left behind
@@ -259,7 +272,7 @@ export default function ResiduePage() {
           </div>
 
           {/* Live scan findings */}
-          <div>
+          <div className={tab === 'found' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-1">Found on the device</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
               A live scan of the phone, independent of what the panel did.

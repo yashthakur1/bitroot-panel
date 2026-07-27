@@ -136,7 +136,8 @@ export default function ProjectList() {
     }
   }
 
-  const apps = projects?.filter((p) => !p.system) ?? [];
+  // static sites live on their own page; this table is services + system
+  const apps = projects?.filter((p) => !p.system && p.type !== 'static') ?? [];
   const system = projects?.filter((p) => p.system) ?? [];
   const active = apps.filter((p) => p.status === 'online');
   const suspended = apps.filter((p) => p.status !== 'online');
@@ -155,7 +156,7 @@ export default function ProjectList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-display font-light tracking-tight">Overview</h1>
+        <h1 className="text-3xl font-display font-light tracking-tight">Projects</h1>
         <div className="flex items-center space-x-3">
           <button
             onClick={load}

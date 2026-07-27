@@ -1,7 +1,7 @@
 import DashboardLayout from '@/components/dashboard-layout';
-import TunnelPage from '@/components/tunnel-page';
+import StaticSitesPage from '@/components/static-sites-page';
 
-export default async function RoutesDashboardPage({
+export default async function StaticSitesDashboardPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>;
@@ -9,7 +9,7 @@ export default async function RoutesDashboardPage({
   const { tab } = await searchParams;
   return (
     <DashboardLayout>
-      <TunnelPage initialTab={tab} />
+      <StaticSitesPage initialTab={tab} />
     </DashboardLayout>
   );
 }

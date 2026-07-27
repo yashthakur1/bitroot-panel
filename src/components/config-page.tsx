@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
+import { Tabs } from './ui/tabs';
 import { humanUptime } from './project-list';
 
 interface EnvVar {
@@ -223,7 +224,12 @@ function Upgrades({
   );
 }
 
-export default function ConfigPage() {
+type Tab = 'runtime' | 'software' | 'device';
+
+export default function ConfigPage({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'software' || initialTab === 'device' ? initialTab : 'runtime',
+  );
   const [state, setState] = useState<ConfigState | null>(null);
   const [error, setError] = useState('');
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
@@ -254,6 +260,16 @@ export default function ConfigPage() {
         </p>
       </div>
 
+      <Tabs
+        tabs={[
+          { key: 'runtime', label: 'Runtime' },
+          { key: 'software', label: 'Software' },
+          { key: 'device', label: 'Device' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       {!state && !error && (
@@ -266,7 +282,11 @@ export default function ConfigPage() {
       {state && (
         <>
           {/* Runtime */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div
+            className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 ${
+              tab === 'runtime' ? '' : 'hidden'
+            }`}
+          >
             {(
               [
                 ['Version', `v${state.panel.version}`],
@@ -285,12 +305,12 @@ export default function ConfigPage() {
               </div>
             ))}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 -mt-4">
+          <p className={`text-sm text-gray-500 dark:text-gray-400 -mt-4 ${tab === 'runtime' ? '' : 'hidden'}`}>
             Last deploy: <span className="font-mono">{state.panel.commit}</span>
           </p>
 
           {/* .env */}
-          <div>
+          <div className={tab === 'runtime' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <FileCode2 size={18} className="text-gray-500 dark:text-gray-400" />
               Environment (.env)
@@ -337,7 +357,7 @@ export default function ConfigPage() {
           </div>
 
           {/* Endpoints */}
-          <div>
+          <div className={tab === 'runtime' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Link2 size={18} className="text-gray-500 dark:text-gray-400" />
               Ways to reach this panel
@@ -357,10 +377,12 @@ export default function ConfigPage() {
           </div>
 
           {/* Software & upgrades */}
-          <Upgrades versions={state.versions ?? {}} onDone={load} />
+          <div className={tab === 'software' ? '' : 'hidden'}>
+            <Upgrades versions={state.versions ?? {}} onDone={load} />
+          </div>
 
           {/* Shortcuts */}
-          <div>
+          <div className={tab === 'device' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Keyboard size={18} className="text-gray-500 dark:text-gray-400" />
               Keyboard shortcuts
@@ -390,7 +412,7 @@ export default function ConfigPage() {
           </div>
 
           {/* Device */}
-          <div>
+          <div className={tab === 'device' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
               Device

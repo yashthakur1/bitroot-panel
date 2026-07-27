@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { humanUptime, StatusBadge } from './project-list';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
+import { Tabs } from './ui/tabs';
 
 interface TunnelRoute {
   hostname: string;
@@ -38,7 +39,12 @@ interface TunnelState {
   tailscale: { host: string; ip: string };
 }
 
-export default function TunnelPage() {
+type Tab = 'public' | 'private' | 'publish';
+
+export default function TunnelPage({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'private' || initialTab === 'publish' ? initialTab : 'public',
+  );
   const [state, setState] = useState<TunnelState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -160,6 +166,16 @@ export default function TunnelPage() {
         </p>
       </div>
 
+      <Tabs
+        tabs={[
+          { key: 'public', label: 'Public routes', count: state?.routes.length },
+          { key: 'private', label: 'Private access', count: state?.services.length },
+          { key: 'publish', label: 'Publish a service' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {!state && !error && (
         <>
@@ -171,7 +187,7 @@ export default function TunnelPage() {
       {state && (
         <>
           {/* Daemon status */}
-          <div className="grid grid-cols-3 gap-4 max-w-lg">
+          <div className={`grid grid-cols-3 gap-4 max-w-lg ${tab === 'public' ? '' : 'hidden'}`}>
             <div className="border rounded-lg p-4">
               <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 Tunnel
@@ -199,7 +215,7 @@ export default function TunnelPage() {
           </div>
 
           {/* Public routes */}
-          <div>
+          <div className={tab === 'public' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Globe size={18} className="text-gray-500 dark:text-gray-400" />
               Public routes
@@ -284,7 +300,7 @@ export default function TunnelPage() {
           </div>
 
           {/* Add route */}
-          <div className="max-w-2xl">
+          <div className={tab === 'publish' ? 'max-w-2xl' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3">Publish a service</h2>
             <form onSubmit={addRoute} className="border rounded-xl p-5 space-y-3">
               <div className="flex flex-col">
@@ -348,7 +364,7 @@ export default function TunnelPage() {
           </div>
 
           {/* Private access */}
-          <div>
+          <div className={tab === 'private' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Shield size={18} className="text-gray-500 dark:text-gray-400" />
               Private access (Tailscale)
