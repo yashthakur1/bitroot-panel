@@ -5,7 +5,7 @@ import { useLivePoll } from '@/lib/use-poll';
 import Link from 'next/link';
 import NewMenu from './new-menu';
 import { TableSkeleton } from './skeletons';
-import SystemPanel from './system-panel';
+import SystemPanel, { type CliApp, type Tool } from './system-panel';
 import {
   Globe,
   RefreshCw,
@@ -99,10 +99,10 @@ type Tab = 'active' | 'suspended' | 'all' | 'system';
 // The System tab covers three different kinds of thing: processes pm2 runs,
 // CLI apps installed globally, and packages that can be installed on demand.
 type SystemSection = 'services' | 'cli' | 'tools';
-const SYSTEM_SECTIONS: Array<[SystemSection, string]> = [
-  ['services', 'Services'],
-  ['cli', 'CLI apps'],
-  ['tools', 'Tools'],
+const SYSTEM_SECTIONS: Array<[SystemSection, string, string]> = [
+  ['services', 'Services', 'Long-running processes supervised by pm2'],
+  ['cli', 'CLI apps', 'Command-line apps installed globally with npm'],
+  ['tools', 'Tools', 'Packages available to install on the device'],
 ];
 
 export default function ProjectList() {
@@ -113,6 +113,8 @@ export default function ProjectList() {
   const [query, setQuery] = useState('');
   const [menuFor, setMenuFor] = useState('');
   const [busyRow, setBusyRow] = useState('');
+  const [cliApps, setCliApps] = useState<CliApp[] | null>(null);
+  const [tools, setTools] = useState<Tool[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -126,9 +128,27 @@ export default function ProjectList() {
     }
   }, []);
 
+  // Package state is read only while the System tab is open: it costs a shell
+  // round trip on the phone and cannot change without someone installing
+  // something, so it has no business on the live poll.
+  const loadSystem = useCallback(async (fresh = false) => {
+    try {
+      const res = await fetch(`/api/system${fresh ? '?fresh=1' : ''}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setCliApps(data.cliApps);
+      setTools(data.tools);
+    } catch (e) {
+      setError(`could not read system packages: ${(e as Error).message}`);
+    }
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    if (tab === 'system') loadSystem();
+  }, [tab, loadSystem]);
   useLivePoll(load);
 
   async function rowAction(name: string, action: string) {
@@ -152,11 +172,21 @@ export default function ProjectList() {
   const active = apps.filter((p) => p.status === 'online');
   const suspended = apps.filter((p) => p.status !== 'online');
 
+  const sectionCounts: Record<SystemSection, number | null> = {
+    services: system.length,
+    cli: cliApps?.length ?? null,
+    tools: tools?.length ?? null,
+  };
+  // The System tab holds three lists, so its count is all of them - not just
+  // the processes, which is what it used to show.
+  const systemTotal =
+    system.length + (cliApps?.length ?? 0) + (tools?.length ?? 0);
+
   const tabs: Array<[Tab, string, number]> = [
     ['active', 'Active', active.length],
     ['suspended', 'Suspended', suspended.length],
     ['all', 'All', apps.length],
-    ['system', 'System', system.length],
+    ['system', 'System', systemTotal],
   ];
 
   const pool =
@@ -169,7 +199,10 @@ export default function ProjectList() {
         <h1 className="text-3xl font-display font-light tracking-tight">Projects</h1>
         <div className="flex items-center space-x-3">
           <button
-            onClick={load}
+            onClick={() => {
+              load();
+              if (tab === 'system') loadSystem(true);
+            }}
             aria-label="Refresh"
             className="w-10 h-10 flex items-center justify-center rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
@@ -203,10 +236,11 @@ export default function ProjectList() {
 
           {tab === 'system' && (
             <div className="flex flex-wrap items-center gap-2">
-              {SYSTEM_SECTIONS.map(([key, label]) => (
+              {SYSTEM_SECTIONS.map(([key, label, hint]) => (
                 <button
                   key={key}
                   onClick={() => setSystemSection(key)}
+                  title={hint}
                   className={`px-3 py-1.5 text-sm font-medium rounded-full border transition-colors active:scale-[0.96] ${
                     systemSection === key
                       ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400'
@@ -214,26 +248,42 @@ export default function ProjectList() {
                   }`}
                 >
                   {label}
+                  {sectionCounts[key] !== null && (
+                    <span className="ml-1 tabular-nums opacity-70">({sectionCounts[key]})</span>
+                  )}
                 </button>
               ))}
             </div>
           )}
 
-          {tab === 'system' && systemSection !== 'services' ? (
-            <SystemPanel section={systemSection} />
-          ) : (
-          <>
-          {/* Search */}
+          {/* One search box, serving whichever section is on screen. */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search services"
+              placeholder={
+                tab === 'system' && systemSection === 'cli'
+                  ? 'Search CLI apps'
+                  : tab === 'system' && systemSection === 'tools'
+                    ? 'Search packages'
+                    : 'Search services'
+              }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-800 bg-transparent rounded-lg w-full text-sm focus:outline-none focus:ring-1 focus:ring-accent-500 transition-shadow"
             />
           </div>
+
+          {tab === 'system' && systemSection !== 'services' ? (
+            <SystemPanel
+              section={systemSection}
+              cliApps={cliApps}
+              tools={tools}
+              query={query}
+              onReload={loadSystem}
+            />
+          ) : (
+          <>
 
           {/* Table */}
           {visible.length === 0 ? (
