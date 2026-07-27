@@ -21,6 +21,7 @@ import {
   RotateCw,
   Play,
   Square,
+  Terminal,
 } from 'lucide-react';
 
 export interface Project {
@@ -33,7 +34,8 @@ export interface Project {
   port: number | null;
   url: string | null;
   system: boolean;
-  type?: 'node' | 'static';
+  type?: 'node' | 'static' | 'tool';
+  version?: string;
 }
 
 export function humanUptime(ms: number): string {
@@ -67,6 +69,22 @@ export function StatusBadge({ status }: { status: string }) {
 
 // Render-style pill badge for the services table.
 function DeployBadge({ status }: { status: string }) {
+  // Tools are installed or absent — never "deployed" or "suspended", which
+  // would imply a process that could be started.
+  if (status === 'installed') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded border bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400 border-accent-200 dark:border-accent-900">
+        <Check size={12} /> Installed
+      </span>
+    );
+  }
+  if (status === 'missing') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded border bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-500 border-amber-200 dark:border-amber-900">
+        <AlertTriangle size={12} /> Not installed
+      </span>
+    );
+  }
   if (status === 'online') {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded border bg-green-50 dark:bg-green-950/50 text-green-700 dark:text-green-400 border-green-200 dark:border-green-900">
@@ -89,6 +107,7 @@ function DeployBadge({ status }: { status: string }) {
 }
 
 function runtimeOf(p: Project): string {
+  if (p.type === 'tool') return 'CLI';
   if (p.type === 'static') return 'Static';
   if (p.name === 'pocketbase' || p.name === 'cloudflared' || p.name === 'nginx') return 'Go';
   return 'Node';
@@ -235,25 +254,39 @@ export default function ProjectList() {
                     >
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <div className="flex items-center space-x-2.5">
-                          {p.name === 'pocketbase' ? (
+                          {p.type === 'tool' ? (
+                            <Terminal size={16} className="text-gray-500 dark:text-gray-400" />
+                          ) : p.name === 'pocketbase' ? (
                             <Database size={16} className="text-gray-500 dark:text-gray-400" />
                           ) : p.type === 'static' ? (
                             <PanelsTopLeft size={16} className="text-gray-500 dark:text-gray-400" />
                           ) : (
                             <Globe size={16} className="text-gray-500 dark:text-gray-400" />
                           )}
-                          <Link
-                            href={
-                              p.name === 'pocketbase'
-                                ? '/dashboard/pocketbase'
-                                : p.type === 'static'
-                                  ? `/dashboard/static/${p.name}`
-                                  : `/dashboard/services/${p.name}`
-                            }
-                            className="font-medium text-gray-800 dark:text-gray-200 underline-offset-4 hover:underline"
-                          >
-                            {p.name}
-                          </Link>
+                          {/* A tool has no process behind it, so no detail page to link to. */}
+                          {p.type === 'tool' ? (
+                            <span className="font-medium text-gray-800 dark:text-gray-200">
+                              {p.name}
+                            </span>
+                          ) : (
+                            <Link
+                              href={
+                                p.name === 'pocketbase'
+                                  ? '/dashboard/pocketbase'
+                                  : p.type === 'static'
+                                    ? `/dashboard/static/${p.name}`
+                                    : `/dashboard/services/${p.name}`
+                              }
+                              className="font-medium text-gray-800 dark:text-gray-200 underline-offset-4 hover:underline"
+                            >
+                              {p.name}
+                            </Link>
+                          )}
+                          {p.version && (
+                            <span className="text-[11px] font-mono tabular-nums text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-0.5">
+                              v{p.version}
+                            </span>
+                          )}
                           {busyRow === p.name && (
                             <Loader2 size={13} className="animate-spin text-accent-500" />
                           )}
@@ -285,10 +318,16 @@ export default function ProjectList() {
                             <ExternalLink size={11} />
                           </a>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-600">private</span>
+                          // "private" implies something is being served; a tool serves nothing.
+                          <span className="text-gray-400 dark:text-gray-600">
+                            {p.type === 'tool' ? '—' : 'private'}
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap relative">
+                        {/* Nothing to start, stop, restart or tail for a tool. */}
+                        {p.type !== 'tool' && (
+                          <>
                         <button
                           aria-label={`Actions for ${p.name}`}
                           onClick={() => setMenuFor(menuFor === p.name ? '' : p.name)}
@@ -338,6 +377,8 @@ export default function ProjectList() {
                                 </button>
                               )}
                             </div>
+                          </>
+                        )}
                           </>
                         )}
                       </td>
