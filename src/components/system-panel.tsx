@@ -52,9 +52,9 @@ export default function SystemPanel({ section }: { section: 'cli' | 'tools' }) {
   const [log, setLog] = useState('');
   const [result, setResult] = useState<'' | 'ok' | 'fail'>('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (fresh = false) => {
     try {
-      const res = await fetch('/api/system');
+      const res = await fetch(`/api/system${fresh ? '?fresh=1' : ''}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCliApps(data.cliApps);
@@ -103,8 +103,9 @@ export default function SystemPanel({ section }: { section: 'cli' | 'tools' }) {
       }
       const ok = /\[\[EXIT:0\]\]/.test(full);
       setResult(ok ? 'ok' : 'fail');
-      // Versions only change once the package manager has finished.
-      if (ok) load();
+      // Versions only change once the package manager has finished, and the
+      // cached ones are stale the moment it does — so bypass the cache.
+      if (ok) load(true);
     } catch (e) {
       setLog((l) => `${l}\n(connection lost: ${(e as Error).message})`);
       setResult('fail');
@@ -172,7 +173,7 @@ export default function SystemPanel({ section }: { section: 'cli' | 'tools' }) {
           what you see here is what is actually on disk.
         </p>
         <button
-          onClick={load}
+          onClick={() => load(true)}
           aria-label="Refresh packages"
           className="w-10 h-10 shrink-0 flex items-center justify-center rounded-md text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { runCached } from '@/lib/runner';
 import { CATALOG, assertSafePkg } from '@/lib/catalog';
 
@@ -49,7 +49,14 @@ function parsePolicy(out: string): Record<string, { installed: string | null; ca
   return result;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Right after an install the cached versions are stale by definition, so the
+  // client asks for a fresh read rather than showing "Install" on something it
+  // has just installed. A zero TTL re-runs the command and refills the cache.
+  const fresh = req.nextUrl.searchParams.get('fresh') === '1';
+  const shortTtl = fresh ? 0 : 60_000;
+  const longTtl = fresh ? 0 : 600_000;
+
   const pkgEntries = CATALOG.filter((e) => e.manager === 'pkg');
   const npmEntries = CATALOG.filter((e) => e.manager === 'npm');
   const pkgNames = pkgEntries.map((e) => assertSafePkg(e.pkg));
@@ -57,15 +64,15 @@ export async function GET() {
 
   const [policy, globals, npmLatest] = await Promise.all([
     // One call covers every package: ~50ms, versus a process per package.
-    runCached(`apt-cache policy ${pkgNames.join(' ')} 2>/dev/null || true`, 60_000),
-    runCached('npm ls -g --depth=0 --json 2>/dev/null || true', 60_000),
+    runCached(`apt-cache policy ${pkgNames.join(' ')} 2>/dev/null || true`, shortTtl),
+    runCached('npm ls -g --depth=0 --json 2>/dev/null || true', shortTtl),
     // Each lookup is a network round trip of about a second, and the answer
     // changes on the registry's schedule, not ours - so cache it hard.
     runCached(
       npmEntries
         .map((e) => `printf '${e.pkg}|%s\\n' "$(npm view ${e.pkg} version 2>/dev/null)"`)
         .join('; ') || 'true',
-      600_000,
+      longTtl,
     ),
   ]);
 
