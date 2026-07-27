@@ -20,19 +20,48 @@ async function credentials(): Promise<{ email: string; password: string }> {
   return { email, password };
 }
 
+async function authenticate(email: string, password: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${PB_URL}/api/collections/_superusers/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: email, password }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return (await res.json()).token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function pbToken(): Promise<string> {
   if (cached && cached.until > Date.now()) return cached.token;
   const { email, password } = await credentials();
-  const res = await fetch(`${PB_URL}/api/collections/_superusers/auth-with-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identity: email, password }),
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`PocketBase auth failed (HTTP ${res.status})`);
-  const data = await res.json();
-  cached = { token: data.token, until: Date.now() + 10 * 60 * 1000 };
-  return data.token;
+
+  let token = await authenticate(email, password);
+
+  // Self-heal: this is the panel's own service account, so when the stored
+  // password stops working (data dir restored from a backup, credentials
+  // edited by hand) the panel can reset it through the local CLI, which talks
+  // to the data directory directly and needs no password of its own. A human's
+  // superuser account is never touched.
+  if (!token) {
+    await run(
+      `"$HOME/apps/pocketbase/pocketbase" superuser upsert ${shq(email)} ${shq(password)} --dir "$HOME/apps/pocketbase/pb_data"`,
+      60_000,
+    );
+    token = await authenticate(email, password);
+  }
+
+  if (!token) {
+    throw new Error(
+      'PocketBase admin API unavailable — the panel service account could not be restored',
+    );
+  }
+
+  cached = { token, until: Date.now() + 10 * 60 * 1000 };
+  return token;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

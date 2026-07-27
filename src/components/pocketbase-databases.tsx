@@ -74,7 +74,12 @@ export default function PocketBaseDatabases() {
     try {
       const res = await fetch('/api/pocketbase/databases');
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          data.error ||
+            `Could not reach the PocketBase admin API (HTTP ${res.status}). Check that the pocketbase service is running.`,
+        );
+      }
       setDbs(data.databases);
       setUnassigned(data.unassigned ?? []);
       setError('');
