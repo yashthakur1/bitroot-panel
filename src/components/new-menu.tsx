@@ -27,7 +27,7 @@ interface Item {
 
 const GROUPS: Item[][] = [
   [
-    { icon: <PanelsTopLeft size={16} />, label: 'Static Site', soon: true },
+    { icon: <PanelsTopLeft size={16} />, label: 'Static Site', href: '/dashboard/new-static' },
     { icon: <Globe size={16} />, label: 'Web Service', href: '/dashboard/new-service?env=public' },
     { icon: <Lock size={16} />, label: 'Private Service', href: '/dashboard/new-service?env=private' },
     { icon: <Workflow size={16} />, label: 'Workflow', soon: true, beta: true },

@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Check,
   Database,
+  PanelsTopLeft,
   Loader2,
   Pause,
   AlertTriangle,
@@ -31,6 +32,7 @@ export interface Project {
   port: number | null;
   url: string | null;
   system: boolean;
+  type?: 'node' | 'static';
 }
 
 export function humanUptime(ms: number): string {
@@ -86,7 +88,8 @@ function DeployBadge({ status }: { status: string }) {
 }
 
 function runtimeOf(p: Project): string {
-  if (p.name === 'pocketbase' || p.name === 'cloudflared') return 'Go';
+  if (p.type === 'static') return 'Static';
+  if (p.name === 'pocketbase' || p.name === 'cloudflared' || p.name === 'nginx') return 'Go';
   return 'Node';
 }
 
@@ -233,6 +236,8 @@ export default function ProjectList() {
                         <div className="flex items-center space-x-2.5">
                           {p.name === 'pocketbase' ? (
                             <Database size={16} className="text-gray-500 dark:text-gray-400" />
+                          ) : p.type === 'static' ? (
+                            <PanelsTopLeft size={16} className="text-gray-500 dark:text-gray-400" />
                           ) : (
                             <Globe size={16} className="text-gray-500 dark:text-gray-400" />
                           )}
@@ -240,7 +245,9 @@ export default function ProjectList() {
                             href={
                               p.name === 'pocketbase'
                                 ? '/dashboard/pocketbase'
-                                : `/dashboard/services/${p.name}`
+                                : p.type === 'static'
+                                  ? `/dashboard/static/${p.name}`
+                                  : `/dashboard/services/${p.name}`
                             }
                             className="font-medium text-gray-800 dark:text-gray-200 underline-offset-4 hover:underline"
                           >

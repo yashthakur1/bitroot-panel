@@ -16,17 +16,31 @@ export interface Project {
   port: number | null;
   url: string | null;
   system: boolean;
+  type?: 'node' | 'static';
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function GET() {
-  const [pm2, ports, tunnel, listeners] = await Promise.all([
+  const [pm2, ports, tunnel, listeners, statics] = await Promise.all([
     run('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
     run('ss -tln 2>/dev/null || netstat -tln 2>/dev/null || true'),
+    run('static-site list 2>/dev/null || true'),
   ]);
+
+  // Static sites are served by the shared nginx, so they have no pm2 entry.
+  const staticSites = statics.output
+    .split('\n')
+    .map((l) => l.split('|'))
+    .filter((p) => p.length === 5 && p[0])
+    .map(([name, port, , state]) => ({
+      name,
+      port: Number(port),
+      served: state === 'served',
+    }));
+  const staticNames = new Set(staticSites.map((s) => s.name));
 
   const portMap: Record<string, number> = {};
   for (const line of ports.output.split('\n')) {
@@ -89,10 +103,30 @@ export async function GET() {
     port: portMap[a.name] ?? null,
     url: portMap[a.name] ? `https://${a.name}.${DOMAIN_SUFFIX}` : null,
     system: SYSTEM_APPS.has(a.name),
+    type: 'node' as const,
   }));
+
+  const nginxOnline = apps.some(
+    (a: any) => a.name === 'nginx' && a.pm2_env?.status === 'online',
+  );
+  for (const s of staticSites) {
+    projects.push({
+      name: s.name,
+      status: s.served && nginxOnline ? 'online' : 'stopped',
+      cpu: 0,
+      memoryMb: 0,
+      uptimeMs: 0,
+      restarts: 0,
+      port: s.port,
+      url: portsInUse[s.port]?.startsWith('tunnel') ? `https://${s.name}.${DOMAIN_SUFFIX}` : null,
+      system: false,
+      type: 'static',
+    });
+  }
 
   // Registered in ports.conf but not present in pm2 (e.g. removed from pm2 by hand)
   for (const [name, port] of Object.entries(portMap)) {
+    if (staticNames.has(name)) continue;
     if (!projects.some((p) => p.name === name)) {
       projects.push({
         name,
@@ -104,6 +138,7 @@ export async function GET() {
         port,
         url: `https://${name}.${DOMAIN_SUFFIX}`,
         system: false,
+        type: 'node',
       });
     }
   }
