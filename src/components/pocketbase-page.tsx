@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Archive,
   Plug,
+  KeyRound,
   Loader2,
   UserPlus,
 } from 'lucide-react';
@@ -39,7 +40,19 @@ interface PbState {
 
 const ADMIN_URL = 'https://pocketbase.bitroot.in/_/';
 
-export default function PocketBasePage() {
+type Tab = 'overview' | 'databases' | 'backups' | 'access';
+
+const TABS: Array<{ key: Tab; label: string }> = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'databases', label: 'Databases' },
+  { key: 'backups', label: 'Backups' },
+  { key: 'access', label: 'Access' },
+];
+
+export default function PocketBasePage({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(
+    TABS.some((t) => t.key === initialTab) ? (initialTab as Tab) : 'overview',
+  );
   const [state, setState] = useState<PbState | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -118,79 +131,128 @@ export default function PocketBasePage() {
 
       {note && <p className="text-sm text-gray-500 dark:text-gray-400">{note}</p>}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {!state && !error && <StatCardsSkeleton count={5} />}
 
-      {state && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
-          {(
-            [
-              ['Version', state.version],
-              ['Uptime', humanUptime(state.uptimeMs)],
-              ['Memory', state.memoryMb ? `${state.memoryMb} MB` : '—'],
-              ['CPU', `${state.cpu}%`],
-              ['DB size', state.dbSize],
-              ['Collections', String(state.collections)],
-              ['Records', state.records.toLocaleString()],
+      {/* Tabs */}
+      <div className="border-b dark:border-gray-800">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`py-2 px-3 text-sm font-medium -mb-px transition-colors ${
+              tab === t.key
+                ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-600 dark:border-purple-400'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (
+        <>
+        {!state && !error && <StatCardsSkeleton count={8} />}
+
+        {state && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+            {(
               [
-                'Requests 24h',
-                state.requests24h === null
-                  ? '—'
-                  : `${state.requests24h.toLocaleString()}${
-                      state.errors24h ? ` · ${state.errors24h} err` : ''
-                    }`,
-              ],
-            ] as Array<[string, string]>
-          ).map(([label, value]) => (
-            <div key={label} className="border rounded-lg p-3.5">
-              <div className="text-[11px] uppercase text-gray-500 dark:text-gray-400 font-semibold">
-                {label}
+                ['Version', state.version],
+                ['Uptime', humanUptime(state.uptimeMs)],
+                ['Memory', state.memoryMb ? `${state.memoryMb} MB` : '—'],
+                ['CPU', `${state.cpu}%`],
+                ['DB size', state.dbSize],
+                ['Collections', String(state.collections)],
+                ['Records', state.records.toLocaleString()],
+                [
+                  'Requests 24h',
+                  state.requests24h === null
+                    ? '—'
+                    : `${state.requests24h.toLocaleString()}${
+                        state.errors24h ? ` · ${state.errors24h} err` : ''
+                      }`,
+                ],
+              ] as Array<[string, string]>
+            ).map(([label, value]) => (
+              <div key={label} className="border rounded-lg p-3.5">
+                <div className="text-[11px] uppercase text-gray-500 dark:text-gray-400 font-semibold">
+                  {label}
+                </div>
+                <div className="text-base font-medium mt-1 tabular-nums truncate" title={value}>
+                  {value}
+                </div>
               </div>
-              <div className="text-base font-medium mt-1 tabular-nums truncate" title={value}>
-                {value}
-              </div>
+            ))}
+          </div>
+        )}
+
+        <div>
+          <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
+            <Plug size={18} className="text-gray-500 dark:text-gray-400" />
+            Endpoints
+          </h2>
+          <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
+            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+              <span className="text-gray-700 dark:text-gray-300">
+                Internal (apps on the phone)
+              </span>
+              <span className="font-mono text-gray-800 dark:text-gray-200">
+                {state?.internalUrl ?? 'http://127.0.0.1:8090'}
+              </span>
             </div>
-          ))}
+            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+              <span className="text-gray-700 dark:text-gray-300">Public (HTTPS via tunnel)</span>
+              <a
+                href={state?.publicUrl ?? 'https://pocketbase.bitroot.in'}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-purple-600 dark:text-purple-400 hover:underline"
+              >
+                {(state?.publicUrl ?? 'https://pocketbase.bitroot.in').replace('https://', '')}
+              </a>
+            </div>
+            <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
+              <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
+              <span className="font-mono text-gray-800 dark:text-gray-200">
+                http://oneplus-6:8090
+              </span>
+            </div>
+          </div>
         </div>
+        </>
       )}
 
-      <PocketBaseDatabases />
+      {tab === 'databases' && <PocketBaseDatabases />}
+      {tab === 'backups' && <BackupsSection />}
+      {tab === 'access' && <AccessSection />}
+    </div>
+  );
+}
+
+function AccessSection() {
+  return (
+    <div className="space-y-8">
+      <SuperuserSection />
 
       <div>
         <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
-          <Plug size={18} className="text-gray-500 dark:text-gray-400" />
-          Endpoints
+          <KeyRound size={18} className="text-gray-500 dark:text-gray-400" />
+          How the panel authenticates
         </h2>
-        <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
-          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-            <span className="text-gray-700 dark:text-gray-300">
-              Internal (apps on the phone)
-            </span>
-            <span className="font-mono text-gray-800 dark:text-gray-200">
-              {state?.internalUrl ?? 'http://127.0.0.1:8090'}
-            </span>
-          </div>
-          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-            <span className="text-gray-700 dark:text-gray-300">Public (HTTPS via tunnel)</span>
-            <a
-              href={state?.publicUrl ?? 'https://pocketbase.bitroot.in'}
-              target="_blank"
-              rel="noreferrer"
-              className="font-mono text-purple-600 dark:text-purple-400 hover:underline"
-            >
-              {(state?.publicUrl ?? 'https://pocketbase.bitroot.in').replace('https://', '')}
-            </a>
-          </div>
-          <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-            <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
-            <span className="font-mono text-gray-800 dark:text-gray-200">
-              http://oneplus-6:8090
-            </span>
-          </div>
+        <div className="border rounded-lg p-5 text-sm text-gray-600 dark:text-gray-400 space-y-2">
+          <p style={{ textWrap: 'pretty' }}>
+            BitPanel uses its own superuser, <code>panel@bitpanel.local</code>, kept separate
+            from the accounts you sign in with. Change your own password whenever you like —
+            the panel is unaffected.
+          </p>
+          <p style={{ textWrap: 'pretty' }}>
+            Its credential lives on the phone at{' '}
+            <code>~/apps/pocketbase/.superuser</code> (mode 600) and never reaches the
+            browser. If it ever stops working — say the data directory is restored from a
+            backup — the panel resets that one account through the local CLI and carries on.
+          </p>
         </div>
       </div>
-
-      <BackupsSection />
-      <SuperuserSection />
     </div>
   );
 }
