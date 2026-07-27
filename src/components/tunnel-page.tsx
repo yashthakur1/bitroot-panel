@@ -54,14 +54,34 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
   const [attachTo, setAttachTo] = useState('');
   const [confirmDelete, setConfirmDelete] = useState('');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch('/api/tunnel');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // 5xx here comes from Cloudflare, not the panel: the tunnel was
+        // momentarily unavailable. Retry once before alarming anyone.
+        if (res.status >= 500) {
+          await new Promise((r) => setTimeout(r, 2500));
+          const retry = await fetch('/api/tunnel');
+          if (retry.ok) {
+            setState(await retry.json());
+            setError('');
+            return true;
+          }
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
       setState(await res.json());
       setError('');
+      return true;
     } catch (e) {
-      setError(`could not load routing state: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      setError(
+        /5\d\d/.test(msg)
+          ? 'The tunnel was briefly unreachable while reloading — this page will refresh itself.'
+          : `Could not load routing state: ${msg}`,
+      );
+      return false;
     }
   }, []);
 
@@ -108,13 +128,27 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
         body: JSON.stringify({ name: newName, port: Number(newPort) }),
       });
       const data = await res.json().catch(() => ({}));
-      setOutput(data.output ?? data.error ?? `HTTP ${res.status}`);
       if (res.ok) {
+        setOutput(data.output ?? 'Route published.');
         setNewName('');
         setNewPort('');
         setAttachTo('');
         load();
+      } else if (res.status >= 500) {
+        // The panel answers through this very tunnel, so a 5xx usually means
+        // the request was lost after the change landed. Verify rather than
+        // report a failure that probably is not one.
+        setOutput('Tunnel reloaded mid-request — checking whether the route was created…');
+        await new Promise((r) => setTimeout(r, 2500));
+        await load();
+        setOutput('Route list refreshed — check the Public routes tab for the result.');
+      } else {
+        setOutput(data.error ?? `HTTP ${res.status}`);
       }
+    } catch {
+      setOutput('Connection dropped while reloading the tunnel — refreshing the route list…');
+      await new Promise((r) => setTimeout(r, 2500));
+      await load();
     } finally {
       setBusy('');
     }
@@ -130,8 +164,19 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
         method: 'DELETE',
       });
       const data = await res.json().catch(() => ({}));
-      setOutput(data.output ?? data.error ?? `HTTP ${res.status}`);
-      load();
+      if (res.ok) {
+        setOutput(data.output ?? 'Route detached.');
+      } else if (res.status >= 500) {
+        setOutput('Tunnel reloaded mid-request — refreshing to confirm…');
+        await new Promise((r) => setTimeout(r, 2500));
+      } else {
+        setOutput(data.error ?? `HTTP ${res.status}`);
+      }
+      await load();
+    } catch {
+      setOutput('Connection dropped while reloading the tunnel — refreshing…');
+      await new Promise((r) => setTimeout(r, 2500));
+      await load();
     } finally {
       setBusy('');
     }
