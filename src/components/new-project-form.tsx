@@ -23,6 +23,8 @@ interface Repo {
   fullName: string;
   private: boolean;
   defaultBranch: string;
+  connectionId?: string;
+  connectionLabel?: string;
   description?: string;
 }
 
@@ -178,6 +180,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   const [repos, setRepos] = useState<Repo[] | null>(null);
   const [repo, setRepo] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
+  const [connectionId, setConnectionId] = useState('');
   const [branch, setBranch] = useState('');
 
   // Common fields
@@ -312,7 +315,12 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       setName(r.fullName.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
       clearError('name');
     }
-    const res = await fetch(`/api/github/branches?repo=${encodeURIComponent(full)}`);
+    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? '';
+    setConnectionId(conn);
+    const res = await fetch(
+      `/api/github/branches?repo=${encodeURIComponent(full)}` +
+        (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+    );
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setBranches(data.branches);
@@ -344,6 +352,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
           source,
           name,
           repo: source === 'github' ? repo : urlRepo,
+          connectionId: source === 'github' ? connectionId : undefined,
           branch: source === 'github' ? branch : undefined,
           port: portNum,
           environment,
@@ -529,7 +538,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                   {(repos ?? []).map((r) => (
                     <option key={r.fullName} value={r.fullName}>
                       {r.fullName}
-                      {r.private ? ' (private)' : ''}
+                      {r.private ? ' · private' : ''}
+                      {r.connectionLabel ? ` · ${r.connectionLabel}` : ''}
                     </option>
                   ))}
                 </select>

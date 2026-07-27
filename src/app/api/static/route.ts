@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { run, runStream } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
+import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
 
@@ -68,7 +69,13 @@ export async function POST(req: NextRequest) {
       if (!(await getGithubToken())) {
         return NextResponse.json({ error: 'GitHub not connected' }, { status: 400 });
       }
-      repoUrl = `https://github.com/${full}.git`;
+      // Pin the connection so git picks that account's stored credential.
+      const connectionId = body.connectionId
+        ? assertConnectionId(body.connectionId)
+        : undefined;
+      repoUrl = connectionId
+        ? cloneUrlFor(connectionId, full)
+        : `https://github.com/${full}.git`;
     } else {
       repoUrl = assertRepo(body.repo);
     }

@@ -58,13 +58,27 @@ async function saveConnectionToken(id: string, token: string): Promise<void> {
   );
 }
 
-// git resolves stored credentials by host, so only the primary connection's
-// token is written into ~/.git-credentials.
-async function syncGitCredentials(token: string): Promise<void> {
-  const line = shq(`https://x-access-token:${token}@github.com`);
+// Rebuild every github.com line in ~/.git-credentials from the registry.
+//
+// git matches a stored credential by protocol + host + username, so giving each
+// connection its own username (the connection id) lets several accounts coexist:
+// a remote written as https://<id>@github.com/owner/repo.git picks that token.
+// A username-less default entry is kept for the primary so plain remotes — and
+// anything cloned before this existed — keep working.
+async function syncAllCredentials(): Promise<void> {
+  const conns = await readRegistry();
+  const lines: string[] = [];
+  for (const c of conns) {
+    const token = await getConnectionToken(c.id);
+    if (!token) continue;
+    lines.push(`https://${c.id}:${token}@github.com`);
+    if (c.primary) lines.push(`https://x-access-token:${token}@github.com`);
+  }
+  const payload = shq(lines.join('\n') + (lines.length ? '\n' : ''));
   await run(
-    `touch "$HOME/.git-credentials" && cp "$HOME/.git-credentials" "$HOME/.git-credentials.bak" 2>/dev/null; ` +
-      `sed -i "/github.com/d" "$HOME/.git-credentials" && printf "%s\\n" ${line} >> "$HOME/.git-credentials" && ` +
+    `touch "$HOME/.git-credentials" && ` +
+      `sed -i "/github.com/d" "$HOME/.git-credentials" && ` +
+      `printf %s ${payload} >> "$HOME/.git-credentials" && ` +
       `chmod 600 "$HOME/.git-credentials" && git config --global credential.helper store`,
   );
 }
@@ -92,6 +106,7 @@ export async function migrateLegacyToken(): Promise<void> {
         primary: true,
       },
     ]);
+    await syncAllCredentials();
   } catch {
     // Token no longer valid (typically: it was regenerated on GitHub, which
     // mints a new value and kills the old one). Leave it unregistered — but
@@ -166,7 +181,7 @@ export async function addConnection(token: string, label?: string): Promise<GitC
 
   await saveConnectionToken(id, token);
   await writeRegistry([...conns, connection]);
-  if (connection.primary) await syncGitCredentials(token);
+  await syncAllCredentials();
   return connection;
 }
 
@@ -177,14 +192,10 @@ export async function removeConnection(id: string): Promise<void> {
   // never leave the set without a primary
   if (remaining.length > 0 && !remaining.some((c) => c.primary)) {
     remaining[0].primary = true;
-    const token = await getConnectionToken(remaining[0].id);
-    if (token) await syncGitCredentials(token);
   }
   await writeRegistry(remaining);
   await run(`rm -f ${DIR}/tokens/${safe}`);
-  if (remaining.length === 0) {
-    await run(`sed -i "/github.com/d" "$HOME/.git-credentials" 2>/dev/null || true`);
-  }
+  await syncAllCredentials();
 }
 
 export async function setPrimary(id: string): Promise<void> {
@@ -192,8 +203,12 @@ export async function setPrimary(id: string): Promise<void> {
   const conns = await readRegistry();
   if (!conns.some((c) => c.id === safe)) throw new ValidationError('no such connection');
   await writeRegistry(conns.map((c) => ({ ...c, primary: c.id === safe })));
-  const token = await getConnectionToken(safe);
-  if (token) await syncGitCredentials(token);
+  await syncAllCredentials();
+}
+
+// Clone URL that pins a specific connection's credential.
+export function cloneUrlFor(connectionId: string, fullName: string): string {
+  return `https://${connectionId}@github.com/${fullName}.git`;
 }
 
 // What a connection can actually reach — the question that matters when a

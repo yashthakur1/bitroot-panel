@@ -24,6 +24,8 @@ interface Repo {
   fullName: string;
   private: boolean;
   defaultBranch: string;
+  connectionId?: string;
+  connectionLabel?: string;
 }
 
 type Source = 'github' | 'url';
@@ -139,6 +141,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('');
   const [branches, setBranches] = useState<string[]>([]);
+  const [connectionId, setConnectionId] = useState('');
   const [urlRepo, setUrlRepo] = useState('');
 
   const [name, setName] = useState('');
@@ -201,7 +204,12 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     setErrors((e) => ({ ...e, repo: undefined }));
     if (!full) return;
     if (!name) setName(full.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-    const res = await fetch(`/api/github/branches?repo=${encodeURIComponent(full)}`);
+    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? '';
+    setConnectionId(conn);
+    const res = await fetch(
+      `/api/github/branches?repo=${encodeURIComponent(full)}` +
+        (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+    );
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setBranches(data.branches);
@@ -256,6 +264,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
         body: JSON.stringify({
           source,
           repo: source === 'github' ? repo : urlRepo,
+          connectionId: source === 'github' ? connectionId : undefined,
           branch: source === 'github' ? branch : undefined,
           name,
           port: portNum,
@@ -363,7 +372,8 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                   {(repos ?? []).map((r) => (
                     <option key={r.fullName} value={r.fullName}>
                       {r.fullName}
-                      {r.private ? ' (private)' : ''}
+                      {r.private ? ' · private' : ''}
+                      {r.connectionLabel ? ` · ${r.connectionLabel}` : ''}
                     </option>
                   ))}
                 </select>
