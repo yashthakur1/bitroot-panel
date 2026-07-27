@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLivePoll } from '@/lib/use-poll';
 import Link from 'next/link';
 import NewMenu from './new-menu';
@@ -95,6 +96,11 @@ function runtimeOf(p: Project): string {
   return 'Node';
 }
 
+// The row menu is at most four items plus padding; used to decide whether it
+// opens downwards or has to flip above the button.
+const MENU_MAX_H = 176;
+const GAP = 6;
+
 type Tab = 'active' | 'suspended' | 'all' | 'system';
 // The System tab covers three different kinds of thing: processes pm2 runs,
 // CLI apps installed globally, and packages that can be installed on demand.
@@ -112,6 +118,12 @@ export default function ProjectList() {
   const [systemSection, setSystemSection] = useState<SystemSection>('services');
   const [query, setQuery] = useState('');
   const [menuFor, setMenuFor] = useState('');
+  // Anchor for the row action menu. It's portalled to the body with fixed
+  // positioning so the table's overflow-x-auto can't clip it - overflow on one
+  // axis makes the other axis clip too, which is what cut the menu off before.
+  const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right: number } | null>(
+    null,
+  );
   const [busyRow, setBusyRow] = useState('');
   const [cliApps, setCliApps] = useState<CliApp[] | null>(null);
   const [tools, setTools] = useState<Tool[] | null>(null);
@@ -150,6 +162,20 @@ export default function ProjectList() {
     if (tab === 'system') loadSystem();
   }, [tab, loadSystem]);
   useLivePoll(load);
+
+  // The anchor is measured once when the menu opens, so any scroll afterwards
+  // would leave it floating away from its button. Capture phase catches the
+  // table's own horizontal scroller too, not just the page.
+  useEffect(() => {
+    if (!menuFor) return;
+    const close = () => setMenuFor('');
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [menuFor]);
 
   async function rowAction(name: string, action: string) {
     setBusyRow(name);
@@ -373,15 +399,44 @@ export default function ProjectList() {
                       <td className="px-4 py-3.5 whitespace-nowrap relative">
                         <button
                           aria-label={`Actions for ${p.name}`}
-                          onClick={() => setMenuFor(menuFor === p.name ? '' : p.name)}
+                          onClick={(e) => {
+                            if (menuFor === p.name) {
+                              setMenuFor('');
+                              return;
+                            }
+                            const r = e.currentTarget.getBoundingClientRect();
+                            const right = window.innerWidth - r.right;
+                            // Fixed positioning cannot be scrolled to, so a menu
+                            // that would open past the bottom edge is not merely
+                            // ugly - it is unreachable. Flip it above the button
+                            // when there is no room below.
+                            const fitsBelow = r.bottom + GAP + MENU_MAX_H <= window.innerHeight;
+                            const fitsAbove = r.top - GAP - MENU_MAX_H >= 0;
+                            setMenuPos(
+                              fitsBelow || !fitsAbove
+                                ? {
+                                    top: Math.min(
+                                      r.bottom + GAP,
+                                      Math.max(GAP, window.innerHeight - MENU_MAX_H - GAP),
+                                    ),
+                                    right,
+                                  }
+                                : { bottom: window.innerHeight - r.top + GAP, right },
+                            );
+                            setMenuFor(p.name);
+                          }}
                           className="w-9 h-9 flex items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                         >
                           <MoreHorizontal size={16} />
                         </button>
-                        {menuFor === p.name && (
+                        {menuFor === p.name && menuPos &&
+                          createPortal(
                           <>
                             <div className="fixed inset-0 z-40" onClick={() => setMenuFor('')} />
-                            <div className="bounce-in absolute right-4 top-11 z-50 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-[0_8px_24px_rgba(0,0,0,0.12)] p-1.5 text-sm">
+                            <div
+                              className="bounce-in fixed z-50 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-[0_8px_24px_rgba(0,0,0,0.12)] p-1.5 text-sm"
+                              style={{ top: menuPos.top, bottom: menuPos.bottom, right: menuPos.right }}
+                            >
                               {p.url && (
                                 <a
                                   href={p.url}
@@ -420,7 +475,8 @@ export default function ProjectList() {
                                 </button>
                               )}
                             </div>
-                          </>
+                          </>,
+                          document.body
                         )}
                       </td>
                     </tr>
