@@ -1,0 +1,51 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Install or upgrade bit-cli from a tarball built on a workstation.
+#
+# The monorepo cannot be built on this device: turbo ships no Android binary
+# (only turbo-linux-arm64 and the desktop targets), so the artifact is produced
+# with `npm pack` on the Mac and installed here exactly as the published
+# package would be. Usage:
+#
+#   bit-cli-update [path-to-tgz]   # defaults to the newest ~/bitroot-org-bit-cli-*.tgz
+set -e
+
+# node-gyp leaves android_ndk_path undefined on Android, which stops
+# better-sqlite3 - bit-cli's one native dependency - from even configuring.
+export GYP_DEFINES="android_ndk_path="
+
+TGZ="$1"
+if [ -z "$TGZ" ]; then
+	TGZ=$(ls -t "$HOME"/bitroot-org-bit-cli-*.tgz 2>/dev/null | head -1)
+fi
+if [ -z "$TGZ" ] || [ ! -f "$TGZ" ]; then
+	echo "!! no tarball found"
+	echo "   build one on the Mac:  cd apps/cli && npm pack"
+	echo "   copy it over:          scp bitroot-org-bit-cli-*.tgz oneplus:~/"
+	exit 1
+fi
+
+echo "==> current: $(bit-cli --version 2>/dev/null || echo none)"
+echo "==> installing $(basename "$TGZ")"
+npm install -g "$TGZ"
+
+NEW=$(bit-cli --version 2>/dev/null) || {
+	echo "!! bit-cli does not run after install"
+	exit 1
+}
+echo "==> installed: $NEW"
+
+# Prove the native module actually loaded rather than just that the bin exists.
+# better-sqlite3 is compiled on this device, and a bad build only surfaces at
+# runtime - "sessions list" is the cheapest command that opens the database.
+if bit-cli sessions list >/dev/null 2>&1; then
+	echo "==> database OK"
+else
+	echo "!! 'sessions list' failed - better-sqlite3 likely did not build"
+	exit 1
+fi
+
+# Older tarballs are pure residue once a newer one is installed.
+for old in $(ls -t "$HOME"/bitroot-org-bit-cli-*.tgz 2>/dev/null | tail -n +2); do
+	rm -f "$old"
+	echo "==> removed superseded tarball $(basename "$old")"
+done
