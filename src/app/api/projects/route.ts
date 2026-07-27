@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { run, runStream } from '@/lib/runner';
+import { run, runCached, runStream } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 
@@ -23,7 +23,7 @@ export interface Project {
 
 export async function GET() {
   const [pm2, ports, tunnel, statics] = await Promise.all([
-    run('pm2 jlist'),
+    runCached('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
     run('static-site list 2>/dev/null || true'),

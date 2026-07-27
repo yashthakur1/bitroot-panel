@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useLivePoll } from '@/lib/use-poll';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from './ui/button';
@@ -40,9 +41,8 @@ export default function ProjectDetail({
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
   }, [load]);
+  useLivePoll(load);
 
   async function runAction(action: string) {
     setBusyAction(action);

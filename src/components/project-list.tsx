@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLivePoll } from '@/lib/use-poll';
 import Link from 'next/link';
 import NewMenu from './new-menu';
 import { TableSkeleton } from './skeletons';
@@ -117,9 +118,8 @@ export default function ProjectList() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
   }, [load]);
+  useLivePoll(load);
 
   async function rowAction(name: string, action: string) {
     setBusyRow(name);

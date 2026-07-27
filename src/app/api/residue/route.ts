@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { run } from '@/lib/runner';
+import { run, runCached } from '@/lib/runner';
 import { assertName, shq, ValidationError } from '@/lib/validate';
 import { dismissResidue, readLedger } from '@/lib/residue';
 
@@ -11,6 +11,8 @@ export interface ResidueItem {
   label: string;
   detail: string;
   size: string;
+  hint?: string;
+  manual?: boolean;
   action?: { type: string; target: string; danger: string };
 }
 
@@ -38,6 +40,8 @@ const SCAN = [
   'echo "##listening"',
   // Android blocks netlink, so ss sees nothing; probe each registered port.
   'for e in $(grep -E "^[a-zA-Z0-9_-]+=[0-9]+$" "$HOME/bin/ports.conf" 2>/dev/null); do p=${e#*=}; (timeout 1 bash -c "</dev/tcp/127.0.0.1/$p" 2>/dev/null && echo "$p") & done; wait',
+  'echo "##dnscreated"',
+  'cat "$HOME/.config/bitpanel/dns-created.txt" 2>/dev/null || true',
   'echo "##routes"',
   'grep -E "hostname:|service:" "$HOME/.cloudflared/config.yml" 2>/dev/null || true',
 ].join('; ');
@@ -56,7 +60,7 @@ function section(out: string, name: string): string[] {
 export async function GET() {
   const [scan, pm2, ledger] = await Promise.all([
     run(SCAN, 120_000),
-    run('pm2 jlist'),
+    runCached('pm2 jlist'),
     readLedger(),
   ]);
 
@@ -121,6 +125,7 @@ export async function GET() {
         target: name,
         danger: `Permanently deletes ~/Downloads/${name} including any local .env`,
       },
+      hint: 'Keep it if you may redeploy this project; the panel will reuse the directory.',
     });
   }
 
@@ -160,6 +165,7 @@ export async function GET() {
         target: name,
         danger: `Deletes the bare repo — "git push phone main" for ${name} stops working`,
       },
+      hint: 'Only delete once you are sure you will not push to this app again.',
     });
   }
 
@@ -177,10 +183,34 @@ export async function GET() {
         target: name,
         danger: `Frees port ${port} in ports.conf (no files touched)`,
       },
+      hint: 'Safe to free — the reservation is only used to stop two services claiming one port.',
     });
   }
 
-  // 5. Backups (informational; oldest are candidates for pruning)
+  // 5. DNS records the panel created that no longer have a route. These can
+  // only be deleted in the Cloudflare dashboard — the panel's token is
+  // Access-read-only — so they are listed as manual work, not a Clean button.
+  const routedSet = new Set(routedHosts);
+  for (const host of section(out, 'dnscreated')) {
+    if (!host.includes('.') || routedSet.has(host)) continue;
+    items.push({
+      id: `dns-${host}`,
+      category: 'Cloudflare DNS records',
+      label: host,
+      detail:
+        'A CNAME still points at your tunnel, but nothing serves this hostname — visitors get a 404.',
+      size: '—',
+      manual: true,
+      hint: 'Delete the CNAME in the Cloudflare dashboard (DNS → Records), or re-attach a service to this hostname from the Routes page. Then dismiss this.',
+      action: {
+        type: 'forget-dns',
+        target: host,
+        danger: 'Only stops BitPanel tracking this hostname — the CNAME itself is untouched',
+      },
+    });
+  }
+
+  // 6. Backups (informational; oldest are candidates for pruning)
   const backups = section(out, 'backups');
   for (const line of backups) {
     const [file, size, date] = line.split('|');
@@ -264,6 +294,8 @@ const CLEANUPS: Record<string, (target: string) => string> = {
   'deregister-port': (t) => `sed -i "/^${t}=/d" "$HOME/bin/ports.conf"`,
   'rm-backup': (t) => `rm -f "$HOME/backups/"${shq(t)}`,
   'rm-bak': (t) => `rm -f "$HOME/bin/"${shq(t)}`,
+  'forget-dns': (t) =>
+    `sed -i "/^${t.replace(/\./g, '\\.')}$/d" "$HOME/.config/bitpanel/dns-created.txt"`,
   'flush-pm2-logs': () => 'pm2 flush',
   'clean-npm-cache': () => 'npm cache clean --force',
   'clean-go-cache': () => 'go clean -modcache',
@@ -282,7 +314,7 @@ export async function POST(req: NextRequest) {
     let safeTarget = 'all';
     if (['rm-project-dir', 'rm-app-dir', 'rm-repo', 'deregister-port'].includes(type)) {
       safeTarget = assertName(target);
-      const check = await run('pm2 jlist');
+      const check = await runCached('pm2 jlist');
       try {
         const start = check.output.indexOf('[');
         const apps = JSON.parse(check.output.slice(start));
@@ -295,6 +327,11 @@ export async function POST(req: NextRequest) {
       } catch {
         return NextResponse.json({ error: 'could not verify pm2 state' }, { status: 500 });
       }
+    } else if (type === 'forget-dns') {
+      if (typeof target !== 'string' || !/^[a-z0-9.-]{1,80}$/.test(target)) {
+        throw new ValidationError('invalid hostname');
+      }
+      safeTarget = target;
     } else if (['rm-backup', 'rm-bak'].includes(type)) {
       if (typeof target !== 'string' || !/^[\w.-]{1,80}$/.test(target) || target.includes('..')) {
         throw new ValidationError('invalid file name');

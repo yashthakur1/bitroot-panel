@@ -60,6 +60,19 @@ export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
   });
 }
 
+// Short-lived cache for read-only commands that several pages ask for at once
+// (`pm2 jlist` above all). Spawning the pm2 CLI is the most expensive thing the
+// panel does routinely, so collapsing concurrent callers matters on a phone.
+const cache = new Map<string, { at: number; result: Promise<RunResult> }>();
+
+export function runCached(command: string, ttlMs = 3000): Promise<RunResult> {
+  const hit = cache.get(command);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.result;
+  const result = run(command);
+  cache.set(command, { at: Date.now(), result });
+  return result;
+}
+
 // Streaming variant: returns the command's combined stdout/stderr as a web
 // ReadableStream while it runs, terminated by a "[[EXIT:<code>]]" marker so
 // the client can tell success from failure.

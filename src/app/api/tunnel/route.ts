@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { run } from '@/lib/runner';
+import { run, runCached } from '@/lib/runner';
 import { assertPort, ValidationError } from '@/lib/validate';
 import { recordResidue } from '@/lib/residue';
 
@@ -21,7 +21,7 @@ function assertSubdomain(name: unknown): string {
 export async function GET() {
   const [cfg, pm2, ports] = await Promise.all([
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
-    run('pm2 jlist'),
+    runCached('pm2 jlist'),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
   ]);
 

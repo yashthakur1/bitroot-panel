@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLivePoll } from '@/lib/use-poll';
 import {
   Database,
   ExternalLink,
@@ -71,9 +72,8 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
   }, [load]);
+  useLivePoll(load, { activeMs: 10000 });
 
   async function restart() {
     setBusy(true);

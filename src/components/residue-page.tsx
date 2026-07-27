@@ -25,6 +25,8 @@ interface ResidueItem {
   label: string;
   detail: string;
   size: string;
+  hint?: string;
+  manual?: boolean;
   action?: { type: string; target: string; danger: string };
 }
 
@@ -46,6 +48,7 @@ const CATEGORY_ICON: Record<string, React.ReactNode> = {
   'Old backups': <Archive size={16} />,
   'Logs & caches': <ScrollText size={16} />,
   'Script backups': <FileClock size={16} />,
+  'Cloudflare DNS records': <Cloud size={16} />,
 };
 
 const KIND_STYLE: Record<string, { icon: React.ReactNode; label: string; cls: string }> = {
@@ -286,6 +289,22 @@ export default function ResiduePage() {
                               <div className="text-xs text-gray-500 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
                                 {item.detail}
                               </div>
+                              {item.hint && (
+                                <div
+                                  className="text-xs text-gray-600 dark:text-gray-400 mt-1 flex items-start gap-1.5"
+                                  style={{ textWrap: 'pretty' }}
+                                >
+                                  <Info size={12} className="shrink-0 mt-0.5 text-gray-400" />
+                                  <span>
+                                    {item.manual && (
+                                      <span className="font-medium text-amber-700 dark:text-amber-300">
+                                        Needs manual cleanup:{' '}
+                                      </span>
+                                    )}
+                                    {item.hint}
+                                  </span>
+                                </div>
+                              )}
                               {confirming === item.id && item.action && (
                                 <div className="fade-in-up text-xs text-red-600 dark:text-red-400 mt-1.5">
                                   {item.action.danger}
@@ -322,7 +341,13 @@ export default function ResiduePage() {
                                     variant="outline"
                                     onClick={() => setConfirming(item.id)}
                                   >
-                                    <Trash2 size={13} className="mr-1.5" /> Clean
+                                    {item.manual ? (
+                                      'Dismiss'
+                                    ) : (
+                                      <>
+                                        <Trash2 size={13} className="mr-1.5" /> Clean
+                                      </>
+                                    )}
                                   </Button>
                                 )}
                               </div>

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { run } from '@/lib/runner';
+import { run, runCached } from '@/lib/runner';
 import { pbFetch, PB_URL, PB_PUBLIC_URL } from '@/lib/pocketbase';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -7,7 +7,7 @@ import { pbFetch, PB_URL, PB_PUBLIC_URL } from '@/lib/pocketbase';
 export async function GET() {
   const [health, pm2, version, size] = await Promise.all([
     run('curl -s -m 5 http://127.0.0.1:8090/api/health || true'),
-    run('pm2 jlist'),
+    runCached('pm2 jlist'),
     run('cat "$HOME/apps/pocketbase/VERSION" 2>/dev/null || true'),
     run('du -sh "$HOME/apps/pocketbase/pb_data" 2>/dev/null | cut -f1 || true'),
   ]);

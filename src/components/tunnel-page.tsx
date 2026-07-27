@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import { useLivePoll } from '@/lib/use-poll';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -60,9 +61,8 @@ export default function TunnelPage() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
   }, [load]);
+  useLivePoll(load, { activeMs: 10000 });
 
   async function restartTunnel() {
     setBusy('restart');
