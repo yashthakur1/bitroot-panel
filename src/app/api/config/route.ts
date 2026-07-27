@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
+import { stripAnsi } from '@/lib/ansi';
 import pkg from '../../../../package.json';
 
 // Panel configuration overview: runtime facts, the panel's own .env
@@ -7,11 +8,6 @@ import pkg from '../../../../package.json';
 // deployed commit, and device health via the existing device-info script.
 
 const SECRET_HINT = /(password|secret|token|key)/i;
-
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1b\[[0-9;]*m/g, '');
-}
 
 export async function GET() {
   const [envFile, commit, device, versions] = await Promise.all([

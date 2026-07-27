@@ -309,7 +309,7 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                   id="svc"
                   value={attachTo}
                   onChange={(e) => pickService(e.target.value)}
-                  className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900"
+                  className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
                 >
                   <option value="">— pick a running service (or set a port manually) —</option>
                   {state.services.map((s) => (

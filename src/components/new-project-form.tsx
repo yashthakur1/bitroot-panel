@@ -559,7 +559,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                         setBranch(e.target.value);
                         clearError('branch');
                       }}
-                      className="border rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 w-64"
+                      className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 w-64"
                     >
                       {branches.map((b) => (
                         <option key={b} value={b}>

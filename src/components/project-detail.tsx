@@ -251,7 +251,7 @@ function Logs({ name }: { name: string }) {
           <select
             value={lines}
             onChange={(e) => setLines(Number(e.target.value))}
-            className="border rounded-md px-2 py-1.5 text-sm"
+            className="border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
           >
             {[100, 200, 500, 1000].map((n) => (
               <option key={n} value={n}>
@@ -260,7 +260,12 @@ function Logs({ name }: { name: string }) {
             ))}
           </select>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            <input
+              type="checkbox"
+              className="accent-purple-600"
+              checked={auto}
+              onChange={(e) => setAuto(e.target.checked)}
+            />
             auto-refresh
           </label>
         </div>

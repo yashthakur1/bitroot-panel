@@ -173,6 +173,7 @@ export default function PocketBaseDatabases() {
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 pb-2">
               <input
                 type="checkbox"
+                className="accent-purple-600"
                 checked={withAuth}
                 onChange={(e) => setWithAuth(e.target.checked)}
               />
@@ -360,7 +361,7 @@ const items = await pb.collection('${db.name}_items').getList(1, 20);`;
             <select
               value={linkTo}
               onChange={(e) => setLinkTo(e.target.value)}
-              className="border rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-900"
+              className="border border-gray-200 dark:border-gray-700 rounded-md px-2 py-1.5 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200"
             >
               <option value="">— select —</option>
               {projects.map((p) => (
