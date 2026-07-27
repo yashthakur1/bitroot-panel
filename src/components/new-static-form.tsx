@@ -37,6 +37,7 @@ interface Detection {
   static: boolean;
   server: boolean;
   notes: string[];
+  incompatible: Array<{ dep: string; why: string; fix: string }>;
   packageManager: string;
 }
 
@@ -485,6 +486,23 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                         .
                       </span>
                     </p>
+                  )}
+                  {detection.incompatible?.length > 0 && (
+                    <div className="fade-in-up border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-lg p-3 space-y-1.5">
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-300">
+                        <AlertCircle size={14} /> Will not build on this device
+                      </p>
+                      {detection.incompatible.map((c) => (
+                        <p key={c.dep} className="text-xs text-amber-800 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                          <code>{c.dep}</code> — {c.why}. Fix: {c.fix}.
+                        </p>
+                      ))}
+                      <p className="text-xs text-amber-700 dark:text-amber-400/80" style={{ textWrap: 'pretty' }}>
+                        Android uses a different C library than desktop Linux, so these
+                        packages have no binary that runs here. Alternatively build it
+                        elsewhere and deploy the output.
+                      </p>
+                    </div>
                   )}
                   {!detection.server &&
                     detection.notes.map((n) => (
