@@ -4,7 +4,7 @@ import { funnelDisplay, geist, geistMono } from "@/lib/fonts";
 
 export const metadata: Metadata = {
   title: "BitPanel",
-  description: "Deploy and manage apps on the OnePlus home server.",
+  description: "Deploy and manage apps on a machine you own.",
 };
 
 export default function RootLayout({

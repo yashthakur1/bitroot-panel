@@ -17,7 +17,7 @@ export default function ThemeToggle() {
   }
 
   const iconBase =
-    'absolute transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)]';
+    'absolute transition-[opacity,transform,filter] duration-300 ease-swift';
 
   return (
     <button

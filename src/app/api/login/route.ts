@@ -17,12 +17,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'wrong password' }, { status: 401 });
   }
 
+  // "Remember me" is a real difference rather than a decorative checkbox:
+  // unticked, the cookie gets no maxAge and dies with the browser session.
+  // That matters on a borrowed machine, which is exactly when it gets unticked.
+  const remember = body.remember !== false;
+
   const res = NextResponse.json({ ok: true });
   res.cookies.set(SESSION_COOKIE, await sessionToken(secret), {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 30,
+    ...(remember ? { maxAge: 60 * 60 * 24 * 30 } : {}),
   });
   return res;
 }

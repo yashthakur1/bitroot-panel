@@ -9,6 +9,12 @@ export default {
   ],
   theme: {
     extend: {
+      transitionTimingFunction: {
+        // The house easing: fast out of the gate, settles without bouncing.
+        // Named once here because the arbitrary-value form is ambiguous to
+        // Tailwind's parser and warns on every build.
+        swift: 'cubic-bezier(0.2, 0, 0, 1)',
+      },
       fontFamily: {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "var(--font-sans)", "system-ui", "sans-serif"],
