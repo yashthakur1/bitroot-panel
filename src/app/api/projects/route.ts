@@ -101,8 +101,10 @@ export async function GET() {
     ? await run(
         [...candidatePorts]
           .map(
-            (p) =>
-              `(echo >/dev/tcp/${TAILNET_IP}/${p}) >/dev/null 2>&1 && echo ${p}:up || echo ${p}:down`,
+            // nc, not /dev/tcp: commands run under sh, which on Termux is dash,
+            // and /dev/tcp is a bash-ism. Under dash every probe fails silently
+            // and every service looks unreachable.
+            (p) => `nc -z -w 2 ${TAILNET_IP} ${p} >/dev/null 2>&1 && echo ${p}:up || echo ${p}:down`,
           )
           .join('; '),
         20_000,
