@@ -53,7 +53,15 @@ export async function PATCH(
 
     if (body.access === 'public') {
       await setWebsite(bucket.id, true);
-      const add = await run(`tunnel-add ${name} ${WEB_PORT}`, 120_000);
+      // Publishing an already-published bucket must not append a second ingress
+      // rule for the same hostname; cloudflared matches the first and the rest
+      // are dead weight that also skew the cache rule's host list.
+      const alreadyRouted = (await hostsForPort(WEB_PORT)).includes(
+        `${name}.${DOMAIN_SUFFIX}`,
+      );
+      const add = alreadyRouted
+        ? { ok: true, output: 'route already present' }
+        : await run(`tunnel-add ${name} ${WEB_PORT}`, 120_000);
       if (!add.ok) {
         // Leave no half-public bucket behind: if the route failed, the website
         // flag goes back off so the panel and the tunnel agree.
