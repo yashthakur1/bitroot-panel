@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Box, Cloud, Database, Github, HardDrive, PanelsTopLeft, Plus, Recycle, Settings, ShieldCheck } from 'lucide-react';
+import { Box, Cloud, Database, Github, HardDrive, PanelsTopLeft, Plus, Recycle, Server, Settings, ShieldCheck } from 'lucide-react';
 
 interface Item {
   name: string;
@@ -34,10 +34,16 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
     title: 'Deploy',
     items: [
       {
-        name: 'Projects',
+        name: 'Services',
         href: '/dashboard',
-        icon: <Box size={18} />,
+        icon: <Server size={18} />,
         match: (p) => p === '/dashboard' || p.startsWith('/dashboard/services'),
+      },
+      {
+        name: 'Projects',
+        href: '/dashboard/projects',
+        icon: <Box size={18} />,
+        match: (p) => p.startsWith('/dashboard/projects'),
       },
       {
         name: 'Static sites',

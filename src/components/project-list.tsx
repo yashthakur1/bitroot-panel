@@ -23,6 +23,7 @@ import {
   ScrollText,
   RotateCw,
   Play,
+  Server,
   Square,
 } from 'lucide-react';
 
@@ -224,7 +225,16 @@ export default function ProjectList() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-display font-light tracking-tight">Projects</h1>
+        <div>
+          <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
+            <Server size={24} className="text-gray-500 dark:text-gray-400" />
+            Services
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2" style={{ textWrap: 'pretty' }}>
+            Everything running on the device — the apps you deployed, the static sites nginx
+            serves, and the daemons underneath them.
+          </p>
+        </div>
         <div className="flex items-center space-x-3">
           <button
             onClick={() => {
