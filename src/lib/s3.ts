@@ -8,6 +8,14 @@
 import { createHash, createHmac } from 'crypto';
 
 const S3_URL = process.env.GARAGE_S3_URL ?? 'http://127.0.0.1:3900';
+
+// The panel talks to Garage over loopback, which is fast and never leaves the
+// device - but a link handed to someone else has to name an address they can
+// reach, and the host is part of the signature, so it must be signed against
+// that address rather than rewritten afterwards.
+const S3_SHARE_URL =
+  process.env.GARAGE_S3_PUBLIC_URL ??
+  `http://${process.env.TAILNET_HOST ?? 'oneplus-6.tailf9a49f.ts.net'}:3900`;
 const REGION = process.env.GARAGE_REGION ?? 'garage';
 const SERVICE = 's3';
 
@@ -155,7 +163,7 @@ export function presignGetObject(
   key: string,
   expiresInSeconds: number,
 ): string {
-  const url = new URL(`${S3_URL}/${bucket}/${encodeKey(key)}`);
+  const url = new URL(`${S3_SHARE_URL}/${bucket}/${encodeKey(key)}`);
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
