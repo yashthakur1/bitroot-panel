@@ -1,0 +1,31 @@
+{
+  "name": "bitpanel",
+  "version": "0.1.0",
+  "description": "Installer for BitPanel — a self-hosted deploy panel for a machine you own",
+  "bin": {
+    "bitpanel": "index.js"
+  },
+  "type": "module",
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "self-hosted",
+    "deploy",
+    "pm2",
+    "cloudflare-tunnel",
+    "s3",
+    "garage",
+    "homelab"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yashthakur1/bitroot-panel.git"
+  },
+  "homepage": "https://yashthakur1.github.io/bitroot-panel/"
+}
