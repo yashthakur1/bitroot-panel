@@ -79,7 +79,7 @@ export async function POST(
       bytes: body.length,
       contentEncoding: contentEncoding ?? null,
       url: bucket.websiteAccess
-        ? `https://${name}.${process.env.DOMAIN_SUFFIX ?? 'bitroot.in'}/${key}`
+        ? `https://${name}.${process.env.DOMAIN_SUFFIX ?? 'example.com'}/${key}`
         : null,
     });
   } catch (e) {

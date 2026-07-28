@@ -14,8 +14,8 @@ import {
 } from '@/lib/garage';
 import { hostsForPort } from '@/lib/routes';
 
-const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
-const TAILNET_HOST = process.env.TAILNET_HOST ?? 'oneplus-6.tailf9a49f.ts.net';
+const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
+const TAILNET_HOST = process.env.TAILNET_HOST ?? 'localhost';
 const S3_PORT = 3900;
 
 export async function GET() {

@@ -15,7 +15,7 @@ const S3_URL = process.env.GARAGE_S3_URL ?? 'http://127.0.0.1:3900';
 // that address rather than rewritten afterwards.
 const S3_SHARE_URL =
   process.env.GARAGE_S3_PUBLIC_URL ??
-  `http://${process.env.TAILNET_HOST ?? 'oneplus-6.tailf9a49f.ts.net'}:3900`;
+  `http://${process.env.TAILNET_HOST ?? 'localhost'}:3900`;
 const REGION = process.env.GARAGE_REGION ?? 'garage';
 const SERVICE = 's3';
 

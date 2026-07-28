@@ -1,5 +1,9 @@
 "use client";
 
+// Zone comes from the environment so a checkout is not tied to one person's
+// infrastructure. NEXT_PUBLIC_ because this renders in the browser.
+const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from './ui/button';
@@ -135,7 +139,7 @@ function Timeline({
               </span>
               {label === 'Route' && state !== 'pending' && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isPublic ? `${name || '<name>'}.bitroot.in` : 'private — Tailscale only'}
+                  {isPublic ? `${name || '<name>'}.${DOMAIN_SUFFIX}` : 'private — Tailscale only'}
                 </div>
               )}
             </div>
@@ -635,7 +639,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  <code>{name || '<name>'}.bitroot.in</code> via Cloudflare Tunnel
+                  <code>{name || '<name>'}.{DOMAIN_SUFFIX}</code> via Cloudflare Tunnel
                 </div>
               </button>
               <button

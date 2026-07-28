@@ -4,7 +4,7 @@ import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
 
-const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
+const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 
 // The build command is executed on the phone. An authenticated admin can
 // already run arbitrary code via a repo's package scripts, so this is not a

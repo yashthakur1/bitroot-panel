@@ -17,7 +17,7 @@ import { hostsForPort } from '@/lib/routes';
 
 const PUBLIC_CACHE = 'public, max-age=31536000, immutable';
 
-const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
+const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 
 // Change a bucket's tier, or move it between private and public.
 export async function PATCH(

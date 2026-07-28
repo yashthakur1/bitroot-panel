@@ -11,9 +11,9 @@ const SYSTEM_APPS = new Set([
   'nginx',
   'pocketbase',
 ]);
-const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
-const TAILNET_HOST = process.env.TAILNET_HOST ?? 'oneplus-6.tailf9a49f.ts.net';
-const TAILNET_IP = process.env.TAILNET_IP ?? '100.127.137.83';
+const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
+const TAILNET_HOST = process.env.TAILNET_HOST ?? 'localhost';
+const TAILNET_IP = process.env.TAILNET_IP ?? '127.0.0.1';
 
 // Installed CLI apps and packages are not processes and are reported by
 // /api/system instead; this endpoint stays about things pm2 and nginx run.

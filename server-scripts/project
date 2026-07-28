@@ -14,7 +14,8 @@ BIN_DIR="$HOME/bin"
 PORTS_CONF="$BIN_DIR/ports.conf"
 ECOSYSTEM="$HOME/ecosystem.config.js"
 CLOUDFLARE_CONFIG="$HOME/.cloudflared/config.yml"
-DOMAIN_SUFFIX="bitroot.in"
+# Same zone the panel uses; override in the environment rather than editing here.
+DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
 
 # ─── helpers ──────────────────────────────────────────────────────────────────
 

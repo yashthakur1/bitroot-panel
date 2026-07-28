@@ -1,5 +1,9 @@
 "use client";
 
+// Zone comes from the environment so a checkout is not tied to one person's
+// infrastructure. NEXT_PUBLIC_ because this renders in the browser.
+const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from './ui/button';
@@ -101,7 +105,7 @@ function Timeline({
           a: 4,
           d: 5,
           detail: (
-            <code className="text-xs text-gray-500 dark:text-gray-400">{name || '<name>'}.bitroot.in</code>
+            <code className="text-xs text-gray-500 dark:text-gray-400">{name || '<name>'}.{DOMAIN_SUFFIX}</code>
           ),
         }
       : { label: 'Tunnel route', a: 4, d: 5, skip: true },
@@ -440,7 +444,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           Clone, install, run under pm2 — and optionally publish at{' '}
-          <code>&lt;name&gt;.bitroot.in</code>.
+          <code>&lt;name&gt;.{DOMAIN_SUFFIX}</code>.
         </p>
       </div>
 
@@ -702,7 +706,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
               ) : nameConflict ? (
                 <FieldError msg={`"${name}" already exists on the server`} />
               ) : nameValid ? (
-                <FieldOk msg={environment === 'public' ? `${name}.bitroot.in` : 'name is free'} />
+                <FieldOk msg={environment === 'public' ? `${name}.${DOMAIN_SUFFIX}` : 'name is free'} />
               ) : null}
             </div>
             <div className="flex flex-col w-40">
@@ -761,7 +765,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  Internet-facing at <code>{name || '<name>'}.bitroot.in</code> via Cloudflare
+                  Internet-facing at <code>{name || '<name>'}.{DOMAIN_SUFFIX}</code> via Cloudflare
                   Tunnel
                 </div>
               </button>

@@ -10,7 +10,8 @@ set -e
 SITES_DIR="$HOME/apps/static"
 NGINX_SITES="$HOME/etc/nginx/sites"
 PORTS_CONF="$HOME/bin/ports.conf"
-DOMAIN_SUFFIX="bitroot.in"
+# Same zone the panel uses; override in the environment rather than editing here.
+DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
 
 die() { echo "error: $*" >&2; exit 1; }
 

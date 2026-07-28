@@ -1,5 +1,8 @@
 "use client";
 
+const TAILNET_SUFFIX = process.env.NEXT_PUBLIC_TAILNET_SUFFIX ?? 'ts.net';
+const TAILNET_HOST = process.env.NEXT_PUBLIC_TAILNET_HOST ?? 'localhost';
+
 import { useCallback, useEffect, useState } from 'react';
 import { useLivePoll } from '@/lib/use-poll';
 import { Button } from './ui/button';
@@ -432,12 +435,12 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-700 dark:text-gray-300">
                         <a
-                          href={`http://${state.tailscale.host}.tailf9a49f.ts.net:${s.port}`}
+                          href={`http://${state.tailscale.host}.${TAILNET_SUFFIX}:${s.port}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-accent-600 dark:text-accent-400 hover:underline"
                         >
-                          {state.tailscale.host}.tailf9a49f.ts.net:{s.port}
+                          {state.tailscale.host}.{TAILNET_SUFFIX}:{s.port}
                         </a>
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-500 dark:text-gray-400">

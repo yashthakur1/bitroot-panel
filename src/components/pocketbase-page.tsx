@@ -1,5 +1,9 @@
 "use client";
 
+// Same zone the API routes use; NEXT_PUBLIC so the browser bundle can see it.
+const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
+
 import { useCallback, useEffect, useState } from 'react';
 import { useLivePoll } from '@/lib/use-poll';
 import {
@@ -40,10 +44,10 @@ interface PbState {
   publicUrl: string;
 }
 
-const ADMIN_URL = 'https://pocketbase.bitroot.in/_/';
+const ADMIN_URL = `https://pocketbase.${DOMAIN_SUFFIX}/_/`;
 // Full MagicDNS name: browsers treat a single-label host like "oneplus-6" as a
 // search term, so the short form looks broken when clicked.
-const TS_FQDN = 'oneplus-6.tailf9a49f.ts.net';
+const TS_FQDN = 'localhost';
 
 type Tab = 'overview' | 'databases' | 'backups' | 'access';
 
@@ -215,12 +219,12 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
                 </div>
               </div>
               <a
-                href={`${state?.publicUrl ?? 'https://pocketbase.bitroot.in'}/_/`}
+                href={`${state?.publicUrl ?? `https://pocketbase.${DOMAIN_SUFFIX}`}/_/`}
                 target="_blank"
                 rel="noreferrer"
                 className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
               >
-                {(state?.publicUrl ?? 'https://pocketbase.bitroot.in').replace('https://', '')}
+                {(state?.publicUrl ?? `https://pocketbase.${DOMAIN_SUFFIX}`).replace('https://', '')}
               </a>
             </div>
             <div className="px-4 py-3 flex justify-between items-start flex-wrap gap-2">
@@ -423,7 +427,7 @@ function SuperuserSection() {
             <Input
               id="su-email"
               type="email"
-              placeholder="teammate@bitroot.org"
+              placeholder="teammate@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required

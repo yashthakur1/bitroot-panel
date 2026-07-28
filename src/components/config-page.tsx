@@ -1,5 +1,9 @@
 "use client";
 
+// Same zone the API routes use; NEXT_PUBLIC so the browser bundle can see it.
+const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
+
 import { useCallback, useEffect, useState } from 'react';
 import {
   Eye,
@@ -365,13 +369,13 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
             <div className="border rounded-lg divide-y text-sm">
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
                 <span className="text-gray-700 dark:text-gray-300">Public (Cloudflare Access + password)</span>
-                <a href="https://panel.bitroot.in" className="font-mono text-accent-600 dark:text-accent-400 hover:underline">
-                  panel.bitroot.in
+                <a href={`https://panel.${DOMAIN_SUFFIX}`} className="font-mono text-accent-600 dark:text-accent-400 hover:underline">
+                  {`panel.${DOMAIN_SUFFIX}`}
                 </a>
               </div>
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
                 <span className="text-gray-700 dark:text-gray-300">Tailscale (private, password only)</span>
-                <span className="font-mono text-gray-800 dark:text-gray-200">100.127.137.83:{state.panel.port}</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">{TAILNET_IP}:{state.panel.port}</span>
               </div>
             </div>
           </div>

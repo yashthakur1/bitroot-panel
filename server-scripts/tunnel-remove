@@ -6,10 +6,11 @@ NAME=$1
 if [ -z "$NAME" ]; then echo "Usage: tunnel-remove <name>"; exit 1; fi
 CONFIG="$HOME/.cloudflared/config.yml"
 python3 - "$CONFIG" "$NAME" <<'PYEOF'
+import os
 import sys
 
 config_file, name = sys.argv[1], sys.argv[2]
-hostname = f"{name}.bitroot.in"
+hostname = f"{name}." + os.environ.get("DOMAIN_SUFFIX", "example.com")
 
 with open(config_file) as f:
     lines = f.readlines()

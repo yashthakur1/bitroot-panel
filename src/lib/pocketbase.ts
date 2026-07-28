@@ -5,7 +5,7 @@ import { shq, ValidationError } from './validate';
 // phone at ~/apps/pocketbase/.superuser (600) and never reach the browser.
 
 export const PB_URL = process.env.POCKETBASE_URL ?? 'http://127.0.0.1:8090';
-export const PB_PUBLIC_URL = process.env.POCKETBASE_PUBLIC_URL ?? 'https://pocketbase.bitroot.in';
+export const PB_PUBLIC_URL = process.env.POCKETBASE_PUBLIC_URL ?? `https://pocketbase.${process.env.DOMAIN_SUFFIX ?? 'example.com'}`;
 const REGISTRY = '"$HOME/apps/pocketbase/databases.json"';
 
 let cached: { token: string; until: number } | null = null;

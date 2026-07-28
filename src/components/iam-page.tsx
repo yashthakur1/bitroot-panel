@@ -214,7 +214,7 @@ export default function IamPage({ initialTab }: { initialTab?: string }) {
                 <Input
                   id="iam-email"
                   type="email"
-                  placeholder="teammate@bitroot.org"
+                  placeholder="teammate@example.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   required

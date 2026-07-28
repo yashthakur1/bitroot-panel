@@ -1,5 +1,7 @@
 "use client";
 
+const TAILNET_HOST = process.env.NEXT_PUBLIC_TAILNET_HOST ?? 'localhost';
+
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -217,12 +219,12 @@ export default function StaticSiteDetail({ name }: { name: string }) {
           <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
           {site ? (
             <a
-              href={`http://oneplus-6.tailf9a49f.ts.net:${site.port}`}
+              href={`http://${TAILNET_HOST}:${site.port}`}
               target="_blank"
               rel="noreferrer"
               className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
             >
-              oneplus-6.tailf9a49f.ts.net:{site.port}
+              {TAILNET_HOST}:{site.port}
             </a>
           ) : (
             <span className="font-mono text-gray-800 dark:text-gray-200">—</span>

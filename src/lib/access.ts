@@ -10,7 +10,9 @@ import { shq, ValidationError } from './validate';
 const ZONE = process.env.CF_ZONE_ID ?? '';
 const TOKEN = process.env.CF_API_TOKEN ?? '';
 const IAM_CONFIG = '"$HOME/.config/bitroot-panel/iam.json"';
-const DEFAULT_SUPERADMIN = 'yt@bitroot.org';
+// Overridden by ~/.config/bitroot-panel/iam.json on a configured install;
+// this is only what an unconfigured checkout falls back to.
+const DEFAULT_SUPERADMIN = process.env.SUPERADMIN_EMAIL ?? 'admin@example.com';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

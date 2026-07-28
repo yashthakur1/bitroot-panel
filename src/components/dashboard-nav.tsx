@@ -65,13 +65,13 @@ function ProfileMenu() {
             </div>
             <div className="min-w-0">
               <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
-                Yash Thakur
+                {process.env.NEXT_PUBLIC_ADMIN_NAME ?? 'Administrator'}
                 <span className="ml-2 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full align-middle">
                   admin
                 </span>
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                yt@bitroot.org
+                {process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL ?? 'admin@example.com'}
               </div>
             </div>
           </div>
