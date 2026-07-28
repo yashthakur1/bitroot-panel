@@ -267,7 +267,11 @@ fi
 
 say "starting services under pm2"
 pm2 start garage --name garage -- server >/dev/null 2>&1 || pm2 restart garage >/dev/null
-pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || pm2 restart bitroot-panel >/dev/null
+# PORT has to be in the real environment: next start reads it there, not from
+# .env, so writing PORT into .env alone silently leaves the panel on 3000
+# while every link, nginx vhost and doc points at 3210.
+PORT="$PANEL_PORT" pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || \
+	PORT="$PANEL_PORT" pm2 restart bitroot-panel --update-env >/dev/null
 pm2 start nginx --name nginx -- -c "$HOME/etc/nginx/nginx.conf" -g 'daemon off;' >/dev/null 2>&1 || pm2 restart nginx >/dev/null
 # The deploy webhook is what makes `git push` to this machine deploy anything.
 [ -x "$BIN_DIR/deploy-webhook" ] && { pm2 start "$BIN_DIR/deploy-webhook" --name deploy-webhook >/dev/null 2>&1 || pm2 restart deploy-webhook >/dev/null; }
