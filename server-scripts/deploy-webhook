@@ -1,0 +1,99 @@
+#!/usr/bin/env node
+// deploy-webhook — lightweight deploy webhook server
+// Listens for authenticated POST requests from GitHub Actions,
+// runs `project deploy <name>`, streams output in response.
+//
+// Setup:
+//   chmod +x ~/bin/deploy-webhook
+//   DEPLOY_SECRET=<your-secret> pm2 start ~/bin/deploy-webhook --name deploy-webhook
+//
+// GitHub Actions usage:
+//   curl -X POST https://deploy.<your-domain>/hook \
+//     -H "X-Deploy-Secret: <secret>" \
+//     -H "Content-Type: application/json" \
+//     -d '{"project":"bitroot-api"}'
+
+import { createServer } from 'http';
+import { execFile } from 'child_process';
+import { createHmac, timingSafeEqual } from 'crypto';
+
+const PORT = process.env.PORT || 9000;
+const SECRET = process.env.DEPLOY_SECRET || '';
+
+if (!SECRET) {
+  console.error('WARN: DEPLOY_SECRET not set — all requests will be rejected');
+}
+
+function verify(req) {
+  const provided = req.headers['x-deploy-secret'] || '';
+  if (!SECRET || !provided) return false;
+  try {
+    // HMAC both to get equal-length buffers for constant-time compare
+    const a = Buffer.from(createHmac('sha256', 'v').update(provided).digest('hex'));
+    const b = Buffer.from(createHmac('sha256', 'v').update(SECRET).digest('hex'));
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+const server = createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+    return;
+  }
+
+  if (req.method !== 'POST' || req.url !== '/hook') {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'not found' }));
+    return;
+  }
+
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    if (!verify(req)) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
+      console.log(`[${new Date().toISOString()}] REJECTED deploy request (bad secret)`);
+      return;
+    }
+
+    let project;
+    try {
+      project = JSON.parse(body).project;
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid JSON body' }));
+      return;
+    }
+
+    if (!project || !/^[a-z0-9_-]+$/i.test(project)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid project name' }));
+      return;
+    }
+
+    console.log(`[${new Date().toISOString()}] deploying ${project}...`);
+
+    const env = { ...process.env, PATH: `${process.env.HOME}/bin:${process.env.PATH}` };
+
+    execFile('project', ['deploy', project], { env, timeout: 300_000 }, (err, stdout, stderr) => {
+      const output = [stdout, stderr].filter(Boolean).join('\n');
+      if (err) {
+        console.error(`[deploy ${project}] FAILED:`, err.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'error', project, error: err.message, output }));
+      } else {
+        console.log(`[deploy ${project}] OK`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', project, output }));
+      }
+    });
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`deploy-webhook listening on port ${PORT}`);
+});

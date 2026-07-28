@@ -23,7 +23,7 @@ fi
 if [ -z "$TGZ" ] || [ ! -f "$TGZ" ]; then
 	echo "!! no tarball found"
 	echo "   build one on the Mac:  cd apps/cli && npm pack"
-	echo "   copy it over:          scp bitroot-org-bit-cli-*.tgz oneplus:~/"
+	echo "   copy it over:          scp bitroot-org-bit-cli-*.tgz <host>:~/"
 	exit 1
 fi
 

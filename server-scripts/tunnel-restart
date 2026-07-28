@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+pkill cloudflared 2>/dev/null; sleep 2
+nohup cloudflared tunnel run "${TUNNEL_NAME:-$(hostname)}" > ~/cloudflared.log 2>&1 &
+sleep 4; tail -4 ~/cloudflared.log

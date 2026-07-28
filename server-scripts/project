@@ -348,7 +348,7 @@ JSEOF
   echo "=== checklist ==="
   echo "  [ ] add GET /health endpoint → { status: 'ok', uptime: process.uptime() }"
   echo "  [ ] set env vars: project env $name KEY=VALUE"
-  echo "  [ ] add GitHub Actions caller: see ~/bitroot-oneplus-docs/bitroot-employee-setup.md"
+  echo "  [ ] add GitHub Actions caller: see the deployment notes in your team docs"
   echo ""
   echo "live at https://${name}.${DOMAIN_SUFFIX}"
 }

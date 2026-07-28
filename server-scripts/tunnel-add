@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Point a hostname at a local port through the Cloudflare tunnel: create the
+# DNS record, add an ingress rule, and note the record so BitPanel can report
+# it later if it is ever left dangling.
+set -e
+
+# Zone and tunnel come from the environment rather than being baked in, so this
+# is not tied to one domain or one machine's tunnel.
+DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
+
+NAME=$1; PORT=$2
+if [ -z "$NAME" ] || [ -z "$PORT" ]; then
+	echo "Usage: tunnel-add <name> <port>" >&2
+	exit 1
+fi
+
+# Prefer an explicit id; otherwise ask cloudflared which tunnel this machine
+# runs. Guessing wrong would create a DNS record pointing at someone else's
+# tunnel, which fails in a confusing way much later.
+TUNNEL_ID="${TUNNEL_ID:-}"
+if [ -z "$TUNNEL_ID" ]; then
+	TUNNEL_NAME="${TUNNEL_NAME:-$(hostname)}"
+	TUNNEL_ID=$(cloudflared tunnel list 2>/dev/null | awk -v n="$TUNNEL_NAME" '$2 == n {print $1}' | head -1)
+fi
+if [ -z "$TUNNEL_ID" ]; then
+	echo "!! no tunnel found. Set TUNNEL_ID, or TUNNEL_NAME to match one in 'cloudflared tunnel list'." >&2
+	exit 1
+fi
+
+CONFIG="$HOME/.cloudflared/config.yml"
+[ -f "$CONFIG" ] || { echo "!! $CONFIG not found — run 'cloudflared tunnel create' first" >&2; exit 1; }
+
+if grep -q "hostname: ${NAME}.${DOMAIN_SUFFIX}\b" "$CONFIG"; then
+	echo "Already routed: ${NAME}.${DOMAIN_SUFFIX}"
+	exit 0
+fi
+
+cloudflared tunnel route dns -f "$TUNNEL_ID" "${NAME}.${DOMAIN_SUFFIX}"
+sed -i "/# Catch-all/i\\  # ${NAME} (port ${PORT})\n  - hostname: ${NAME}.${DOMAIN_SUFFIX}\n    service: http://localhost:${PORT}\n" "$CONFIG"
+
+# Record that a DNS record now exists, so BitPanel can tell you later if it is
+# left dangling once the route is gone.
+mkdir -p "$HOME/.config/bitpanel"
+grep -qx "${NAME}.${DOMAIN_SUFFIX}" "$HOME/.config/bitpanel/dns-created.txt" 2>/dev/null \
+	|| echo "${NAME}.${DOMAIN_SUFFIX}" >> "$HOME/.config/bitpanel/dns-created.txt"
+
+echo "Added: https://${NAME}.${DOMAIN_SUFFIX} -> localhost:${PORT}"
+# cloudflared does not begin serving a new hostname on SIGHUP; it needs a
+# restart. BitPanel does that itself after calling this.
+echo "cloudflared must be restarted for this to take effect."

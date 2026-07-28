@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+# usage: new-app <name> <port>
+# Creates a git-push-deployable app slot: push to ~/repos/<name>.git,
+# it checks out to ~/apps/<name>, installs deps, and (re)starts under pm2.
+set -e
+NAME=$1
+PORT=$2
+if [ -z "$NAME" ] || [ -z "$PORT" ]; then
+  echo "usage: new-app <name> <port>"
+  exit 1
+fi
+REPO="$HOME/repos/$NAME.git"
+if [ -d "$REPO" ]; then
+  echo "app '$NAME' already exists at $REPO"
+  exit 1
+fi
+mkdir -p "$HOME/repos" "$HOME/apps/$NAME"
+git init --bare -b main "$REPO" >/dev/null
+echo "$PORT" > "$REPO/PORT"
+cp "$HOME/bin/post-receive-template" "$REPO/hooks/post-receive"
+chmod +x "$REPO/hooks/post-receive"
+echo "Created app '$NAME' (port $PORT)."
+echo "Deploy from your computer with:"
+echo "  git remote add phone ssh://$(whoami)@$(hostname):22/~/repos/$NAME.git"
+echo "  git push phone main"

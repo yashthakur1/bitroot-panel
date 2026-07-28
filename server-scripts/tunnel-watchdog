@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+LOG=~/watchdog.log
+MAX_LOG_LINES=200
+
+# Find cloudflared metrics port by checking the PM2 logs for the startup line
+METRICS_PORT=$(pm2 logs cloudflared --nostream --lines 50 2>/dev/null | grep -oP "metrics server on 127.0.0.1:\K\d+" | tail -1)
+
+if [ -z "$METRICS_PORT" ]; then
+    # No metrics port found — cloudflared probably not running
+    if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1; then
+        echo "$(date): cloudflared not running, restarting" >> $LOG
+        pm2 restart cloudflared
+    fi
+    exit 0
+fi
+
+# Check active tunnel connections via metrics
+HA_CONNS=$(curl -s --max-time 5 "http://127.0.0.1:${METRICS_PORT}/metrics" 2>/dev/null | grep "^cloudflared_tunnel_ha_connections " | awk "{print \$2}")
+
+if [ -z "$HA_CONNS" ] || [ "$HA_CONNS" = "0" ]; then
+    # Tunnel has no active connections — but only restart if internet is available
+    if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1; then
+        echo "$(date): Tunnel dead (ha_connections=${HA_CONNS:-none}, internet OK), restarting" >> $LOG
+        pm2 restart cloudflared
+    else
+        echo "$(date): No internet, skipping" >> $LOG
+    fi
+fi
+
+# Trim log
+tail -n $MAX_LOG_LINES $LOG > ${LOG}.tmp && mv ${LOG}.tmp $LOG 2>/dev/null
