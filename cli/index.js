@@ -22,8 +22,12 @@ const DOCS = 'https://yashthakur1.github.io/bitroot-panel/';
 const TAG_URL = `${REPO}/v${version}/install.sh`;
 const MAIN_URL = `${REPO}/main/install.sh`;
 
+// --head, so existence is checked without pulling the whole script down and
+// throwing it away - the body then gets fetched a second time to actually run.
 function reachable(url) {
-  const r = spawnSync('curl', ['-fsSL', '-o', '/dev/null', '-m', '20', url], { stdio: 'ignore' });
+  const r = spawnSync('curl', ['-fsSL', '--head', '-o', '/dev/null', '-m', '20', url], {
+    stdio: 'ignore',
+  });
   return r.status === 0;
 }
 
@@ -60,7 +64,14 @@ Termux and other platforms: see ${DOCS}`);
 }
 
 if (cmd === 'url') {
-  console.log(installerUrl().url);
+  const { url, pinned } = installerUrl();
+  // The warning goes to stderr so `bitpanel url | xargs curl` stays clean.
+  // Printing an unpinned URL silently is the failure worth avoiding: it looks
+  // identical to a pinned one, and the difference is which code you install.
+  if (!pinned) {
+    console.warn(`warning: no v${version} tag found — this is main, not a released version`);
+  }
+  console.log(url);
   process.exit(0);
 }
 
