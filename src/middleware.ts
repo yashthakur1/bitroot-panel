@@ -5,9 +5,16 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname === '/api/login') return NextResponse.next();
+  // The setup wizard has to be reachable before any credential exists. It
+  // refuses itself once the panel is configured, so this does not leave a way
+  // in afterwards.
+  if (pathname === '/setup' || pathname === '/api/setup') return NextResponse.next();
 
   const secret = process.env.SESSION_SECRET;
-  if (!secret) return new NextResponse('SESSION_SECRET not configured', { status: 500 });
+  if (!secret || !process.env.DASHBOARD_PASSWORD) {
+    // Nothing to log in with yet, so a login form would be a dead end.
+    return NextResponse.redirect(new URL('/setup', req.url));
+  }
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (token && token === (await sessionToken(secret))) {
