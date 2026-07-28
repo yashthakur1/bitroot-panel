@@ -97,6 +97,27 @@ export async function GET() {
 
   for (const p of Object.values(portMap)) candidatePorts.add(p);
   for (const s of staticSites) candidatePorts.add(s.port);
+  // pm2 knows a port for services that were never written to ports.conf - the
+  // panel and the deploy webhook among them - so take that as a third source.
+  const pm2Port: Record<string, number> = {};
+  let apps: any[] = [];
+  try {
+    // pm2 can print daemon-startup noise before the JSON array
+    const start = pm2.output.indexOf('[');
+    if (start >= 0) apps = JSON.parse(pm2.output.slice(start));
+  } catch {
+    // fall through with empty list
+  }
+
+  for (const a of apps) {
+    const envPort = Number(a.pm2_env?.env?.PORT);
+    if (envPort) {
+      portsInUse[envPort] ??= `pm2 app "${a.name}"`;
+      pm2Port[a.name] = envPort;
+    }
+  }
+
+  for (const p of Object.values(pm2Port)) candidatePorts.add(p);
   const probe = candidatePorts.size
     ? await run(
         [...candidatePorts]
@@ -119,19 +140,6 @@ export async function GET() {
   const privateUrlFor = (port: number | null) =>
     port && reachable.has(port) ? `http://${TAILNET_HOST}:${port}` : null;
 
-  let apps: any[] = [];
-  try {
-    // pm2 can print daemon-startup noise before the JSON array
-    const start = pm2.output.indexOf('[');
-    if (start >= 0) apps = JSON.parse(pm2.output.slice(start));
-  } catch {
-    // fall through with empty list
-  }
-
-  for (const a of apps) {
-    const envPort = Number(a.pm2_env?.env?.PORT);
-    if (envPort) portsInUse[envPort] ??= `pm2 app "${a.name}"`;
-  }
   // Note: enumerating listening sockets is impossible here — Android denies
   // netlink to apps, so ss/netstat return nothing. Ports are therefore tracked
   // from what the panel manages (registry, tunnel routes, pm2), and liveness is
@@ -156,7 +164,8 @@ export async function GET() {
       privateUrlFor(portMap[a.name] ?? null) ??
       privateUrlFor(
         Object.entries(portMap).find(([n]) => n.startsWith(`_${a.name}-`))?.[1] ?? null,
-      ),
+      ) ??
+      privateUrlFor(pm2Port[a.name] ?? null),
     system: SYSTEM_APPS.has(a.name),
     type: 'node' as const,
   }));
