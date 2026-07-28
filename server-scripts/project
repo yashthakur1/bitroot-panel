@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # project — OnePlus cloud server project manager
 # Usage: project <command> [args]
 # Commands: add, clone, deploy, start, stop, restart, status, logs, url, env, remove

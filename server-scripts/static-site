@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # static-site — build-and-serve static sites through nginx (no pm2 process).
 # Usage: static-site <command> [args]
 #   create <name> <port> <repo> [branch] [--no-tunnel]   env: BUILD_CMD, OUT_DIR

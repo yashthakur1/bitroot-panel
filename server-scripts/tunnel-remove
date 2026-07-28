@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 # tunnel-remove <name> — drop an ingress route from the cloudflared config.
 # The DNS CNAME is left in place (removing it needs an API token); the hostname
 # simply stops resolving to a service and falls through to the catch-all 404.

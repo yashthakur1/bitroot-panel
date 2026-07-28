@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/usr/bin/env sh
 # Let the environment override two values the Openship CLI hardcodes when it
 # spawns its children.
 #
@@ -15,7 +15,10 @@
 # unless the variable is set. Reinstalling or upgrading openship reverts them,
 # which is why start.sh re-applies this on every boot.
 set -e
-CLI="$PREFIX/lib/node_modules/openship/dist/index.js"
+# Termux keeps global modules under $PREFIX; elsewhere npm knows where they are.
+NODE_ROOT="${PREFIX:-$(npm root -g 2>/dev/null | sed 's|/lib/node_modules$||')}"
+CLI="$NODE_ROOT/lib/node_modules/openship/dist/index.js"
+[ -f "$CLI" ] || CLI="$(npm root -g 2>/dev/null)/openship/dist/index.js"
 [ -f "$CLI" ] || { echo "openship not installed"; exit 1; }
 
 if grep -q "OPENSHIP_LOCAL_API_URL: process.env.OPENSHIP_LOCAL_API_URL" "$CLI"; then

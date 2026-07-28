@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/usr/bin/env sh
 # Install or upgrade bit-cli from a tarball built on a workstation.
 #
 # The monorepo cannot be built on this device: turbo ships no Android binary
@@ -11,7 +11,10 @@ set -e
 
 # node-gyp leaves android_ndk_path undefined on Android, which stops
 # better-sqlite3 - bit-cli's one native dependency - from even configuring.
-export GYP_DEFINES="android_ndk_path="
+# Only Android needs this: node-gyp leaves android_ndk_path undefined there and
+# native modules will not configure without it. Harmless elsewhere, but set it
+# only where it applies rather than carrying an Android quirk onto Linux.
+[ "$(uname -o 2>/dev/null)" = "Android" ] && export GYP_DEFINES="android_ndk_path=" || true
 
 TGZ="$1"
 if [ -z "$TGZ" ]; then

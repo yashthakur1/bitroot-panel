@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# BitPanel installer for Debian/Ubuntu.
+#
+#   curl -fsSL https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh | bash
+#   ...or: git clone … && cd bitroot-panel && ./install.sh
+#
+# Installs the panel and the pieces it drives: Node, pm2, nginx, cloudflared,
+# Garage, and the ~/bin scripts. Everything is idempotent - re-running it
+# upgrades rather than duplicating - and nothing is installed that is already
+# present at a good version.
+#
+# It deliberately does NOT invent secrets or touch DNS. Cloudflare and Tailscale
+# need credentials only you have, so the script prepares the configuration and
+# tells you the two or three things left to paste in.
+set -euo pipefail
+
+REPO="${BITPANEL_REPO:-https://github.com/yashthakur1/bitroot-panel.git}"
+APP_DIR="${BITPANEL_DIR:-$HOME/apps/bitroot-panel}"
+BIN_DIR="$HOME/bin"
+PANEL_PORT="${BITPANEL_PORT:-3210}"
+NODE_MAJOR="${NODE_MAJOR:-22}"
+
+say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[33m !!\033[0m %s\n' "$*"; }
+die()  { printf '\033[31m !!\033[0m %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+[ "$(id -u)" -ne 0 ] || die "run this as your normal user, not root — it installs into \$HOME and uses sudo only where needed"
+have sudo || die "sudo is required"
+. /etc/os-release 2>/dev/null || die "cannot read /etc/os-release — this installer targets Debian/Ubuntu"
+case "${ID_LIKE:-$ID}" in *debian*|*ubuntu*) ;; *) die "this installer targets Debian/Ubuntu; found ${PRETTY_NAME:-$ID}" ;; esac
+
+ARCH="$(dpkg --print-architecture)"
+case "$ARCH" in
+	amd64) GARAGE_ARCH=x86_64-unknown-linux-musl; PB_ARCH=linux_amd64 ;;
+	arm64) GARAGE_ARCH=aarch64-unknown-linux-musl; PB_ARCH=linux_arm64 ;;
+	*) die "unsupported architecture: $ARCH" ;;
+esac
+
+# ─── 1. system packages ──────────────────────────────────────────
+say "installing system packages"
+sudo apt-get update -qq
+sudo apt-get install -y -qq git curl ca-certificates nginx netcat-openbsd jq >/dev/null
+# netcat matters: the panel probes reachability with `nc -z` because /dev/tcp is
+# a bash feature and commands run under sh, which is dash on Debian too.
+
+# ─── 2. node ─────────────────────────────────────────────────────
+if have node && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge "$NODE_MAJOR" ]; then
+	say "node $(node -v) already present"
+else
+	say "installing Node.js $NODE_MAJOR"
+	curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | sudo -E bash - >/dev/null
+	sudo apt-get install -y -qq nodejs >/dev/null
+fi
+have pm2 || { say "installing pm2"; sudo npm install -g pm2 >/dev/null; }
+
+# ─── 3. cloudflared ──────────────────────────────────────────────
+if have cloudflared; then
+	say "cloudflared already present"
+else
+	say "installing cloudflared"
+	curl -fsSL -o /tmp/cloudflared.deb \
+		"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
+	sudo dpkg -i /tmp/cloudflared.deb >/dev/null && rm -f /tmp/cloudflared.deb
+fi
+
+# ─── 4. garage ───────────────────────────────────────────────────
+if have garage; then
+	say "garage already present ($(garage --version 2>/dev/null | head -1))"
+else
+	say "installing Garage"
+	GARAGE_VER="${GARAGE_VERSION:-v2.1.0}"
+	curl -fsSL -o /tmp/garage \
+		"https://garagehq.deuxfleurs.fr/_releases/${GARAGE_VER}/${GARAGE_ARCH}/garage" \
+		|| die "could not download Garage ${GARAGE_VER} for ${GARAGE_ARCH}"
+	chmod +x /tmp/garage && sudo mv /tmp/garage /usr/local/bin/garage
+fi
+
+if [ ! -f /etc/garage.toml ]; then
+	say "writing /etc/garage.toml"
+	RPC_SECRET=$(openssl rand -hex 32)
+	ADMIN_TOKEN=$(openssl rand -hex 32)
+	mkdir -p "$HOME/storage/garage/meta" "$HOME/storage/garage/data"
+	sudo tee /etc/garage.toml >/dev/null <<-EOF
+		metadata_dir = "$HOME/storage/garage/meta"
+		data_dir = "$HOME/storage/garage/data"
+		db_engine = "sqlite"
+		replication_factor = 1
+		rpc_bind_addr = "[::]:3901"
+		rpc_public_addr = "127.0.0.1:3901"
+		rpc_secret = "$RPC_SECRET"
+
+		[s3_api]
+		s3_region = "garage"
+		api_bind_addr = "[::]:3900"
+		root_domain = ".s3.garage.localhost"
+
+		[s3_web]
+		bind_addr = "[::]:3902"
+		root_domain = ".${DOMAIN_SUFFIX:-example.com}"
+		index = "index.html"
+
+		[admin]
+		api_bind_addr = "[::]:3903"
+		admin_token = "$ADMIN_TOKEN"
+	EOF
+else
+	say "/etc/garage.toml already exists — left alone"
+	ADMIN_TOKEN=$(sudo grep -E '^admin_token' /etc/garage.toml | cut -d'"' -f2)
+fi
+
+# ─── 5. the panel itself ─────────────────────────────────────────
+if [ -d "$APP_DIR/.git" ]; then
+	say "updating the panel"
+	git -C "$APP_DIR" pull --ff-only
+else
+	say "cloning the panel"
+	mkdir -p "$(dirname "$APP_DIR")"
+	git clone --depth 1 "$REPO" "$APP_DIR"
+fi
+
+# ─── 6. environment ──────────────────────────────────────────────
+ENV_FILE="$APP_DIR/.env"
+if [ ! -f "$ENV_FILE" ]; then
+	say "writing $ENV_FILE"
+	cat > "$ENV_FILE" <<-EOF
+		PORT=$PANEL_PORT
+		SESSION_SECRET=$(openssl rand -hex 32)
+		DASHBOARD_PASSWORD=$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | cut -c1-20)
+		DOMAIN_SUFFIX=${DOMAIN_SUFFIX:-example.com}
+		TAILNET_HOST=$(hostname)
+		GARAGE_ADMIN_URL=http://127.0.0.1:3903
+		GARAGE_ADMIN_TOKEN=${ADMIN_TOKEN:-}
+		GARAGE_S3_URL=http://127.0.0.1:3900
+		# Fill these in to enable routes, DNS cleanup and the edge cache rule:
+		CF_API_TOKEN=
+		CF_ZONE_ID=
+	EOF
+	chmod 600 "$ENV_FILE"
+	NEW_ENV=1
+else
+	say ".env already exists — left alone"
+fi
+
+# ─── 7. scripts and port registry ────────────────────────────────
+say "installing helper scripts into $BIN_DIR"
+mkdir -p "$BIN_DIR"
+for f in "$APP_DIR"/server-scripts/*; do
+	case "$(basename "$f")" in *.html) continue ;; esac
+	install -m 755 "$f" "$BIN_DIR/$(basename "$f")"
+done
+[ -f "$HOME/bin/ports.conf" ] || printf '# name=port, one per line. A leading underscore reserves a port\n# without listing it as a service.\n' > "$HOME/bin/ports.conf"
+case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "export PATH=\"\$HOME/bin:\$PATH\"" >> "$HOME/.bashrc" ;; esac
+
+# ─── 8. build and run ────────────────────────────────────────────
+say "building the panel (this takes a minute)"
+cd "$APP_DIR"
+npm ci --omit=dev >/dev/null 2>&1 || npm install >/dev/null
+npm run build
+
+say "starting services under pm2"
+pm2 start garage --name garage -- server >/dev/null 2>&1 || pm2 restart garage >/dev/null
+pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || pm2 restart bitroot-panel >/dev/null
+pm2 save >/dev/null
+pm2 startup systemd -u "$USER" --hp "$HOME" 2>/dev/null | grep -E '^sudo' | sh || \
+	warn "could not register pm2 with systemd automatically — run 'pm2 startup' and follow its instructions"
+
+# a single-node Garage still needs a layout before it will accept objects
+if ! garage status 2>/dev/null | grep -q 'NO ROLE ASSIGNED'; then
+	say "garage layout already assigned"
+else
+	NODE_ID=$(garage status 2>/dev/null | awk '/NO ROLE ASSIGNED/{print $1}' | head -1)
+	if [ -n "$NODE_ID" ]; then
+		say "assigning garage layout"
+		garage layout assign "$NODE_ID" -z local -c "${GARAGE_CAPACITY:-50G}" >/dev/null
+		garage layout apply --version 1 >/dev/null
+	fi
+fi
+
+# ─── 9. what is left for a human ─────────────────────────────────
+echo
+say "BitPanel is running on http://127.0.0.1:$PANEL_PORT"
+if [ "${NEW_ENV:-0}" = "1" ]; then
+	echo "    dashboard password:  $(grep '^DASHBOARD_PASSWORD=' "$ENV_FILE" | cut -d= -f2)"
+fi
+cat <<EOF
+
+  Still to do, because these need credentials only you have:
+
+    1. Tailscale, for private access:
+         curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+       then set TAILNET_HOST in $ENV_FILE to the name it reports.
+
+    2. Cloudflare, for public routes and the edge cache rule:
+         cloudflared tunnel login && cloudflared tunnel create \$(hostname)
+       then put CF_API_TOKEN and CF_ZONE_ID in $ENV_FILE. The token needs
+       Zone:DNS:Edit, Zone:Cache Rules:Edit, Account:Account Rulesets:Edit
+       and Zone:Cache Purge:Purge.
+
+    3. Set DOMAIN_SUFFIX in $ENV_FILE to the zone you route under.
+
+  Then: pm2 restart bitroot-panel
+
+EOF

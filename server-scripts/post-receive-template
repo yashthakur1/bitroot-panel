@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/usr/bin/env sh
 # Deploys on git push: checkout -> npm install -> (npm run build) -> pm2 restart.
 # Apps with a "build" script get a full dependency install + build; others get
 # a lean production install. Running apps are restarted in place (env preserved).
