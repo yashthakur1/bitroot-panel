@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertBucketName, ensureUploadAccess, findBucketByName, GIB } from '@/lib/garage';
-import { putObject } from '@/lib/s3';
+import { deleteObject, listObjects, putObject } from '@/lib/s3';
 
 // Objects served from the edge want a long lifetime, and the panel writes
 // content-addressed-ish keys rather than mutating them in place, so a year is
@@ -78,6 +78,40 @@ export async function POST(
         ? `https://${name}.${process.env.DOMAIN_SUFFIX ?? 'bitroot.in'}/${key}`
         : null,
     });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+  }
+}
+
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ name: string }> },
+) {
+  try {
+    const name = assertBucketName((await params).name);
+    const bucket = await findBucketByName(name);
+    if (!bucket) return NextResponse.json({ error: `no bucket "${name}"` }, { status: 404 });
+    const cred = await ensureUploadAccess(bucket.id);
+    const objects = await listObjects(cred.accessKeyId, cred.secretAccessKey, name);
+    return NextResponse.json({ ok: true, objects });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ name: string }> },
+) {
+  try {
+    const name = assertBucketName((await params).name);
+    const key = assertKey(req.nextUrl.searchParams.get('key'));
+    const bucket = await findBucketByName(name);
+    if (!bucket) return NextResponse.json({ error: `no bucket "${name}"` }, { status: 404 });
+    const cred = await ensureUploadAccess(bucket.id);
+    await deleteObject(cred.accessKeyId, cred.secretAccessKey, name, key);
+    return NextResponse.json({ ok: true, output: `deleted ${key}` });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

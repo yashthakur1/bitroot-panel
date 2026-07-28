@@ -35,6 +35,132 @@ export interface PutOptions {
   cacheControl?: string;
 }
 
+// Signs any request the same way; PutObject was the first caller, listing and
+// fetching objects are the others.
+async function signedFetch(
+  accessKeyId: string,
+  secretAccessKey: string,
+  method: string,
+  pathname: string,
+  query: Record<string, string> = {},
+  body?: Buffer,
+  extraHeaders: Record<string, string> = {},
+): Promise<Response> {
+  const url = new URL(`${S3_URL}${pathname}`);
+  // Query parameters are signed in sorted order, each key and value encoded.
+  const canonicalQuery = Object.keys(query)
+    .sort()
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`)
+    .join('&');
+  if (canonicalQuery) url.search = canonicalQuery;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = sha256Hex(body ?? '');
+
+  const headers: Record<string, string> = {
+    host: url.host,
+    'x-amz-content-sha256': payloadHash,
+    'x-amz-date': amzDate,
+    ...extraHeaders,
+  };
+  if (body) headers['content-length'] = String(body.length);
+
+  const signedHeaders = Object.keys(headers).sort();
+  const canonicalHeaders = signedHeaders.map((h) => `${h}:${headers[h].trim()}\n`).join('');
+  const signedHeaderList = signedHeaders.join(';');
+
+  const canonicalRequest = [
+    method,
+    url.pathname,
+    canonicalQuery,
+    canonicalHeaders,
+    signedHeaderList,
+    payloadHash,
+  ].join('\n');
+
+  const scope = `${dateStamp}/${REGION}/${SERVICE}/aws4_request`;
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256Hex(canonicalRequest)].join('\n');
+  const signingKey = hmac(
+    hmac(hmac(hmac(`AWS4${secretAccessKey}`, dateStamp), REGION), SERVICE),
+    'aws4_request',
+  );
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+
+  return fetch(url, {
+    method,
+    headers: {
+      ...headers,
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${scope}, SignedHeaders=${signedHeaderList}, Signature=${signature}`,
+    },
+    body: body ? new Uint8Array(body) : undefined,
+  });
+}
+
+export interface S3Object {
+  key: string;
+  size: number;
+  lastModified: string;
+  etag: string;
+}
+
+// Garage answers ListObjectsV2 in XML. The shape is small and fixed, so the
+// few fields we need are pulled out directly rather than adding a parser.
+function tag(block: string, name: string): string {
+  const m = block.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`));
+  return m ? m[1] : '';
+}
+
+export async function listObjects(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+): Promise<S3Object[]> {
+  const out: S3Object[] = [];
+  let token: string | undefined;
+  do {
+    const query: Record<string, string> = { 'list-type': '2', 'max-keys': '1000' };
+    if (token) query['continuation-token'] = token;
+    const res = await signedFetch(accessKeyId, secretAccessKey, 'GET', `/${bucket}`, query);
+    if (!res.ok) throw new Error(`S3 list failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const xml = await res.text();
+    for (const block of xml.match(/<Contents>[\s\S]*?<\/Contents>/g) ?? []) {
+      out.push({
+        key: tag(block, 'Key'),
+        size: Number(tag(block, 'Size')) || 0,
+        lastModified: tag(block, 'LastModified'),
+        etag: tag(block, 'ETag').replace(/&quot;|"/g, ''),
+      });
+    }
+    // A truncated listing carries the token for the next page; without this a
+    // bucket over 1000 objects would silently show only its first page.
+    token = tag(xml, 'IsTruncated') === 'true' ? tag(xml, 'NextContinuationToken') : undefined;
+  } while (token);
+  return out.sort((a, b) => a.key.localeCompare(b.key));
+}
+
+export async function getObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+): Promise<Response> {
+  return signedFetch(accessKeyId, secretAccessKey, 'GET', `/${bucket}/${encodeKey(key)}`);
+}
+
+export async function deleteObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+): Promise<void> {
+  const res = await signedFetch(accessKeyId, secretAccessKey, 'DELETE', `/${bucket}/${encodeKey(key)}`);
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`S3 delete failed: HTTP ${res.status}`);
+  }
+}
+
 export async function putObject(
   accessKeyId: string,
   secretAccessKey: string,

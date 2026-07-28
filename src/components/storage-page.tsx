@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   Globe,
+  FolderOpen,
   HardDrive,
   Key,
   Loader2,
@@ -20,6 +21,7 @@ import { Button } from './ui/button';
 import { Tabs } from './ui/tabs';
 import { TableSkeleton } from './skeletons';
 import UploadDialog from './upload-dialog';
+import ObjectBrowser from './object-browser';
 
 interface BucketKey {
   accessKeyId: string;
@@ -73,6 +75,7 @@ export default function StoragePage() {
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
   const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
   const [tab, setTab] = useState<'buckets' | 'endpoint'>('buckets');
+  const [browsing, setBrowsing] = useState<string | null>(null);
   const [newKey, setNewKey] = useState<{ accessKeyId: string; secretAccessKey: string } | null>(
     null,
   );
@@ -196,7 +199,11 @@ export default function StoragePage() {
       </div>
       )}
 
-      {tab === 'buckets' && (buckets.length === 0 ? (
+      {tab === 'buckets' && browsing && (
+        <ObjectBrowser bucket={browsing} onBack={() => setBrowsing(null)} onChanged={load} />
+      )}
+
+      {tab === 'buckets' && !browsing && (buckets.length === 0 ? (
         <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">No buckets yet.</p>
           <Button variant="secondary" onClick={() => setCreating(true)}>
@@ -292,6 +299,15 @@ export default function StoragePage() {
                           <Globe size={14} className="mr-1.5" /> Publish
                         </>
                       )}
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setBrowsing(b.name)}
+                      className="active:scale-[0.96] transition-transform"
+                    >
+                      <FolderOpen size={14} className="mr-1.5" /> Files
                     </Button>
 
                     <Button
