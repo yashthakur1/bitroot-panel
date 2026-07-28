@@ -4,6 +4,7 @@
 const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
 const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
 
+import ReadinessTimeline from './readiness-timeline';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Eye,
@@ -228,11 +229,13 @@ function Upgrades({
   );
 }
 
-type Tab = 'runtime' | 'software' | 'device';
+type Tab = 'setup' | 'runtime' | 'software' | 'device';
 
 export default function ConfigPage({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'software' || initialTab === 'device' ? initialTab : 'runtime',
+    initialTab === 'software' || initialTab === 'device' || initialTab === 'runtime'
+      ? initialTab
+      : 'setup',
   );
   const [state, setState] = useState<ConfigState | null>(null);
   const [error, setError] = useState('');
@@ -266,6 +269,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
 
       <Tabs
         tabs={[
+          { key: 'setup', label: 'Setup' },
           { key: 'runtime', label: 'Runtime' },
           { key: 'software', label: 'Software' },
           { key: 'device', label: 'Device' },
@@ -273,6 +277,10 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
         active={tab}
         onChange={setTab}
       />
+
+      <div className={tab === 'setup' ? '' : 'hidden'}>
+        <ReadinessTimeline />
+      </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
