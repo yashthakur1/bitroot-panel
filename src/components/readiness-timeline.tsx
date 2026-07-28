@@ -218,6 +218,47 @@ function StepBody({ step }: { step: Step }) {
         </p>
       )}
 
+      {step.status !== 'ready' && step.guide && (
+        <ol className="mt-3 space-y-1.5">
+          {step.guide.map((line, i) => (
+            <li key={line} className="flex gap-2.5 text-xs text-gray-600 dark:text-gray-300">
+              <span className="shrink-0 grid place-items-center w-4 h-4 mt-px rounded-full
+                               bg-gray-100 dark:bg-gray-800 text-[10px] font-medium
+                               text-gray-500 dark:text-gray-400 tabular-nums">
+                {i + 1}
+              </span>
+              <span className="text-pretty">{line}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {step.status !== 'ready' && step.grants && (
+        <div className="mt-2.5 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+          {step.grants.map((g) => (
+            <div
+              key={`${g.scope}-${g.permission}`}
+              className={`flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-2 text-xs
+                          border-b border-gray-100 dark:border-gray-800/70 last:border-b-0
+                          ${g.missed ? 'bg-amber-50/60 dark:bg-amber-500/[0.06]' : ''}`}
+            >
+              <span className="font-mono text-[11px] text-gray-500 dark:text-gray-400 w-14 shrink-0">
+                {g.scope}
+              </span>
+              <span className="font-medium text-gray-800 dark:text-gray-200">{g.permission}</span>
+              {g.missed && (
+                <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-500">
+                  easy to miss
+                </span>
+              )}
+              <span className="basis-full pl-[3.5rem] text-gray-500 dark:text-gray-400 text-pretty">
+                {g.why}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {step.status !== 'ready' && (step.fix || step.link) && (
         <div className="mt-2.5 space-y-1.5">
           {step.fix?.map((cmd) => <Command key={cmd} cmd={cmd} />)}

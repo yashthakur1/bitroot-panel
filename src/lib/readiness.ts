@@ -29,6 +29,10 @@ export interface Step {
   link?: { href: string; label: string };
   /** Per-permission or per-check breakdown, when there is one. */
   checks?: Array<{ name: string; ok: boolean }>;
+  /** Ordered steps for a credential that has to be created somewhere else. */
+  guide?: string[];
+  /** Exactly what a token must be granted, and why each one is needed. */
+  grants?: Array<{ scope: string; permission: string; why: string; missed?: boolean }>;
   /** Nothing else can be judged until this is done. */
   required?: boolean;
 }
@@ -92,6 +96,31 @@ async function domainStep(e: Record<string, string>): Promise<Step> {
   };
 }
 
+// Everything needed to produce a correct token, shown before the token exists
+// rather than after it fails. The account-level grant is the one people miss:
+// cache rulesets live at the account, not the zone, so a token with every zone
+// permission and none of that one looks complete and fails with a bare 403 the
+// first time a bucket is published.
+const CF_GRANTS: NonNullable<Step['grants']> = [
+  { scope: 'Zone', permission: 'DNS · Edit', why: 'creates the DNS record behind each route' },
+  { scope: 'Zone', permission: 'Cache Rules · Edit', why: 'the edge cache rule for published buckets' },
+  { scope: 'Zone', permission: 'Cache Purge · Purge', why: 'clears the edge when you replace a file' },
+  {
+    scope: 'Account',
+    permission: 'Account Rulesets · Edit',
+    why: 'cache rules are stored on the account, not the zone — without this the rule fails with a bare 403',
+    missed: true,
+  },
+];
+
+const CF_GUIDE = [
+  'In Cloudflare, open My Profile → API Tokens → Create Token, and pick "Create Custom Token".',
+  'Give it the four permissions below. The Account one is a separate row from the Zone ones.',
+  'Under Zone Resources, include the specific zone you route under.',
+  'Create the token and copy it now — Cloudflare shows the value once and never again.',
+  'Open that zone\'s Overview page and copy the Zone ID from the right-hand sidebar.',
+];
+
 async function cloudflareStep(e: Record<string, string>): Promise<Step> {
   const unlocks = ['DNS records for new services', 'Edge caching for public buckets', 'Access policies'];
   if (!e.CF_API_TOKEN || !e.CF_ZONE_ID) {
@@ -101,9 +130,11 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
       status: 'missing',
       detail: 'No API token, so the panel cannot create routes or cache rules.',
       unlocks,
+      guide: CF_GUIDE,
+      grants: CF_GRANTS,
       link: {
         href: 'https://dash.cloudflare.com/profile/api-tokens',
-        label: 'Create a token',
+        label: 'Open Cloudflare API tokens',
       },
       fix: [
         'Set CF_API_TOKEN and CF_ZONE_ID in ~/apps/bitroot-panel/.env',
@@ -134,6 +165,8 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
       : `${failed.length} of ${result.permissions.length} permission checks failed.`,
     unlocks,
     checks: result.permissions.map((p) => ({ name: p.name, ok: p.ok })),
+    guide: result.ok ? undefined : CF_GUIDE,
+    grants: result.ok ? undefined : CF_GRANTS,
     link: result.ok
       ? undefined
       : { href: 'https://dash.cloudflare.com/profile/api-tokens', label: 'Edit the token' },
