@@ -47,9 +47,18 @@ async function env(): Promise<Record<string, string>> {
   }
 }
 
+// run() returns err.message when a command produces no output and exits
+// non-zero - and that message embeds the whole command, so a substring search
+// for a marker matches the `echo marker` that was looking for it. Every probe
+// below therefore ends in `; true` to keep the exit status clean, and matches
+// whole lines rather than substrings.
+function emitted(output: string, marker: string): boolean {
+  return output.split('\n').some((l) => l.trim() === marker);
+}
+
 async function has(binary: string): Promise<boolean> {
-  const r = await run(`command -v ${binary} >/dev/null 2>&1 && echo yes || true`, 10_000);
-  return r.output.includes('yes');
+  const r = await run(`command -v ${binary} >/dev/null 2>&1 && echo yes; true`, 10_000);
+  return emitted(r.output, 'yes');
 }
 
 async function panelStep(e: Record<string, string>): Promise<Step> {
@@ -153,14 +162,14 @@ async function tunnelStep(): Promise<Step> {
     run(
       'test -f "$HOME/.cloudflared/cert.pem" && echo cert; ' +
         'ls "$HOME"/.cloudflared/*.json >/dev/null 2>&1 && echo creds; ' +
-        'grep -Eq "^[[:space:]]*tunnel:[[:space:]]*[^#[:space:]]" "$HOME/.cloudflared/config.yml" 2>/dev/null && echo named',
+        'grep -Eq "^[[:space:]]*tunnel:[[:space:]]*[^#[:space:]]" "$HOME/.cloudflared/config.yml" 2>/dev/null && echo named; true',
       15_000,
     ),
     run('pm2 jlist 2>/dev/null || true', 15_000),
   ]);
-  const loggedIn = probe.output.includes('cert');
-  const created = probe.output.includes('creds');
-  const named = probe.output.includes('named');
+  const loggedIn = emitted(probe.output, 'cert');
+  const created = emitted(probe.output, 'creds');
+  const named = emitted(probe.output, 'named');
   const known = /"name"\s*:\s*"cloudflared"/.test(running.output);
   const up = /"name"\s*:\s*"cloudflared"[\s\S]{0,400}?"status"\s*:\s*"online"/.test(running.output);
 
@@ -301,10 +310,10 @@ async function pocketbaseStep(): Promise<Step> {
   const unlocks = ['Project databases', 'Scheduled backups'];
   const r = await run(
     'test -x "$HOME/apps/pocketbase/pocketbase" && echo installed; ' +
-      'test -f "$HOME/apps/pocketbase/.superuser" && echo cred',
+      'test -f "$HOME/apps/pocketbase/.superuser" && echo cred; true',
     15_000,
   );
-  if (!r.output.includes('installed')) {
+  if (!emitted(r.output, 'installed')) {
     return {
       id: 'pocketbase',
       title: 'PocketBase',
@@ -331,7 +340,7 @@ async function pocketbaseStep(): Promise<Step> {
     title: 'PocketBase',
     status: healthy ? 'ready' : 'partial',
     detail: healthy
-      ? r.output.includes('cred')
+      ? emitted(r.output, 'cred')
         ? 'Running, with the panel service account in place.'
         : 'Running. The panel will create its service account when first used.'
       : 'Installed but not answering on its port.',
