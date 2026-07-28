@@ -2,8 +2,28 @@
 
 ## One command
 
+If the repository is **public**:
+
 ```bash
-git clone <repo> && cd bitroot-panel && ./install.sh
+curl -fsSL https://raw.githubusercontent.com/<owner>/bitroot-panel/main/install.sh | bash
+```
+
+If it is **private**, the same thing with a token. The script is fetched with
+it and passes it on to the clone:
+
+```bash
+export GH_TOKEN=ghp_xxx    # 'repo' scope (classic), or Contents:Read (fine-grained)
+curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+  https://raw.githubusercontent.com/<owner>/bitroot-panel/main/install.sh | bash
+```
+
+The token is used for the clone and then dropped: the git remote is rewritten
+to the clean URL, so no credential is left in `.git/config`.
+
+Or, with the repo already cloned:
+
+```bash
+cd bitroot-panel && ./install.sh
 ```
 
 Run it as your normal user, not root — it installs into `$HOME` and calls

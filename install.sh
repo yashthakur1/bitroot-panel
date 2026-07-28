@@ -15,6 +15,10 @@
 set -euo pipefail
 
 REPO="${BITPANEL_REPO:-https://github.com/yashthakur1/bitroot-panel.git}"
+# A private repo needs a token for the clone. Passed in the environment rather
+# than embedded in the URL, so it does not end up in the git remote on disk or
+# in shell history any more than it has to.
+GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 APP_DIR="${BITPANEL_DIR:-$HOME/apps/bitroot-panel}"
 BIN_DIR="$HOME/bin"
 PANEL_PORT="${BITPANEL_PORT:-3210}"
@@ -110,13 +114,34 @@ else
 fi
 
 # ─── 5. the panel itself ─────────────────────────────────────────
+clone_url() {
+	# Token goes in the URL only for the duration of the command; the remote is
+	# rewritten to the clean URL immediately afterwards so the credential is not
+	# left sitting in .git/config.
+	if [ -n "$GH_TOKEN" ]; then
+		echo "$REPO" | sed "s|https://|https://x-access-token:${GH_TOKEN}@|"
+	else
+		echo "$REPO"
+	fi
+}
+
 if [ -d "$APP_DIR/.git" ]; then
 	say "updating the panel"
+	git -C "$APP_DIR" remote set-url origin "$(clone_url)"
 	git -C "$APP_DIR" pull --ff-only
+	git -C "$APP_DIR" remote set-url origin "$REPO"
 else
 	say "cloning the panel"
 	mkdir -p "$(dirname "$APP_DIR")"
-	git clone --depth 1 "$REPO" "$APP_DIR"
+	if ! git clone --depth 1 "$(clone_url)" "$APP_DIR" 2>/dev/null; then
+		if [ -z "$GH_TOKEN" ]; then
+			die "clone failed. If the repository is private, supply a token:
+    GH_TOKEN=ghp_xxx curl -fsSL -H \"Authorization: Bearer \$GH_TOKEN\" <raw-url>/install.sh | GH_TOKEN=\$GH_TOKEN bash
+  The token needs the 'repo' scope (classic) or Contents:Read (fine-grained)."
+		fi
+		die "clone failed even with a token — check the token has access to $REPO"
+	fi
+	git -C "$APP_DIR" remote set-url origin "$REPO"
 fi
 
 # ─── 6. environment ──────────────────────────────────────────────
