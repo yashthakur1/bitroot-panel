@@ -1,0 +1,50 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Let the environment override two values the Openship CLI hardcodes when it
+# spawns its children.
+#
+# The dashboard injects window.__OPENSHIP_API_ORIGIN__ from
+# OPENSHIP_LOCAL_API_URL, and that is the address the browser itself calls. The
+# CLI overwrites it with http://localhost:<port>, which resolves only on the
+# machine running the server - so the dashboard loads from anywhere on the
+# tailnet and then cannot reach its own API. It likewise pins the API to
+# 127.0.0.1. A comment in the CLI says a same-origin proxy takes over for
+# remote browsers, but sameOriginProxyOrigin appears nowhere in the CLI, the
+# server or the dashboard, so nothing does.
+#
+# Both edits fall back to the original literal, so behaviour is unchanged
+# unless the variable is set. Reinstalling or upgrading openship reverts them,
+# which is why start.sh re-applies this on every boot.
+set -e
+CLI="$PREFIX/lib/node_modules/openship/dist/index.js"
+[ -f "$CLI" ] || { echo "openship not installed"; exit 1; }
+
+if grep -q "OPENSHIP_LOCAL_API_URL: process.env.OPENSHIP_LOCAL_API_URL" "$CLI"; then
+	echo "  openship already patched"
+	exit 0
+fi
+
+[ -f "$CLI.orig" ] || cp "$CLI" "$CLI.orig"
+
+python3 - "$CLI" <<'PYEOF'
+import sys
+
+path = sys.argv[1]
+src = open(path, encoding="utf-8").read()
+
+before = (
+    "OPENSHIP_LOCAL_API_URL: `http://localhost:${port}`,",
+    'env.OPENSHIP_API_HOST = "127.0.0.1";',
+)
+after = (
+    "OPENSHIP_LOCAL_API_URL: process.env.OPENSHIP_LOCAL_API_URL ?? `http://localhost:${port}`,",
+    'env.OPENSHIP_API_HOST = process.env.OPENSHIP_API_HOST ?? "127.0.0.1";',
+)
+
+for old, new in zip(before, after):
+    if old not in src:
+        raise SystemExit(f"patch target not found, refusing to guess: {old[:48]}")
+    src = src.replace(old, new, 1)
+
+open(path, "w", encoding="utf-8").write(src)
+print("  patched both overrides")
+PYEOF
