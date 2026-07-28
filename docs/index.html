@@ -54,6 +54,14 @@
       }
       .cmd button:hover { background: rgba(255,255,255,.2); }
       .note { font-size: .85rem; color: var(--muted); margin-top: .6rem; }
+      #curl { white-space: pre-wrap; word-break: break-all; }
+      .alt { margin-top: 1.25rem; }
+      .alt summary {
+        cursor: pointer; font-size: .875rem; color: var(--muted);
+        padding: .35rem 0; list-style-position: inside;
+      }
+      .alt summary:hover { color: var(--fg); }
+      .alt > div, .alt > p { margin-top: .75rem; }
 
       .grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
       .card {
@@ -88,13 +96,27 @@
         </p>
 
         <div class="cmd">
-          <pre id="install">curl -fsSL https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh | bash</pre>
-          <button onclick="copyCmd(this)">Copy</button>
+          <pre id="install">npx bitpanel install</pre>
+          <button onclick="copyCmd(this, 'install')">Copy</button>
         </div>
         <p class="note">
           Debian or Ubuntu. Installs Node, pm2, nginx, cloudflared and Garage, builds the panel and
-          registers it with systemd. Re-running upgrades instead of duplicating.
+          registers it with systemd, then hands over to a browser wizard for the credentials only
+          you can supply. Re-running upgrades instead of duplicating.
         </p>
+
+        <details class="alt">
+          <summary>Prefer not to go through npm?</summary>
+          <div class="cmd">
+            <pre id="curl">curl -fsSL https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh | bash</pre>
+            <button onclick="copyCmd(this, 'curl')">Copy</button>
+          </div>
+          <p class="note">
+            Same script. The npm package pins it to a released tag; this one always takes the tip of
+            main. Either way it is a shell script that installs system packages — worth reading
+            first, and it is right there at the URL.
+          </p>
+        </details>
       </header>
 
       <h2>What it manages</h2>
@@ -150,14 +172,15 @@
 
       <footer>
         <a href="https://github.com/yashthakur1/bitroot-panel">Source on GitHub</a> ·
+        <a href="https://www.npmjs.com/package/bitpanel">npm</a> ·
         <a href="ubuntu.md">Ubuntu guide</a> ·
         <a href="termux.md">Termux guide</a>
       </footer>
     </div>
 
     <script>
-      function copyCmd(btn) {
-        navigator.clipboard.writeText(document.getElementById('install').textContent.trim());
+      function copyCmd(btn, id) {
+        navigator.clipboard.writeText(document.getElementById(id).textContent.trim());
         btn.textContent = 'Copied';
         setTimeout(() => (btn.textContent = 'Copy'), 1500);
       }
