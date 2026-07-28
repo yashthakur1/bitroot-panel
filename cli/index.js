@@ -6,27 +6,68 @@
 // hands over. Publishing the panel itself to npm would only produce a package
 // that could not run.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { platform } from 'node:os';
 
-const RAW = 'https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh';
+const require = createRequire(import.meta.url);
+const { version } = require('./package.json');
+
+const REPO = 'https://raw.githubusercontent.com/yashthakur1/bitroot-panel';
 const DOCS = 'https://yashthakur1.github.io/bitroot-panel/';
+
+// Pinned to the tag matching this package, so `bitpanel@0.1.0` installs the
+// panel that was released as 0.1.0 rather than whatever main happens to be
+// that afternoon. main moves; a published version should not.
+const TAG_URL = `${REPO}/v${version}/install.sh`;
+const MAIN_URL = `${REPO}/main/install.sh`;
+
+function reachable(url) {
+  const r = spawnSync('curl', ['-fsSL', '-o', '/dev/null', '-m', '20', url], { stdio: 'ignore' });
+  return r.status === 0;
+}
+
+// Falls back rather than failing: a tag can be missing if a release was cut
+// by hand, and refusing to install at all would be a worse outcome than
+// installing from main and saying so.
+function installerUrl() {
+  if (reachable(TAG_URL)) return { url: TAG_URL, pinned: true };
+  return { url: MAIN_URL, pinned: false };
+}
 
 const cmd = process.argv[2] ?? 'install';
 
+if (cmd === '--version' || cmd === '-v') {
+  console.log(version);
+  process.exit(0);
+}
+
 if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
-  console.log(`bitpanel — installer for BitPanel
+  console.log(`bitpanel ${version} — installer for BitPanel
 
   bitpanel install     download and run the installer (Debian/Ubuntu)
   bitpanel url         print the installer URL without running it
   bitpanel docs        print the documentation link
+  bitpanel --version   print this version
+
+The installer is a shell script that installs system packages and starts
+services. Read it before running it:
+
+  bitpanel url | xargs curl -fsSL | less
 
 Termux and other platforms: see ${DOCS}`);
   process.exit(0);
 }
 
-if (cmd === 'url') { console.log(RAW); process.exit(0); }
-if (cmd === 'docs') { console.log(DOCS); process.exit(0); }
+if (cmd === 'url') {
+  console.log(installerUrl().url);
+  process.exit(0);
+}
+
+if (cmd === 'docs') {
+  console.log(DOCS);
+  process.exit(0);
+}
 
 if (cmd !== 'install') {
   console.error(`unknown command: ${cmd}\nTry: bitpanel --help`);
@@ -39,9 +80,20 @@ Run it on the machine that will host the panel — see ${DOCS}`);
   process.exit(1);
 }
 
+// curl is what actually fetches the script, and its absence produces a bare
+// "command not found" from inside bash that reads like the installer failed.
+if (spawnSync('curl', ['--version'], { stdio: 'ignore' }).status !== 0) {
+  console.error('curl is required and was not found. Install it first: sudo apt install curl');
+  process.exit(1);
+}
+
+const { url, pinned } = installerUrl();
+if (!pinned) {
+  console.warn(`note: no v${version} tag published yet — installing from main instead\n`);
+}
+
 // Piped straight to bash rather than written to a temp file: nothing is left on
-// disk if it fails, and the script is the same one the docs tell you to read
-// first, at ${RAW}.
-console.log(`Fetching ${RAW}\n`);
-const child = spawn('bash', ['-c', `curl -fsSL ${RAW} | bash`], { stdio: 'inherit' });
+// disk if it fails, and it is the same script the docs tell you to read first.
+console.log(`Fetching ${url}\n`);
+const child = spawn('bash', ['-c', `curl -fsSL ${url} | bash`], { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 1));

@@ -8,24 +8,39 @@
   "type": "module",
   "files": [
     "index.js",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
   },
   "keywords": [
     "self-hosted",
+    "selfhosted",
     "deploy",
+    "deployment",
     "pm2",
+    "nginx",
     "cloudflare-tunnel",
     "s3",
     "garage",
-    "homelab"
+    "homelab",
+    "home-server",
+    "termux",
+    "panel"
   ],
+  "author": "Yash Thakur",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yashthakur1/bitroot-panel.git"
+    "url": "git+https://github.com/yashthakur1/bitroot-panel.git",
+    "directory": "cli"
   },
-  "homepage": "https://yashthakur1.github.io/bitroot-panel/"
+  "bugs": {
+    "url": "https://github.com/yashthakur1/bitroot-panel/issues"
+  },
+  "homepage": "https://yashthakur1.github.io/bitroot-panel/",
+  "publishConfig": {
+    "access": "public"
+  }
 }

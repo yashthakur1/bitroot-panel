@@ -1,12 +1,55 @@
-# BitPanel
+# bitpanel
 
-A self-hosted deploy panel for a machine you own. It runs Node apps and static
-sites, routes them through Cloudflare, serves S3-compatible object storage, and
-keeps track of what every removal leaves behind.
+Installer for **BitPanel** — a self-hosted deploy panel for a machine you own.
+It runs Node apps and static sites, routes them through Cloudflare, serves
+S3-compatible object storage, and keeps track of what every removal leaves
+behind.
 
-It was built for an Android phone running Termux and also runs on
-Debian/Ubuntu. There is one codebase — the differences between the two are
-handled at runtime, not in separate branches.
+```bash
+npx bitpanel install
+```
+
+Debian or Ubuntu. Installs Node, pm2, nginx, cloudflared and Garage, builds the
+panel, registers it with systemd, and hands you a URL and a password. Re-running
+upgrades rather than duplicating.
+
+## What this package is
+
+A front door, not the panel. The panel is a server — it wants pm2, nginx,
+cloudflared and Garage running alongside it — and npm has no way to express
+that. So this fetches `install.sh` and hands over.
+
+The installer URL is pinned to the git tag matching this package version, so
+`bitpanel@0.1.0` installs the panel released as 0.1.0 rather than whatever the
+main branch happens to be today.
+
+## Read it before you run it
+
+It is a shell script that installs system packages and starts services. That
+deserves a look first:
+
+```bash
+npx bitpanel url | xargs curl -fsSL | less
+```
+
+## Commands
+
+| | |
+|---|---|
+| `bitpanel install` | download and run the installer |
+| `bitpanel url` | print the installer URL without running it |
+| `bitpanel docs` | print the documentation link |
+| `bitpanel --version` | print the version |
+
+## After it finishes
+
+The panel comes up on `:3210` and walks you through the rest in a browser —
+domain, dashboard password, and Cloudflare credentials if you want public
+routes. Nothing is invented for you and nothing phones home; every credential is
+one you supply.
+
+Storage, routing and IAM are each optional. The panel degrades to whatever is
+configured.
 
 ## What it manages
 
@@ -16,60 +59,19 @@ handled at runtime, not in separate branches.
 | **Storage** | S3-compatible buckets via [Garage](https://garagehq.deuxfleurs.fr/), with size limits, browser previews and presigned share links |
 | **Routes** | Cloudflare Tunnel ingress and DNS, with an edge cache rule for published buckets |
 | **PocketBase** | A shared database with per-project isolation and backups |
-| **IAM** | Cloudflare Access policies, so the panel itself is not open to the internet |
 | **Residue** | What a removal left behind — DNS records, files, keys — and a way to finish the job |
 
-## Install
+## Other platforms
 
-**Debian / Ubuntu** — see [docs/ubuntu.md](docs/ubuntu.md)
+Android/Termux needs a few steps a Debian installer cannot take, because Android
+has no service manager and several upstream projects publish no `android-arm64`
+binaries. See the [documentation][docs].
 
-```bash
-git clone <repo> && cd bitroot-panel && ./install.sh
-```
+## Links
 
-**Android / Termux** — see [docs/termux.md](docs/termux.md). Termux needs a few
-steps the installer cannot take for you, because Android has no service manager
-and several upstream projects publish no Android binaries.
+- [Documentation][docs]
+- [Source](https://github.com/yashthakur1/bitroot-panel)
 
-Both end the same way: the panel on `:3210`, Garage on `:3900`, and a short list
-of credentials only you can supply.
+MIT
 
-## Requirements
-
-- Node 22 or newer
-- pm2, nginx, cloudflared, Garage — the installer handles these on Ubuntu
-- A Cloudflare zone, if you want public routes
-- Tailscale, if you want private access from elsewhere
-
-None of the storage, routing or IAM features are required; the panel degrades to
-whatever is configured.
-
-## Configuration
-
-Everything device-specific is an environment variable in `.env`, each with a
-fallback, so nothing is compiled in:
-
-| variable | purpose |
-|---|---|
-| `DASHBOARD_PASSWORD`, `SESSION_SECRET` | panel login |
-| `DOMAIN_SUFFIX` | the zone routes are created under |
-| `TAILNET_HOST`, `TAILNET_IP` | how the panel advertises private URLs |
-| `CF_API_TOKEN`, `CF_ZONE_ID` | DNS, cache rules, Access |
-| `GARAGE_ADMIN_TOKEN`, `GARAGE_S3_URL` | object storage |
-| `GARAGE_S3_PUBLIC_URL` | the address presigned links are signed against |
-
-## Notes from the phone build
-
-These cost real time to discover and are worth knowing before porting anywhere
-unusual:
-
-- `sh` is **dash** on both Termux and Debian, so `/dev/tcp` — a bash feature —
-  fails silently in anything the panel shells out to. Reachability is probed
-  with `nc -z`.
-- Android denies netlink to apps, so `ss` and `netstat` return nothing. Ports
-  are tracked from what the panel manages, and probed directly.
-- cloudflared does **not** start serving a newly added hostname on `SIGHUP`; it
-  needs a restart, or requests fall through to the catch-all 404.
-- Several upstream projects ship no `android-arm64` binary — Bun, turbo, and
-  Claude Code past 2.1.112 among them. Where the runtime is plain JavaScript it
-  works; where it is a native binary it does not.
+[docs]: https://yashthakur1.github.io/bitroot-panel/
