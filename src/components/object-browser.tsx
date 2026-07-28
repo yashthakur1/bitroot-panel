@@ -14,6 +14,7 @@ import {
   File as FileIcon,
   Loader2,
   ExternalLink,
+  Link2,
   Search,
   Trash2,
   X,
@@ -337,6 +338,8 @@ function Details({
 
       <Access bucket={bucket} publicUrl={publicUrl} s3Endpoint={s3Endpoint} objectKey={object.key} />
 
+      <Share bucket={bucket} objectKey={object.key} />
+
       <div className="flex gap-2">
         <a href={`${src}&download=1`} className="flex-1">
           <Button variant="secondary" size="sm" fullWidth className="flex items-center gap-1.5">
@@ -358,6 +361,81 @@ function Details({
       </aside>
     </>,
     document.body,
+  );
+}
+
+const EXPIRIES: Array<[string, number]> = [
+  ['15 min', 15 * 60],
+  ['1 hour', 3600],
+  ['24 hours', 24 * 3600],
+  ['7 days', 7 * 24 * 3600],
+];
+
+// A time-limited link that carries its own signature, so it needs no key and
+// grants nothing but a read of this one object until it expires. Useful for a
+// private bucket, where the alternative is publishing the whole thing.
+function Share({ bucket, objectKey }: { bucket: string; objectKey: string }) {
+  const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [error, setError] = useState('');
+
+  async function generate(seconds: number) {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/storage/${bucket}/objects/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: objectKey, expiresIn: seconds }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setLink({ url: d.url, expiresAt: d.expiresAt });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+      <p className="text-xs uppercase font-semibold tracking-widest text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+        <Link2 size={12} /> Share link
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {EXPIRIES.map(([label, seconds]) => (
+          <button
+            key={label}
+            disabled={busy}
+            onClick={() => generate(seconds)}
+            className="px-2 py-1 rounded border border-gray-200 dark:border-gray-800 text-[11px] font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors active:scale-[0.96] disabled:opacity-50"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {busy && <p className="text-[11px] text-gray-500 dark:text-gray-400">Signing…</p>}
+      {error && <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p>}
+
+      {link && (
+        <>
+          <Copyable label={`Expires ${new Date(link.expiresAt).toLocaleString()}`} value={link.url} />
+          <p className="text-[11px] text-amber-700 dark:text-amber-500 text-pretty">
+            The link is signed but points at the S3 endpoint, which answers over Tailscale only —
+            so it works for anyone on the tailnet, and not for the public internet. Publish the
+            bucket if the recipient is outside it.
+          </p>
+        </>
+      )}
+      {!link && !busy && (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
+          Grants a read of this one object until it expires, without handing over a key or making
+          the bucket public.
+        </p>
+      )}
+    </div>
   );
 }
 

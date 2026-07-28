@@ -140,6 +140,60 @@ export async function listObjects(
   return out.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+// A presigned GET: the signature travels in the query string, so the link
+// works without a key and without any header the sender controls. Signed for
+// GET only, so it cannot be turned into a write.
+//
+// It points at the S3 endpoint, which answers over Tailscale - so the link is
+// usable by anyone on the tailnet, or from code that can reach it, and not by
+// the public internet. Publishing the bucket is what makes something reachable
+// from anywhere.
+export function presignGetObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+  expiresInSeconds: number,
+): string {
+  const url = new URL(`${S3_URL}/${bucket}/${encodeKey(key)}`);
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  const dateStamp = amzDate.slice(0, 8);
+  const scope = `${dateStamp}/${REGION}/${SERVICE}/aws4_request`;
+
+  const query: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${accessKeyId}/${scope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': String(expiresInSeconds),
+    'X-Amz-SignedHeaders': 'host',
+  };
+  const canonicalQuery = Object.keys(query)
+    .sort()
+    .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(query[k])}`)
+    .join('&');
+
+  const canonicalRequest = [
+    'GET',
+    url.pathname,
+    canonicalQuery,
+    `host:${url.host}\n`,
+    'host',
+    // The body is not part of a presigned GET, and saying so is what lets the
+    // recipient fetch it without recomputing anything.
+    'UNSIGNED-PAYLOAD',
+  ].join('\n');
+
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, scope, sha256Hex(canonicalRequest)].join('\n');
+  const signingKey = hmac(
+    hmac(hmac(hmac(`AWS4${secretAccessKey}`, dateStamp), REGION), SERVICE),
+    'aws4_request',
+  );
+  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+
+  return `${url.origin}${url.pathname}?${canonicalQuery}&X-Amz-Signature=${signature}`;
+}
+
 export async function getObject(
   accessKeyId: string,
   secretAccessKey: string,
