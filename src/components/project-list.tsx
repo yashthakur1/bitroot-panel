@@ -17,6 +17,7 @@ import {
   Database,
   PanelsTopLeft,
   Loader2,
+  Lock,
   Pause,
   AlertTriangle,
   ScrollText,
@@ -34,6 +35,7 @@ export interface Project {
   restarts: number;
   port: number | null;
   url: string | null;
+  privateUrl: string | null;
   system: boolean;
   type?: 'node' | 'static';
 }
@@ -392,8 +394,27 @@ export default function ProjectList() {
                             {p.url.replace('https://', '')}
                             <ExternalLink size={11} />
                           </a>
+                        ) : p.privateUrl ? (
+                          // Reachable over Tailscale only, and offered as a real
+                          // link because it opens. A service bound to loopback
+                          // gets plain text rather than a link that would not.
+                          <a
+                            href={p.privateUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Reachable over Tailscale only"
+                            className="text-gray-600 dark:text-gray-400 hover:text-accent-600 dark:hover:text-accent-400 hover:underline inline-flex items-center gap-1"
+                          >
+                            <Lock size={11} />
+                            {p.privateUrl.replace('http://', '')}
+                          </a>
                         ) : (
-                          <span className="text-gray-400 dark:text-gray-600">private</span>
+                          <span
+                            className="text-gray-400 dark:text-gray-600"
+                            title="Bound to loopback on the device — not reachable from another machine"
+                          >
+                            loopback only
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3.5 whitespace-nowrap relative">

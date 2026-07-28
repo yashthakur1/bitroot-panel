@@ -12,6 +12,8 @@ const SYSTEM_APPS = new Set([
   'pocketbase',
 ]);
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
+const TAILNET_HOST = process.env.TAILNET_HOST ?? 'oneplus-6.tailf9a49f.ts.net';
+const TAILNET_IP = process.env.TAILNET_IP ?? '100.127.137.83';
 
 // Installed CLI apps and packages are not processes and are reported by
 // /api/system instead; this endpoint stays about things pm2 and nginx run.
@@ -24,6 +26,9 @@ export interface Project {
   restarts: number;
   port: number | null;
   url: string | null;
+  // Reachable over Tailscale but not published. Null when the service binds to
+  // loopback only, so the panel never offers a link that cannot open.
+  privateUrl: string | null;
   system: boolean;
   type?: 'node' | 'static';
 }
@@ -59,6 +64,10 @@ export async function GET() {
   // Every port that is spoken for, with a human label of who holds it.
   // Sources in order of label quality: ports.conf, tunnel routes, pm2 env,
   // raw listening sockets.
+  // Which ports answer on the tailnet address. Android denies netlink, so the
+  // bind address cannot be enumerated - connecting to it is the only honest
+  // test, and it is what decides whether a private link is offered at all.
+  const candidatePorts = new Set<number>();
   const portsInUse: Record<number, string> = {};
   // The hostname the tunnel actually serves for a port. A project's public URL
   // is derived from this rather than assumed from its name: without a route
@@ -85,6 +94,28 @@ export async function GET() {
       pendingHost = null;
     }
   }
+
+  for (const p of Object.values(portMap)) candidatePorts.add(p);
+  for (const s of staticSites) candidatePorts.add(s.port);
+  const probe = candidatePorts.size
+    ? await run(
+        [...candidatePorts]
+          .map(
+            (p) =>
+              `(echo >/dev/tcp/${TAILNET_IP}/${p}) >/dev/null 2>&1 && echo ${p}:up || echo ${p}:down`,
+          )
+          .join('; '),
+        20_000,
+      )
+    : { ok: true, output: '' };
+  const reachable = new Set(
+    probe.output
+      .split('\n')
+      .filter((l) => l.trim().endsWith(':up'))
+      .map((l) => Number(l.trim().split(':')[0])),
+  );
+  const privateUrlFor = (port: number | null) =>
+    port && reachable.has(port) ? `http://${TAILNET_HOST}:${port}` : null;
 
   let apps: any[] = [];
   try {
@@ -116,6 +147,14 @@ export async function GET() {
     restarts: a.pm2_env?.restart_time ?? 0,
     port: portMap[a.name] ?? null,
     url: hostForPort[portMap[a.name]] ? `https://${hostForPort[portMap[a.name]]}` : null,
+    // An app may listen on more than one port - an API plus a dashboard. Prefer
+    // whichever is actually reachable, since the registered port is often the
+    // internal one.
+    privateUrl:
+      privateUrlFor(portMap[a.name] ?? null) ??
+      privateUrlFor(
+        Object.entries(portMap).find(([n]) => n.startsWith(`_${a.name}-`))?.[1] ?? null,
+      ),
     system: SYSTEM_APPS.has(a.name),
     type: 'node' as const,
   }));
@@ -133,6 +172,7 @@ export async function GET() {
       restarts: 0,
       port: s.port,
       url: hostForPort[s.port] ? `https://${hostForPort[s.port]}` : null,
+      privateUrl: privateUrlFor(s.port),
       system: false,
       type: 'static',
     });
@@ -154,6 +194,7 @@ export async function GET() {
         restarts: 0,
         port,
         url: hostForPort[port] ? `https://${hostForPort[port]}` : null,
+        privateUrl: privateUrlFor(port),
         system: false,
         type: 'node',
       });
