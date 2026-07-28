@@ -227,7 +227,10 @@ case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "export PATH=\"\$HOME/bin:\$PATH\""
 # ─── 8. build and run ────────────────────────────────────────────
 say "building the panel (this takes a minute)"
 cd "$APP_DIR"
-npm ci --omit=dev >/dev/null 2>&1 || npm install >/dev/null
+# Dev dependencies are required: the build is a compile step, and without
+# typescript Next cannot read the @/* path aliases out of tsconfig.json - every
+# import fails with "module not found" for files that are plainly there.
+npm ci >/dev/null 2>&1 || npm install >/dev/null
 npm run build
 
 # ─── 8b. optional pieces the panel can manage ────────────────────
