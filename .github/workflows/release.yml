@@ -1,0 +1,64 @@
+# Publishes the bitpanel CLI to npm when a v* tag is pushed.
+#
+# Uses npm trusted publishing (OIDC) rather than a long-lived token: the job
+# proves its identity to npm through GitHub's OIDC provider, so there is no
+# secret to leak, rotate, or accidentally commit. npm is retiring token-based
+# 2FA bypass for direct publishing around January 2027, so this is also the
+# path that keeps working.
+#
+# One-time setup on npmjs.com, under the package's Settings -> Trusted Publisher:
+#   Publisher:  GitHub Actions
+#   Repository: yashthakur1/bitroot-panel
+#   Workflow:   release.yml
+#
+# Releases are cut with git-flow: release/x.y.z -> main -> tag vx.y.z. Pushing
+# that tag is what triggers this.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for OIDC; without it npm cannot verify the job
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs a recent npm; the runner's bundled version
+      # predates OIDC support.
+      - run: npm install -g npm@latest
+
+      # The tag is the source of truth for the version. A mismatch here means
+      # the published package would not match the tag it claims to come from,
+      # which is exactly the confusion pinning was meant to remove.
+      - name: Check the tag matches the package version
+        working-directory: cli
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag $GITHUB_REF_NAME does not match cli/package.json version $pkg" >&2
+            exit 1
+          fi
+          echo "publishing $pkg from tag $GITHUB_REF_NAME"
+
+      # Catches a broken bin path or a missing file before it reaches the
+      # registry, where a bad version can only be deprecated, never replaced.
+      - name: Inspect the tarball
+        working-directory: cli
+        run: npm pack --dry-run
+
+      - name: Publish
+        working-directory: cli
+        run: npm publish
