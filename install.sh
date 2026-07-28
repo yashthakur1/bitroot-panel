@@ -229,8 +229,26 @@ say "building the panel (this takes a minute)"
 cd "$APP_DIR"
 # Dev dependencies are required: the build is a compile step, and without
 # typescript Next cannot read the @/* path aliases out of tsconfig.json - every
-# import fails with "module not found" for files that are plainly there.
-npm ci >/dev/null 2>&1 || npm install >/dev/null
+# import then fails with "module not found" for files that are plainly there.
+# --include=dev is explicit because npm silently drops them when NODE_ENV is
+# production, which is exactly the environment an installer tends to run in.
+#
+# Output is not suppressed: a half-finished install that walks into the build
+# produces a wall of "module not found" that looks like missing source, and
+# that misdirection costs more than the noise saves.
+npm ci --include=dev || npm install --include=dev || {
+	echo "  dependency install failed - see the npm output above" >&2
+	exit 1
+}
+
+# Assert rather than hope. If the toolchain is not there the build fails with an
+# error that points at the wrong thing entirely.
+if [ ! -d node_modules/typescript ]; then
+	echo "  typescript is missing after install - the build cannot resolve @/* without it" >&2
+	echo "  try: cd $APP_DIR && npm install --include=dev" >&2
+	exit 1
+fi
+
 npm run build
 
 # ─── 8b. optional pieces the panel can manage ────────────────────
