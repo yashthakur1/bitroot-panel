@@ -143,21 +143,49 @@ async function tunnelStep(): Promise<Step> {
       fix: ['Install cloudflared, then: cloudflared tunnel login'],
     };
   }
-  const [cfg, running] = await Promise.all([
-    run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true', 10_000),
+  // The installer always writes a config skeleton, so the presence of an
+  // "ingress:" block proves nothing. A tunnel is real only when the login
+  // certificate and a credentials file exist and config.yml names the tunnel -
+  // testing for the skeleton reported a configured tunnel on a machine that had
+  // never been logged in, and then offered a restart command for a process that
+  // did not exist.
+  const [probe, running] = await Promise.all([
+    run(
+      'test -f "$HOME/.cloudflared/cert.pem" && echo cert; ' +
+        'ls "$HOME"/.cloudflared/*.json >/dev/null 2>&1 && echo creds; ' +
+        'grep -Eq "^[[:space:]]*tunnel:[[:space:]]*[^#[:space:]]" "$HOME/.cloudflared/config.yml" 2>/dev/null && echo named',
+      15_000,
+    ),
     run('pm2 jlist 2>/dev/null || true', 15_000),
   ]);
-  const configured = cfg.output.includes('ingress');
+  const loggedIn = probe.output.includes('cert');
+  const created = probe.output.includes('creds');
+  const named = probe.output.includes('named');
+  const known = /"name"\s*:\s*"cloudflared"/.test(running.output);
   const up = /"name"\s*:\s*"cloudflared"[\s\S]{0,400}?"status"\s*:\s*"online"/.test(running.output);
 
-  if (!configured) {
+  if (!loggedIn) {
     return {
       id: 'tunnel',
       title: 'Cloudflare Tunnel',
       status: 'missing',
-      detail: 'cloudflared is installed but has no tunnel configured.',
+      detail: 'cloudflared is installed but not logged in to Cloudflare yet.',
       unlocks,
       fix: ['cloudflared tunnel login', 'cloudflared tunnel create $(hostname)'],
+    };
+  }
+  if (!created || !named) {
+    return {
+      id: 'tunnel',
+      title: 'Cloudflare Tunnel',
+      status: 'partial',
+      detail: created
+        ? 'A tunnel exists, but config.yml does not name it yet.'
+        : 'Logged in, but no tunnel has been created.',
+      unlocks,
+      fix: created
+        ? ['Uncomment tunnel: and credentials-file: in ~/.cloudflared/config.yml']
+        : ['cloudflared tunnel create $(hostname)'],
     };
   }
   return {
@@ -166,9 +194,16 @@ async function tunnelStep(): Promise<Step> {
     status: up ? 'ready' : 'partial',
     detail: up
       ? 'Tunnel configured and running.'
-      : 'Tunnel is configured but the cloudflared process is not online.',
+      : known
+        ? 'Tunnel is configured but the cloudflared process is stopped.'
+        : 'Tunnel is configured but nothing is running it.',
     unlocks,
-    fix: up ? undefined : ['pm2 restart cloudflared'],
+    // Offering "pm2 restart" for a process pm2 has never heard of just errors.
+    fix: up
+      ? undefined
+      : known
+        ? ['pm2 restart cloudflared']
+        : ['pm2 start cloudflared --name cloudflared -- tunnel run $(hostname)', 'pm2 save'],
   };
 }
 
@@ -202,13 +237,20 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
       fix: ['sudo tailscale up'],
     };
   }
+  // Must be the full tailnet name, not the short hostname: private URLs are
+  // built from this value, and a bare hostname only resolves where MagicDNS
+  // search domains happen to be set up - which is not everywhere.
   const recorded = e.TAILNET_HOST;
-  if (!recorded || !host.startsWith(recorded.split('.')[0])) {
+  if (recorded !== host) {
     return {
       id: 'tailscale',
       title: 'Tailscale',
       status: 'partial',
-      detail: `Logged in as ${host}, but TAILNET_HOST ${recorded ? `is set to ${recorded}` : 'is unset'}.`,
+      detail: !recorded
+        ? `Logged in as ${host}, but TAILNET_HOST is unset, so no private URLs are offered.`
+        : recorded === host.split('.')[0]
+          ? `Logged in as ${host}, but TAILNET_HOST is the short name "${recorded}" — private URLs built from it only resolve where MagicDNS search domains are configured.`
+          : `Logged in as ${host}, but TAILNET_HOST is set to "${recorded}".`,
       unlocks,
       fix: [`Set TAILNET_HOST=${host} in ~/apps/bitroot-panel/.env`, 'pm2 restart bitroot-panel --update-env'],
     };
