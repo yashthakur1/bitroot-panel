@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BitPanel — a deploy panel for a machine you own</title>
+    <meta name="description" content="Self-hosted deploy panel: Node apps, static sites, S3-compatible storage, Cloudflare routes. Runs on Debian, Ubuntu, and an Android phone." />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff; --fg: #111827; --muted: #6b7280;
+        --card: #ffffff; --border: #e5e7eb; --soft: #f9fafb;
+        --accent: #0e70ff;
+        --code-bg: #0b1220; --code-fg: #e5e7eb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #030712; --fg: #f3f4f6; --muted: #9ca3af;
+          --card: #0b1220; --border: #1f2937; --soft: #0b1220;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; background: var(--bg); color: var(--fg);
+        font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
+      header { margin-bottom: 3rem; }
+      .brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 2rem; }
+      .brand svg { width: 24px; height: 24px; fill: currentColor; }
+      .brand b { font-weight: 600; letter-spacing: -.01em; }
+      .tag {
+        font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+        color: var(--muted); border: 1px solid var(--border); border-radius: 5px;
+        padding: 2px 6px; background: var(--soft);
+      }
+      h1 { font-size: 2.4rem; line-height: 1.15; letter-spacing: -.03em; margin: 0 0 1rem; text-wrap: balance; }
+      .lede { font-size: 1.1rem; color: var(--muted); margin: 0 0 2rem; text-wrap: pretty; }
+      h2 { font-size: 1.05rem; letter-spacing: -.01em; margin: 3rem 0 .75rem; }
+      p { text-wrap: pretty; }
+
+      pre {
+        background: var(--code-bg); color: var(--code-fg);
+        border-radius: .75rem; padding: 1rem 1.1rem; overflow-x: auto;
+        font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0;
+      }
+      .cmd { position: relative; }
+      .cmd button {
+        position: absolute; top: .5rem; right: .5rem;
+        background: rgba(255,255,255,.1); color: #e5e7eb; border: 0;
+        border-radius: .4rem; padding: .3rem .55rem; font-size: 11px; cursor: pointer;
+        transition: background .15s ease;
+      }
+      .cmd button:hover { background: rgba(255,255,255,.2); }
+      .note { font-size: .85rem; color: var(--muted); margin-top: .6rem; }
+
+      .grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+      .card {
+        border: 1px solid var(--border); border-radius: .75rem; padding: 1rem;
+        background: var(--card);
+      }
+      .card h3 { margin: 0 0 .3rem; font-size: .95rem; }
+      .card p { margin: 0; font-size: .875rem; color: var(--muted); }
+
+      table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+      td { padding: .5rem .6rem; border-top: 1px solid var(--border); vertical-align: top; }
+      td:first-child { white-space: nowrap; color: var(--muted); font-family: ui-monospace, monospace; font-size: .85em; }
+
+      a { color: var(--accent); }
+      footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: .85rem; color: var(--muted); }
+      .honest { border-left: 2px solid var(--border); padding-left: 1rem; color: var(--muted); font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="brand">
+          <svg viewBox="-1 -3 103 103" aria-hidden="true"><path d="m82.289 79.039c0.82813 0 1.5 0.67188 1.5 1.5 0 0.82813-0.67187 1.5-1.5 1.5h-32.23v6.1094h46.441v-34.91h-12.109l-5.9609 5c-0.26953 0.25-0.62891 0.39844-1.0586 0.39844h-27.309v20.398h32.23zm-22.301-55.488c-0.82812 0-1.5-0.67188-1.5-1.5s0.67188-1.5 1.5117-1.5 1.5117 0.67188 1.5117 1.5-0.67188 1.5-1.5195 1.5zm0 23.391c-0.82812 0-1.5-0.67188-1.5-1.5s0.67188-1.5 1.5117-1.5 1.5117 0.67188 1.5117 1.5-0.67188 1.5-1.5195 1.5zm29.48 35.102c-0.82812 0-1.5-0.67969-1.5-1.5 0-0.82812 0.67188-1.5 1.5117-1.5 0.83984 0 1.5117 0.67188 1.5117 1.5 0 0.82031-0.67188 1.5-1.5195 1.5zm-42.41-23.398h-43.559v12.191c0 2.2617 0.92188 4.3086 2.4102 5.8008 1.4883 1.4805 3.5391 2.4102 5.8008 2.4102h35.352v-20.398zm20.289-35.09c-0.82812 0-1.5-0.67188-1.5-1.5 0-0.82813 0.67188-1.5 1.5117-1.5s1.5117 0.67187 1.5117 1.5c0 0.82812-0.67188 1.5-1.5195 1.5zm0 23.391c-0.82812 0-1.5-0.67187-1.5-1.5 0-0.82812 0.67188-1.5 1.5117-1.5s1.5117 0.67188 1.5117 1.5c0 0.82813-0.67188 1.5-1.5195 1.5zm-14.719-23.391c-0.82812 0-1.5-0.67188-1.5-1.5 0-0.82813 0.67188-1.5 1.5117-1.5s1.5117 0.67187 1.5117 1.5c0 0.82812-0.67188 1.5-1.5195 1.5zm0 23.391c-0.82812 0-1.5-0.67187-1.5-1.5 0-0.82812 0.67188-1.5 1.5117-1.5s1.5117 0.67188 1.5117 1.5c0 0.82813-0.67188 1.5-1.5195 1.5zm-40.59-23.391c-0.82812 0-1.5-0.67188-1.5-1.5 0-0.82813 0.67188-1.5 1.5-1.5h15.66c0.82812 0 1.5 0.67187 1.5 1.5 0 0.82812-0.67188 1.5-1.5 1.5zm0 23.391c-0.82812 0-1.5-0.67187-1.5-1.5 0-0.82812 0.67188-1.5 1.5-1.5h15.66c0.82812 0 1.5 0.67188 1.5 1.5 0 0.82813-0.67188 1.5-1.5 1.5zm0 23.398c-0.82812 0-1.5-0.67969-1.5-1.5 0-0.82812 0.67188-1.5 1.5-1.5h15.66c0.82812 0 1.5 0.67188 1.5 1.5 0 0.82031-0.67188 1.5-1.5 1.5zm-8.5391-38.09h72.41v-12.191c0-2.2617-0.92188-4.3086-2.4102-5.8008-1.4883-1.4883-3.5391-2.4102-5.8008-2.4102h-55.988c-2.2617 0-4.3203 0.92188-5.8008 2.3984-1.4883 1.4883-2.4102 3.5508-2.4102 5.8086zm72.41 3h-72.41v20.391h72.41z" /></svg>
+          <b>BitPanel</b>
+          <span class="tag">Self-hosted</span>
+        </div>
+
+        <h1>A deploy panel for a machine you already own.</h1>
+        <p class="lede">
+          Node apps, static sites, S3-compatible object storage and Cloudflare routes — on a spare
+          server, a home box, or an Android phone in a drawer.
+        </p>
+
+        <div class="cmd">
+          <pre id="install">curl -fsSL https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh | bash</pre>
+          <button onclick="copyCmd(this)">Copy</button>
+        </div>
+        <p class="note">
+          Debian or Ubuntu. Installs Node, pm2, nginx, cloudflared and Garage, builds the panel and
+          registers it with systemd. Re-running upgrades instead of duplicating.
+        </p>
+      </header>
+
+      <h2>What it manages</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Services</h3>
+          <p>Node apps under pm2 and static sites under nginx, deployed by pushing to a git remote on the box.</p>
+        </div>
+        <div class="card">
+          <h3>Storage</h3>
+          <p>S3-compatible buckets with size limits, browser previews, lossless compression on upload and presigned share links.</p>
+        </div>
+        <div class="card">
+          <h3>Routes</h3>
+          <p>Cloudflare Tunnel ingress and DNS, with an edge cache rule so published files are served without touching the device.</p>
+        </div>
+        <div class="card">
+          <h3>Residue</h3>
+          <p>What a removal left behind — DNS records, files, access keys — and a way to finish the job.</p>
+        </div>
+      </div>
+
+      <h2>Runs on</h2>
+      <table>
+        <tr>
+          <td>Debian / Ubuntu</td>
+          <td>One command. <a href="ubuntu.md">Guide →</a></td>
+        </tr>
+        <tr>
+          <td>Android / Termux</td>
+          <td>What it was built on. A few steps a Debian installer cannot take. <a href="termux.md">Guide →</a></td>
+        </tr>
+      </table>
+
+      <h2>Honest about the constraints</h2>
+      <p class="honest">
+        A phone is a real server with real limits. Its upload link is the ceiling on everything
+        public, which is why storage leans on edge caching and compresses before it sends. Several
+        upstream projects publish no <code>android-arm64</code> binary at all. None of that is
+        hidden in the UI: a service bound to loopback says so instead of offering a link that will
+        not open, and a bucket with no public address says that rather than printing one that fails.
+      </p>
+
+      <h2>Requirements</h2>
+      <table>
+        <tr><td>Node 22+</td><td>installed for you on Debian/Ubuntu</td></tr>
+        <tr><td>Cloudflare zone</td><td>optional — only for public routes</td></tr>
+        <tr><td>Tailscale</td><td>optional — only for private access from elsewhere</td></tr>
+      </table>
+      <p class="note">
+        Storage, routing and IAM are each optional; the panel degrades to whatever is configured.
+      </p>
+
+      <footer>
+        <a href="https://github.com/yashthakur1/bitroot-panel">Source on GitHub</a> ·
+        <a href="ubuntu.md">Ubuntu guide</a> ·
+        <a href="termux.md">Termux guide</a>
+      </footer>
+    </div>
+
+    <script>
+      function copyCmd(btn) {
+        navigator.clipboard.writeText(document.getElementById('install').textContent.trim());
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = 'Copy'), 1500);
+      }
+    </script>
+  </body>
+</html>
