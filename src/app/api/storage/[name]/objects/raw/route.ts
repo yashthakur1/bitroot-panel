@@ -27,12 +27,15 @@ export async function GET(
     }
 
     const headers = new Headers();
-    for (const h of ['content-type', 'content-length', 'content-encoding', 'etag', 'last-modified']) {
+    // Deliberately not content-encoding or content-length. Node's fetch has
+    // already decompressed a gzipped object by the time we see the body, so
+    // forwarding "gzip" makes the browser try to decode plain bytes a second
+    // time - the object arrives corrupt - and the stored length no longer
+    // describes what is being sent.
+    for (const h of ['content-type', 'etag', 'last-modified']) {
       const v = res.headers.get(h);
       if (v) headers.set(h, v);
     }
-    // Objects uploaded compressed carry Content-Encoding, and the browser
-    // decodes them itself - so the response is passed on untouched.
     if (req.nextUrl.searchParams.get('download') === '1') {
       headers.set('Content-Disposition', `attachment; filename="${key.split('/').pop()}"`);
     }
