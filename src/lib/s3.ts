@@ -194,6 +194,33 @@ export function mimeForKey(key: string): string | undefined {
   return MIME[ext];
 }
 
+// Reads the first two bytes to tell whether the stored body is gzip. Needed
+// because an object can carry compressed bytes with its Content-Encoding
+// missing - and then it is served as-is and arrives corrupt.
+async function looksGzipped(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+): Promise<boolean> {
+  try {
+    const res = await signedFetch(
+      accessKeyId,
+      secretAccessKey,
+      'GET',
+      `/${bucket}/${encodeKey(key)}`,
+      {},
+      undefined,
+      { range: 'bytes=0-1' },
+    );
+    if (!res.ok) return false;
+    const head = new Uint8Array(await res.arrayBuffer());
+    return head[0] === 0x1f && head[1] === 0x8b;
+  } catch {
+    return false;
+  }
+}
+
 export async function headObject(
   accessKeyId: string,
   secretAccessKey: string,
@@ -228,7 +255,13 @@ export async function restampObject(
     opts.contentType ??
     (stored && stored !== 'application/octet-stream' ? stored : undefined) ??
     mimeForKey(key);
-  const contentEncoding = opts.contentEncoding ?? existing.get('content-encoding') ?? undefined;
+  // If the header is absent the bytes are inspected rather than assumed: an
+  // object whose Content-Encoding was lost still holds gzip, and serving it
+  // without saying so hands the browser bytes it cannot read.
+  const contentEncoding =
+    opts.contentEncoding ??
+    existing.get('content-encoding') ??
+    ((await looksGzipped(accessKeyId, secretAccessKey, bucket, key)) ? 'gzip' : undefined);
 
   const headers: Record<string, string> = {
     'x-amz-copy-source': `/${bucket}/${encodeKey(key)}`,
