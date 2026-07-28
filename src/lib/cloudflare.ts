@@ -62,3 +62,55 @@ export async function deleteRecordsForHosts(hosts: string[]): Promise<string[]> 
 export function dnsConfigured(): boolean {
   return Boolean(ZONE && TOKEN);
 }
+
+// Cache rule for published storage buckets.
+//
+// Cloudflare caches a handful of file extensions by default and ignores the
+// rest, so a bucket of .json or extensionless keys would keep reaching the
+// device on every read. One rule scoped to the published hostnames makes the
+// edge cache everything they serve, honouring the Cache-Control the objects
+// already carry rather than overriding it.
+const CACHE_PHASE = 'http_request_cache_settings';
+const RULE_DESCRIPTION = 'BitPanel storage: cache published bucket objects at the edge';
+
+export async function syncStorageCacheRule(hosts: string[]): Promise<string> {
+  if (!dnsConfigured()) return 'Cloudflare not configured';
+
+  // No published bucket means no rule: an empty host set is not a valid
+  // expression, and leaving a stale one would match nothing anyway.
+  if (hosts.length === 0) {
+    try {
+      await cf(`/rulesets/phases/${CACHE_PHASE}/entrypoint`, {
+        method: 'PUT',
+        body: JSON.stringify({ rules: [] }),
+      });
+      return 'cleared the edge cache rule (no published buckets)';
+    } catch (e) {
+      return `could not clear the cache rule: ${(e as Error).message}`;
+    }
+  }
+
+  const expression = `(http.host in {${hosts.map((h) => JSON.stringify(h)).join(' ')}})`;
+  try {
+    await cf(`/rulesets/phases/${CACHE_PHASE}/entrypoint`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        rules: [
+          {
+            action: 'set_cache_settings',
+            description: RULE_DESCRIPTION,
+            expression,
+            action_parameters: {
+              cache: true,
+              edge_ttl: { mode: 'respect_origin' },
+              browser_ttl: { mode: 'respect_origin' },
+            },
+          },
+        ],
+      }),
+    });
+    return `edge cache rule now covers ${hosts.length} host${hosts.length === 1 ? '' : 's'}`;
+  } catch (e) {
+    return `could not update the cache rule: ${(e as Error).message}`;
+  }
+}

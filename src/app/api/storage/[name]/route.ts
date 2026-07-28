@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { recordResidue } from '@/lib/residue';
-import { deleteRecordsForHosts } from '@/lib/cloudflare';
+import { deleteRecordsForHosts, syncStorageCacheRule } from '@/lib/cloudflare';
 import {
   WEB_PORT,
   assertBucketName,
@@ -13,6 +13,7 @@ import {
   setWebsite,
 } from '@/lib/garage';
 import { listObjects, restampObject } from '@/lib/s3';
+import { hostsForPort } from '@/lib/routes';
 
 const PUBLIC_CACHE = 'public, max-age=31536000, immutable';
 
@@ -84,6 +85,10 @@ export async function PATCH(
       } catch (e) {
         done.push(`could not update cache headers on existing objects: ${(e as Error).message}`);
       }
+
+      // The rule is scoped to the published hostnames, so it has to follow them
+      // - otherwise a newly published bucket is served uncached for ever.
+      done.push(await syncStorageCacheRule(await hostsForPort(WEB_PORT)));
     }
 
     if (body.access === 'private') {
@@ -91,6 +96,7 @@ export async function PATCH(
       await run(`tunnel-remove ${name}`, 60_000);
       await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push('unpublished; objects are reachable over Tailscale only');
+      done.push(await syncStorageCacheRule(await hostsForPort(WEB_PORT)));
       await recordResidue([
         {
           action: `made bucket "${name}" private`,
