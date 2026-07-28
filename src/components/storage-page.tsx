@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from './ui/button';
+import { Tabs } from './ui/tabs';
 import { TableSkeleton } from './skeletons';
 import UploadDialog from './upload-dialog';
 
@@ -71,6 +72,7 @@ export default function StoragePage() {
   const [newTier, setNewTier] = useState(5);
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
   const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
+  const [tab, setTab] = useState<'buckets' | 'endpoint'>('buckets');
   const [newKey, setNewKey] = useState<{ accessKeyId: string; secretAccessKey: string } | null>(
     null,
   );
@@ -124,9 +126,18 @@ export default function StoragePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-display font-light tracking-tight">Storage</h1>
-        <div className="flex items-center space-x-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
+            <HardDrive size={24} className="text-gray-500 dark:text-gray-400" />
+            Storage
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-2" style={{ textWrap: 'pretty' }}>
+            S3-compatible object storage on the device. Buckets are capped at a fixed tier that
+            Garage enforces itself, and stay private unless you publish them.
+          </p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={load}
             aria-label="Refresh"
@@ -134,17 +145,26 @@ export default function StoragePage() {
           >
             <RefreshCw className="h-4 w-4" />
           </button>
-          <Button onClick={() => setCreating(true)} className="active:scale-[0.96] transition-transform">
-            <Plus size={16} className="mr-1.5" /> New bucket
+          <Button onClick={() => setCreating(true)} className="flex items-center gap-2">
+            <Plus size={15} /> New bucket
           </Button>
         </div>
       </div>
 
+      <Tabs
+        tabs={[
+          { key: 'buckets' as const, label: 'Buckets', count: buckets.length },
+          { key: 'endpoint' as const, label: 'Endpoint' },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      {/* Endpoint + commitment */}
+      {tab === 'endpoint' && (
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-1">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 space-y-1">
           <p className="text-xs uppercase font-semibold tracking-widest text-gray-500 dark:text-gray-400">
             S3 endpoint
           </p>
@@ -159,7 +179,7 @@ export default function StoragePage() {
             style addressing.
           </p>
         </div>
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-1">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 space-y-1">
           <p className="text-xs uppercase font-semibold tracking-widest text-gray-500 dark:text-gray-400">
             Committed
           </p>
@@ -174,11 +194,15 @@ export default function StoragePage() {
           </p>
         </div>
       </div>
+      )}
 
-      {buckets.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center text-sm">
-          No buckets yet.
-        </p>
+      {tab === 'buckets' && (buckets.length === 0 ? (
+        <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">No buckets yet.</p>
+          <Button variant="secondary" onClick={() => setCreating(true)}>
+            Create your first one
+          </Button>
+        </div>
       ) : (
         <div className="space-y-3">
           {buckets.map((b) => {
@@ -187,7 +211,7 @@ export default function StoragePage() {
             return (
               <div
                 key={b.id}
-                className="rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3"
+                className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 space-y-3"
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
@@ -352,7 +376,7 @@ export default function StoragePage() {
             );
           })}
         </div>
-      )}
+      ))}
 
       {creating && (
         <Dialog title="New bucket" onClose={() => setCreating(false)}>
