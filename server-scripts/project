@@ -231,7 +231,10 @@ cmd_add() {
   node - "$ECOSYSTEM" "$name" "$dir" "$port" "$cmd" <<'JSEOF'
 const fs = require('fs');
 const file = process.argv[2];
-const [,, name, dir, port, cmd] = process.argv;
+// argv is [node, '-', ecosystem, name, dir, port, cmd]; the first two slots
+// are the runtime and the stdin-script marker, and argv[2] is the ecosystem
+// path read above - so the app's own arguments start at index 3.
+const [,,, name, dir, port, cmd] = process.argv;
 
 let config = { apps: [] };
 try { config = require(file); } catch(e) {}

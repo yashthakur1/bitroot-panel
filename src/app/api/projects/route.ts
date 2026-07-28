@@ -60,6 +60,10 @@ export async function GET() {
   // Sources in order of label quality: ports.conf, tunnel routes, pm2 env,
   // raw listening sockets.
   const portsInUse: Record<number, string> = {};
+  // The hostname the tunnel actually serves for a port. A project's public URL
+  // is derived from this rather than assumed from its name: without a route
+  // there is no URL, and with one the hostname need not match the name.
+  const hostForPort: Record<number, string> = {};
   for (const [pname, pport] of Object.entries(portMap)) {
     portsInUse[pport] = `project "${pname}"`;
   }
@@ -74,7 +78,10 @@ export async function GET() {
     const s = line.match(/^(?:-\s*)?service:\s*\w+:\/\/localhost:(\d+)/);
     if (s) {
       const p = Number(s[1]);
-      if (pendingHost) portsInUse[p] ??= `tunnel route ${pendingHost}`;
+      if (pendingHost) {
+        portsInUse[p] ??= `tunnel route ${pendingHost}`;
+        hostForPort[p] ??= pendingHost;
+      }
       pendingHost = null;
     }
   }
@@ -108,7 +115,7 @@ export async function GET() {
         : 0,
     restarts: a.pm2_env?.restart_time ?? 0,
     port: portMap[a.name] ?? null,
-    url: portMap[a.name] ? `https://${a.name}.${DOMAIN_SUFFIX}` : null,
+    url: hostForPort[portMap[a.name]] ? `https://${hostForPort[portMap[a.name]]}` : null,
     system: SYSTEM_APPS.has(a.name),
     type: 'node' as const,
   }));
@@ -125,15 +132,18 @@ export async function GET() {
       uptimeMs: 0,
       restarts: 0,
       port: s.port,
-      url: portsInUse[s.port]?.startsWith('tunnel') ? `https://${s.name}.${DOMAIN_SUFFIX}` : null,
+      url: hostForPort[s.port] ? `https://${hostForPort[s.port]}` : null,
       system: false,
       type: 'static',
     });
   }
 
-  // Registered in ports.conf but not present in pm2 (e.g. removed from pm2 by hand)
+  // Registered in ports.conf but not present in pm2 (e.g. removed from pm2 by hand).
+  // A leading underscore marks a port reserved by a service that already has an
+  // entry - a second port for the same app - so it holds the port without
+  // appearing as a project of its own.
   for (const [name, port] of Object.entries(portMap)) {
-    if (staticNames.has(name)) continue;
+    if (staticNames.has(name) || name.startsWith('_')) continue;
     if (!projects.some((p) => p.name === name)) {
       projects.push({
         name,
@@ -143,7 +153,7 @@ export async function GET() {
         uptimeMs: 0,
         restarts: 0,
         port,
-        url: `https://${name}.${DOMAIN_SUFFIX}`,
+        url: hostForPort[port] ? `https://${hostForPort[port]}` : null,
         system: false,
         type: 'node',
       });
