@@ -22,6 +22,8 @@ interface Step {
   fix?: string[];
   link?: { href: string; label: string };
   checks?: Array<{ name: string; ok: boolean }>;
+  guide?: string[];
+  grants?: Array<{ scope: string; permission: string; why: string; missed?: boolean }>;
   required?: boolean;
 }
 
