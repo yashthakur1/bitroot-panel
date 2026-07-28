@@ -385,17 +385,29 @@ function Access({
         Access
       </p>
 
-      <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500">
-        In a browser
-      </p>
       {httpUrl ? (
-        <Copyable label="Public URL" value={httpUrl} href={httpUrl} />
+        <>
+          <Copyable label="Public URL" value={httpUrl} href={httpUrl} />
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
+            Open or hotlink this anywhere — no credentials. Cloudflare caches common file types at
+            its edge, so repeat reads of those need not touch the device; less common types keep
+            reaching the phone until a Cache Rule covers them.
+          </p>
+        </>
       ) : (
-        <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
-          This bucket is private, so there is no address a browser can open. Publish the bucket to
-          serve it over HTTPS, or use Download above - that streams through the panel, which holds
-          the credential for you.
-        </p>
+        <>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
+            This bucket is private, so there is no address a browser can open. Use Download below —
+            it streams through the panel, which holds the credential for you — or publish the
+            bucket to serve it over HTTPS.
+          </p>
+          <p className="text-[11px] text-amber-700 dark:text-amber-500 text-pretty">
+            The endpoint below is the S3 API, not a file server. Pasting{' '}
+            <code className="font-mono">{`${s3Endpoint}/${bucket}/…`}</code> into a browser returns
+            <code className="font-mono"> AccessDenied</code>: every S3 request must be signed and a
+            browser sends no signature.
+          </p>
+        </>
       )}
 
       <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 pt-1">
@@ -403,12 +415,12 @@ function Access({
       </p>
       <Copyable label="S3 URI" value={s3Uri} />
       <Copyable label="Endpoint" value={s3Endpoint} />
-      <p className="text-[11px] text-amber-700 dark:text-amber-500 text-pretty">
-        The endpoint is the S3 API, not a file server. Opening{' '}
-        <code className="font-mono">{`${s3Endpoint}/${bucket}/…`}</code> in a browser returns
-        <code className="font-mono"> AccessDenied</code>, because every S3 request has to be signed
-        and a browser sends none. Use it from an SDK or CLI with a key.
-      </p>
+      {httpUrl && (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
+          Use these to write or manage the object. They are the signed S3 API, so they need a key —
+          for reading, the public URL above is simpler.
+        </p>
+      )}
 
       <details className="text-[11px] text-gray-600 dark:text-gray-400">
         <summary className="cursor-pointer select-none text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
@@ -439,17 +451,10 @@ boto3.client("s3",
   aws_secret_access_key=SECRET,
 ).download_file("${bucket}", "${objectKey}", "out")`}
           </pre>
-          {httpUrl ? (
-            <p>
-              The public URL needs no credentials and is cached at Cloudflare&apos;s edge, so
-              repeat reads do not touch the device.
-            </p>
-          ) : (
-            <p>
-              Downloading from this pane streams through the panel itself, which is why it works
-              for a private bucket without any key.
-            </p>
-          )}
+          <p>
+            Downloading from this pane streams through the panel itself, which is why it works for
+            a private bucket without any key.
+          </p>
         </div>
       </details>
     </div>

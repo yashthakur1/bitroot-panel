@@ -7,10 +7,14 @@ import {
   assertBucketName,
   assertTier,
   deleteBucket,
+  ensureUploadAccess,
   findBucketByName,
   setQuota,
   setWebsite,
 } from '@/lib/garage';
+import { listObjects, restampObject } from '@/lib/s3';
+
+const PUBLIC_CACHE = 'public, max-age=31536000, immutable';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'bitroot.in';
 
@@ -62,6 +66,24 @@ export async function PATCH(
       // tunnel carrying it blinks.
       await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push(`published at https://${name}.${DOMAIN_SUFFIX}`);
+
+      // Objects uploaded before this point may carry a non-cacheable header,
+      // which would make Cloudflare BYPASS them for ever and send every read to
+      // the device - defeating the reason for publishing. Re-stamp them.
+      try {
+        const cred = await ensureUploadAccess(bucket.id);
+        const objects = await listObjects(cred.accessKeyId, cred.secretAccessKey, name);
+        let fixed = 0;
+        for (const o of objects) {
+          await restampObject(cred.accessKeyId, cred.secretAccessKey, name, o.key, {
+            cacheControl: PUBLIC_CACHE,
+          });
+          fixed++;
+        }
+        if (fixed) done.push(`made ${fixed} existing object${fixed === 1 ? '' : 's'} cacheable`);
+      } catch (e) {
+        done.push(`could not update cache headers on existing objects: ${(e as Error).message}`);
+      }
     }
 
     if (body.access === 'private') {

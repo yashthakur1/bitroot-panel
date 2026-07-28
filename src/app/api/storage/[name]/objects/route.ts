@@ -6,8 +6,12 @@ import { deleteObject, listObjects, putObject } from '@/lib/s3';
 // content-addressed-ish keys rather than mutating them in place, so a year is
 // safe. Cloudflare respects this for the extensions it caches by default; a
 // Cache Rule is only needed to widen that set.
+// Always the long public lifetime, even for a private bucket. A private bucket
+// is not reachable publicly at all, so the header changes nothing there - but
+// stamping "private, max-age=0" instead meant every object uploaded before a
+// bucket was published stayed permanently uncacheable afterwards, which is
+// exactly the case that made publishing pointless.
 const PUBLIC_CACHE = 'public, max-age=31536000, immutable';
-const PRIVATE_CACHE = 'private, max-age=0, must-revalidate';
 
 // An object key may contain slashes but must not climb out of the bucket or
 // carry control characters into a URL.
@@ -66,7 +70,7 @@ export async function POST(
     await putObject(cred.accessKeyId, cred.secretAccessKey, name, key, body, {
       contentType,
       contentEncoding,
-      cacheControl: bucket.websiteAccess ? PUBLIC_CACHE : PRIVATE_CACHE,
+      cacheControl: PUBLIC_CACHE,
     });
 
     return NextResponse.json({

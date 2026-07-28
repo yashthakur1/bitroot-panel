@@ -161,6 +161,49 @@ export async function deleteObject(
   }
 }
 
+// Rewrites an object's headers in place. S3 has no metadata-only update, so it
+// is a copy onto itself with REPLACE - which is how Cache-Control on already
+// uploaded objects gets corrected when a bucket is published.
+export async function restampObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+  opts: PutOptions = {},
+): Promise<void> {
+  const headers: Record<string, string> = {
+    'x-amz-copy-source': `/${bucket}/${encodeKey(key)}`,
+    'x-amz-metadata-directive': 'REPLACE',
+  };
+  if (opts.contentType) headers['content-type'] = opts.contentType;
+  if (opts.contentEncoding) headers['content-encoding'] = opts.contentEncoding;
+  if (opts.cacheControl) headers['cache-control'] = opts.cacheControl;
+
+  const res = await signedFetch(
+    accessKeyId,
+    secretAccessKey,
+    'PUT',
+    `/${bucket}/${encodeKey(key)}`,
+    {},
+    undefined,
+    headers,
+  );
+  if (!res.ok) {
+    throw new Error(`S3 copy failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
+export async function headObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+): Promise<Headers> {
+  const res = await signedFetch(accessKeyId, secretAccessKey, 'HEAD', `/${bucket}/${encodeKey(key)}`);
+  if (!res.ok) throw new Error(`S3 head failed: HTTP ${res.status}`);
+  return res.headers;
+}
+
 export async function putObject(
   accessKeyId: string,
   secretAccessKey: string,

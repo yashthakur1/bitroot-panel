@@ -128,6 +128,7 @@ export default function StoragePage() {
   const buckets = data?.buckets ?? [];
   const committedGb = (data?.committedBytes ?? 0) / GIB;
   const freeGb = data?.freeBytes ? data.freeBytes / GIB : null;
+  const publicCount = buckets.filter((b) => b.access === 'public').length;
 
   return (
     <div className="space-y-6">
@@ -180,8 +181,16 @@ export default function StoragePage() {
             <CopyButton value={data?.s3Endpoint ?? ''} />
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 text-pretty">
-            Reachable over Tailscale only. Region <code className="font-mono">garage</code>, path
-            style addressing.
+            The S3 API, over Tailscale only. Region <code className="font-mono">garage</code>,
+            path-style addressing, and every request must be signed with a bucket key — opening it
+            in a browser returns <code className="font-mono">AccessDenied</code>.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-pretty">
+            {publicCount > 0
+              ? `${publicCount} of ${buckets.length} bucket${buckets.length === 1 ? '' : 's'} ${
+                  publicCount === 1 ? 'is' : 'are'
+                } published, and their objects are also readable over plain HTTPS with no key — that is the address to hand out.`
+              : 'No bucket is published, so this endpoint is the only way in. Publishing one adds an HTTPS address that needs no key.'}
           </p>
         </div>
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-4 space-y-1">
