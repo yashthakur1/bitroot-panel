@@ -32,7 +32,7 @@ export async function PATCH(
       // Garage accepts a quota below current usage: existing objects stay and
       // further writes are refused. That is a legitimate way to freeze a
       // bucket, but it should not happen by accident.
-      if (bucket.bytes > tierGb * 1024 ** 3) {
+      if (tierGb !== null && bucket.bytes > tierGb * 1024 ** 3) {
         return NextResponse.json(
           {
             error: `bucket already holds ${(bucket.bytes / 1024 ** 3).toFixed(
@@ -43,7 +43,7 @@ export async function PATCH(
         );
       }
       await setQuota(bucket.id, tierGb);
-      done.push(`tier set to ${tierGb} GB`);
+      done.push(tierGb === null ? 'cap removed — grows with use' : `cap set to ${tierGb} GB`);
     }
 
     if (body.access === 'public') {

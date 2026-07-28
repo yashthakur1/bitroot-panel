@@ -378,7 +378,6 @@ function Access({
   const encoded = objectKey.split('/').map(encodeURIComponent).join('/');
   const httpUrl = publicUrl ? `${publicUrl}/${encoded}` : null;
   const s3Uri = `s3://${bucket}/${objectKey}`;
-  const endpointUrl = `${s3Endpoint}/${bucket}/${encoded}`;
 
   return (
     <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
@@ -386,17 +385,30 @@ function Access({
         Access
       </p>
 
+      <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500">
+        In a browser
+      </p>
       {httpUrl ? (
         <Copyable label="Public URL" value={httpUrl} href={httpUrl} />
       ) : (
         <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
-          This bucket is private, so the object has no public address. Publish the bucket to serve
-          it over HTTPS, or use one of the addresses below from the tailnet.
+          This bucket is private, so there is no address a browser can open. Publish the bucket to
+          serve it over HTTPS, or use Download above - that streams through the panel, which holds
+          the credential for you.
         </p>
       )}
 
+      <p className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 pt-1">
+        From code
+      </p>
       <Copyable label="S3 URI" value={s3Uri} />
-      <Copyable label="Endpoint path" value={endpointUrl} />
+      <Copyable label="Endpoint" value={s3Endpoint} />
+      <p className="text-[11px] text-amber-700 dark:text-amber-500 text-pretty">
+        The endpoint is the S3 API, not a file server. Opening{' '}
+        <code className="font-mono">{`${s3Endpoint}/${bucket}/…`}</code> in a browser returns
+        <code className="font-mono"> AccessDenied</code>, because every S3 request has to be signed
+        and a browser sends none. Use it from an SDK or CLI with a key.
+      </p>
 
       <details className="text-[11px] text-gray-600 dark:text-gray-400">
         <summary className="cursor-pointer select-none text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
@@ -404,9 +416,10 @@ function Access({
         </summary>
         <div className="mt-2 space-y-2 text-pretty">
           <p>
-            The S3 endpoint answers over Tailscale only, with region{' '}
+            The endpoint answers over Tailscale only, with region{' '}
             <code className="font-mono">garage</code> and path-style addressing. Create a key for
-            the bucket on the Storage page first.
+            the bucket on the Storage page first — the SDK signs each request with it, which is
+            what a browser cannot do.
           </p>
           <pre className="bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto font-mono text-[10px] whitespace-pre">
 {`rclone copy ${s3Uri} . \\
@@ -416,7 +429,15 @@ function Access({
   --s3-access-key-id KEY --s3-secret-access-key SECRET
 
 aws --endpoint-url ${s3Endpoint} \\
-  s3 cp ${s3Uri} .`}
+  s3 cp ${s3Uri} .
+
+# python
+boto3.client("s3",
+  endpoint_url="${s3Endpoint}",
+  region_name="garage",
+  aws_access_key_id=KEY,
+  aws_secret_access_key=SECRET,
+).download_file("${bucket}", "${objectKey}", "out")`}
           </pre>
           {httpUrl ? (
             <p>

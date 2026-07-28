@@ -10,10 +10,15 @@ import { shq } from './validate';
 const ADMIN = process.env.GARAGE_ADMIN_URL ?? 'http://127.0.0.1:3903';
 const TOKEN = process.env.GARAGE_ADMIN_TOKEN ?? '';
 
-// The only sizes a bucket may be given. Garage enforces these itself, so a
-// bucket cannot quietly outgrow its tier while the panel looks away.
+// Common sizes offered as one-click presets. A bucket is not limited to these:
+// any whole number up to MAX_TIER_GB works, and a cap is optional entirely.
 export const TIERS_GB = [5, 10, 20, 25] as const;
-export type TierGb = (typeof TIERS_GB)[number];
+export const MAX_TIER_GB = 80;
+
+// null means no cap: the bucket grows with what is put in it and is billed, in
+// spirit, by what it actually uses. Garage enforces a cap when there is one, so
+// an uncapped bucket is bounded only by the device.
+export type TierGb = number | null;
 
 export const GIB = 1024 ** 3;
 
@@ -119,7 +124,9 @@ export async function createBucket(name: string, tierGb: TierGb): Promise<Bucket
 export async function setQuota(id: string, tierGb: TierGb): Promise<void> {
   await ga(`/v2/UpdateBucket?id=${encodeURIComponent(id)}`, {
     method: 'POST',
-    body: JSON.stringify({ quotas: { maxSize: tierGb * GIB, maxObjects: null } }),
+    body: JSON.stringify({
+      quotas: { maxSize: tierGb === null ? null : tierGb * GIB, maxObjects: null },
+    }),
   });
 }
 
@@ -195,12 +202,15 @@ export function assertBucketName(value: unknown): string {
   return name;
 }
 
+// An absent or explicitly null size means "no cap", which is a legitimate
+// choice rather than a missing value - so only a present value is validated.
 export function assertTier(value: unknown): TierGb {
+  if (value === null || value === undefined || value === '') return null;
   const gb = Number(value);
-  if (!TIERS_GB.includes(gb as TierGb)) {
-    throw new Error(`tier must be one of ${TIERS_GB.join(', ')} GB`);
+  if (!Number.isInteger(gb) || gb < 1 || gb > MAX_TIER_GB) {
+    throw new Error(`size must be a whole number of GB between 1 and ${MAX_TIER_GB}, or left unset for no cap`);
   }
-  return gb as TierGb;
+  return gb;
 }
 
 // ─── The panel's own upload credential ──────────────────────────

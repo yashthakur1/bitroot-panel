@@ -44,6 +44,7 @@ interface Bucket {
 interface Data {
   configured: boolean;
   tiers: number[];
+  maxTierGb: number;
   buckets: Bucket[];
   freeBytes: number | null;
   committedBytes: number;
@@ -71,7 +72,8 @@ export default function StoragePage() {
   const [busy, setBusy] = useState('');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newTier, setNewTier] = useState(5);
+  const [newTier, setNewTier] = useState<number | null>(5);
+  const [tierFor, setTierFor] = useState<Bucket | null>(null);
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
   const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
   const [tab, setTab] = useState<'buckets' | 'endpoint'>('buckets');
@@ -254,28 +256,15 @@ export default function StoragePage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    <select
-                      value={(b.quotaBytes ?? 0) / GIB}
+                    <Button
+                      size="sm"
+                      variant="outline"
                       disabled={busy === b.name}
-                      onChange={(e) =>
-                        call(
-                          `/api/storage/${b.name}`,
-                          {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ tierGb: Number(e.target.value) }),
-                          },
-                          b.name,
-                        )
-                      }
-                      className="text-sm border border-gray-200 dark:border-gray-800 bg-transparent rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent-500"
+                      onClick={() => setTierFor(b)}
+                      className="active:scale-[0.96] transition-transform tabular-nums"
                     >
-                      {(data?.tiers ?? []).map((t) => (
-                        <option key={t} value={t}>
-                          {t} GB
-                        </option>
-                      ))}
-                    </select>
+                      {b.quotaBytes ? `${Math.round(b.quotaBytes / GIB)} GB` : 'No cap'}
+                    </Button>
 
                     <Button
                       size="sm"
@@ -359,7 +348,7 @@ export default function StoragePage() {
                   </div>
                   <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 tabular-nums">
                     <span>
-                      {human(b.bytes)} of {quota ? human(quota) : 'unlimited'} · {b.objects} object
+                      {human(b.bytes)} {quota ? `of ${human(quota)}` : 'used · no cap'} · {b.objects} object
                       {b.objects === 1 ? '' : 's'}
                     </span>
                     <span>{quota ? `${pct.toFixed(0)}%` : ''}</span>
@@ -418,24 +407,12 @@ export default function StoragePage() {
             </span>
           </label>
 
-          <div className="space-y-1.5">
-            <span className="text-sm text-gray-700 dark:text-gray-300">Tier</span>
-            <div className="flex gap-2">
-              {(data?.tiers ?? []).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setNewTier(t)}
-                  className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors active:scale-[0.96] ${
-                    newTier === t
-                      ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400'
-                      : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
-                  }`}
-                >
-                  {t} GB
-                </button>
-              ))}
-            </div>
-          </div>
+          <SizePicker
+            presets={data?.tiers ?? []}
+            max={data?.maxTierGb ?? 80}
+            value={newTier}
+            onChange={setNewTier}
+          />
 
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setCreating(false)}>
@@ -463,6 +440,29 @@ export default function StoragePage() {
               Create
             </Button>
           </div>
+        </Dialog>
+      )}
+
+      {tierFor && (
+        <Dialog title={`Size of ${tierFor.name}`} onClose={() => setTierFor(null)}>
+          <SizePicker
+            presets={data?.tiers ?? []}
+            max={data?.maxTierGb ?? 80}
+            value={tierFor.quotaBytes ? Math.round(tierFor.quotaBytes / GIB) : null}
+            onChange={async (v) => {
+              const b = tierFor;
+              setTierFor(null);
+              await call(
+                `/api/storage/${b.name}`,
+                {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ tierGb: v }),
+                },
+                b.name,
+              );
+            }}
+          />
         </Dialog>
       )}
 
@@ -498,6 +498,97 @@ export default function StoragePage() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+// Presets for the common cases, a free field for anything else up to the
+// ceiling, and no cap at all - which is the honest default for a device whose
+// spare space changes as other things are added and removed.
+function SizePicker({
+  presets,
+  max,
+  value,
+  onChange,
+}: {
+  presets: number[];
+  max: number;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  const isPreset = value !== null && presets.includes(value);
+  const [custom, setCustom] = useState(!isPreset && value !== null);
+  const [draft, setDraft] = useState(String(value ?? ''));
+
+  return (
+    <div className="space-y-2">
+      <span className="text-sm text-gray-700 dark:text-gray-300">Size limit</span>
+      <div className="flex flex-wrap gap-2">
+        {presets.map((t) => (
+          <button
+            key={t}
+            onClick={() => {
+              setCustom(false);
+              onChange(t);
+            }}
+            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors active:scale-[0.96] tabular-nums ${
+              !custom && value === t
+                ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400'
+                : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+            }`}
+          >
+            {t} GB
+          </button>
+        ))}
+        <button
+          onClick={() => setCustom(true)}
+          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors active:scale-[0.96] ${
+            custom
+              ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400'
+              : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+          }`}
+        >
+          Custom
+        </button>
+        <button
+          onClick={() => {
+            setCustom(false);
+            onChange(null);
+          }}
+          className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors active:scale-[0.96] ${
+            !custom && value === null
+              ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-400'
+              : 'border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+          }`}
+        >
+          No cap
+        </button>
+      </div>
+
+      {custom && (
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={max}
+            autoFocus
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              const n = Number(e.target.value);
+              if (Number.isInteger(n) && n >= 1 && n <= max) onChange(n);
+            }}
+            className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-800 bg-transparent rounded-lg text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-accent-500"
+          />
+          <span className="text-sm text-gray-500 dark:text-gray-400">GB (max {max})</span>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-500 dark:text-gray-400 text-pretty">
+        {value === null
+          ? 'No cap: the bucket grows with what you put in it, limited only by free space on the device. Usage is still reported per bucket.'
+          : `Garage refuses writes past ${value} GB, so the bucket cannot quietly outgrow it.`}
+      </p>
     </div>
   );
 }

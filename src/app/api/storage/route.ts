@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import {
   GIB,
+  MAX_TIER_GB,
   TIERS_GB,
   WEB_PORT,
   assertBucketName,
@@ -19,7 +20,7 @@ const S3_PORT = 3900;
 
 export async function GET() {
   if (!garageConfigured()) {
-    return NextResponse.json({ configured: false, buckets: [], tiers: TIERS_GB });
+    return NextResponse.json({ configured: false, buckets: [], tiers: TIERS_GB, maxTierGb: MAX_TIER_GB });
   }
   try {
     const [buckets, publicHosts, disk] = await Promise.all([
@@ -37,6 +38,7 @@ export async function GET() {
     return NextResponse.json({
       configured: true,
       tiers: TIERS_GB,
+      maxTierGb: MAX_TIER_GB,
       freeBytes: Number.isFinite(freeBytes) ? freeBytes : null,
       // Committed is what the tiers promise, which can exceed what is actually
       // stored - worth showing so the device is not oversubscribed silently.
@@ -71,7 +73,9 @@ export async function POST(req: NextRequest) {
     ]);
     const free = Number(disk.output.trim()) * 1024;
     const committed = buckets.reduce((n, b) => n + (b.quotaBytes ?? 0), 0);
-    if (Number.isFinite(free) && committed + tierGb * GIB > free) {
+    // An uncapped bucket promises nothing up front, so there is nothing to
+    // over-commit; it is bounded by the device like everything else.
+    if (tierGb !== null && Number.isFinite(free) && committed + tierGb * GIB > free) {
       return NextResponse.json(
         {
           error: `${tierGb} GB would over-commit the device: ${Math.round(
