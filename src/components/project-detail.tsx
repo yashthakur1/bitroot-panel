@@ -352,7 +352,7 @@ function EnvEditor({ name }: { name: string }) {
   return (
     <div className="space-y-4 max-w-3xl">
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        Values are written to the project&apos;s <code>.env</code> file on the phone.
+        Values are written to the project&apos;s <code>.env</code> file on the server.
       </p>
 
       {vars.map((v, i) => (

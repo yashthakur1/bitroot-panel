@@ -9,7 +9,7 @@ import {
   Eye,
   EyeOff,
   FileCode2,
-  Smartphone,
+  Server,
   Link2,
   Keyboard,
   ArrowUpCircle,
@@ -138,7 +138,7 @@ function Upgrades({
       onDone();
       check();
     } catch (e) {
-      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the phone)`);
+      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the server)`);
       setResult('fail');
     } finally {
       setRunning('');
@@ -258,7 +258,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
       <div>
         <h1 className="text-3xl font-display font-light tracking-tight">Config</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          The panel&apos;s own runtime configuration on the phone. Read-only — to change
+          The panel&apos;s own runtime configuration on the server. Read-only — to change
           values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
           <code>pm2 restart bitroot-panel</code>.
         </p>
@@ -418,11 +418,8 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           {/* Device */}
           <div className={tab === 'device' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
-              <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
+              <Server size={18} className="text-gray-500 dark:text-gray-400" />
               Device
-              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                OnePlus 6 · Termux · pm2
-              </span>
             </h2>
             <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
               {state.device || 'no device info'}

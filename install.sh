@@ -265,6 +265,28 @@ if [ ! -x "$HOME/apps/pocketbase/pocketbase" ]; then
 	fi
 fi
 
+# PocketBase starts with no account at all, so the panel's Databases and Backups
+# tabs have nothing to authenticate against and report the credentials as
+# missing. Create one here and record it where the panel looks for it.
+PB_CRED="$HOME/apps/pocketbase/.superuser"
+if [ -x "$HOME/apps/pocketbase/pocketbase" ] && [ ! -f "$PB_CRED" ]; then
+	say "creating the PocketBase superuser"
+	PB_EMAIL="${POCKETBASE_EMAIL:-panel@bitpanel.local}"
+	PB_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)"
+	# upsert writes to the same SQLite data directory the running instance holds
+	# open, so stop it for the moment it takes rather than racing the lock.
+	pm2 stop pocketbase >/dev/null 2>&1 || true
+	if "$HOME/apps/pocketbase/pocketbase" superuser upsert "$PB_EMAIL" "$PB_PASSWORD" \
+		--dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1; then
+		printf 'PB_EMAIL=%s\nPB_PASSWORD=%s\n' "$PB_EMAIL" "$PB_PASSWORD" > "$PB_CRED"
+		chmod 600 "$PB_CRED"
+	else
+		warn "could not create the PocketBase superuser — databases and backups stay unavailable until you run:
+     ~/apps/pocketbase/pocketbase superuser upsert <email> <password> --dir ~/apps/pocketbase/pb_data"
+	fi
+	pm2 start pocketbase >/dev/null 2>&1 || true
+fi
+
 say "starting services under pm2"
 pm2 start garage --name garage -- server >/dev/null 2>&1 || pm2 restart garage >/dev/null
 # PORT has to be in the real environment: next start reads it there, not from

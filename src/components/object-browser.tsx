@@ -269,7 +269,7 @@ function Details({
   return createPortal(
     <>
       {/* Dimmed rather than blurred: a backdrop-filter repaints the whole area
-          behind it every frame, which is the expensive option on a phone. */}
+          behind it every frame, which is the expensive option on a server. */}
       <div
         className="fixed inset-0 z-40 bg-black/50"
         onClick={onClose}
@@ -469,7 +469,7 @@ function Access({
           <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
             Open or hotlink this anywhere — no credentials. Cloudflare caches common file types at
             its edge, so repeat reads of those need not touch the device; less common types keep
-            reaching the phone until a Cache Rule covers them.
+            reaching the server until a Cache Rule covers them.
           </p>
         </>
       ) : (

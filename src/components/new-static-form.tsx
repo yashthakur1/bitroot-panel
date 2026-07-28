@@ -342,7 +342,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       setFailed(!ok);
       if (ok) setStage(6);
     } catch (err) {
-      setOutput((o) => `${o}\n(connection lost: ${(err as Error).message} — the build continues on the phone)`);
+      setOutput((o) => `${o}\n(connection lost: ${(err as Error).message} — the build continues on the server)`);
       setFailed(true);
     } finally {
       setBusy(false);

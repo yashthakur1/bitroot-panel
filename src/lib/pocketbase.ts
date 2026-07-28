@@ -1,8 +1,9 @@
+import { randomBytes } from 'node:crypto';
 import { run } from './runner';
 import { shq, ValidationError } from './validate';
 
 // Authenticated access to the PocketBase admin API. Credentials live on the
-// phone at ~/apps/pocketbase/.superuser (600) and never reach the browser.
+// server at ~/apps/pocketbase/.superuser (600) and never reach the browser.
 
 export const PB_URL = process.env.POCKETBASE_URL ?? 'http://127.0.0.1:8090';
 export const PB_PUBLIC_URL = process.env.POCKETBASE_PUBLIC_URL ?? `https://pocketbase.${process.env.DOMAIN_SUFFIX ?? 'example.com'}`;
@@ -10,13 +11,49 @@ const REGISTRY = '"$HOME/apps/pocketbase/databases.json"';
 
 let cached: { token: string; until: number } | null = null;
 
+const PB_BIN = '"$HOME/apps/pocketbase/pocketbase"';
+const PB_DATA = '"$HOME/apps/pocketbase/pb_data"';
+const PB_CRED = '"$HOME/apps/pocketbase/.superuser"';
+
+// The panel's own service account, deliberately separate from any human's.
+const PANEL_EMAIL = process.env.POCKETBASE_EMAIL ?? 'panel@bitpanel.local';
+
+// PocketBase ships with no account at all. The panel used to treat that as a
+// hard error, which meant Databases and Backups were dead on every fresh
+// install until someone ran the CLI by hand - while the UI told them the panel
+// resets this account itself. Creating it is the same local-CLI operation as
+// repairing it, so do that instead of reporting a dead end.
+async function bootstrap(): Promise<{ email: string; password: string }> {
+  const installed = await run(`test -x ${PB_BIN} && echo yes || true`);
+  if (!installed.output.includes('yes')) {
+    throw new Error('PocketBase is not installed on this server');
+  }
+
+  const password = randomBytes(18).toString('base64url');
+  const r = await run(
+    `${PB_BIN} superuser upsert ${shq(PANEL_EMAIL)} ${shq(password)} --dir ${PB_DATA}`,
+    60_000,
+  );
+
+  // umask before the redirect, so the password is never briefly world-readable
+  // between creating the file and chmod-ing it.
+  const w = await run(
+    `umask 077 && printf 'PB_EMAIL=%s\\nPB_PASSWORD=%s\\n' ${shq(PANEL_EMAIL)} ${shq(password)} > ${PB_CRED}`,
+  );
+  if (!w.ok) {
+    throw new Error(`could not record the PocketBase credential: ${w.output.trim() || 'write failed'}`);
+  }
+  if (!r.ok) {
+    throw new Error(`could not create the PocketBase superuser: ${r.output.trim() || 'upsert failed'}`);
+  }
+  return { email: PANEL_EMAIL, password };
+}
+
 async function credentials(): Promise<{ email: string; password: string }> {
-  const r = await run('cat "$HOME/apps/pocketbase/.superuser" 2>/dev/null || true');
+  const r = await run(`cat ${PB_CRED} 2>/dev/null || true`);
   const email = r.output.match(/^PB_EMAIL=(.*)$/m)?.[1]?.trim();
   const password = r.output.match(/^PB_PASSWORD=(.*)$/m)?.[1]?.trim();
-  if (!email || !password) {
-    throw new Error('PocketBase superuser credentials not found on the phone');
-  }
+  if (!email || !password) return bootstrap();
   return { email, password };
 }
 

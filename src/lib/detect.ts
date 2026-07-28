@@ -23,7 +23,7 @@ export interface Detection {
 // Android uses bionic libc, so native modules published only for glibc/musl
 // Linux fail to load here — the build breaks with "Failed to load native
 // binding" rather than anything obviously dependency-related. Catch the common
-// ones before a build is attempted on the phone.
+// ones before a build is attempted on the server.
 const INCOMPATIBLE: Array<{ dep: string; why: string; fix: string }> = [
   {
     dep: '@vitejs/plugin-react-swc',

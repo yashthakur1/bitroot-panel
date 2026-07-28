@@ -49,7 +49,7 @@ interface Detection {
 type Source = 'github' | 'url';
 type Errors = Partial<Record<'repo' | 'branch' | 'urlRepo' | 'name' | 'port', string>>;
 
-// Progress checkpoints matched against the phone's live `project clone` output.
+// Progress checkpoints matched against the server's live `project clone` output.
 // The number of matched checkpoints drives the step timeline.
 function computeStage(text: string, isPublic: boolean): number {
   const checkpoints: RegExp[] = [
@@ -427,7 +427,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       setFailed(!ok);
       if (ok) setStage(6);
     } catch (err) {
-      // Stream broke mid-flight. The phone keeps running the deploy —
+      // Stream broke mid-flight. The server keeps running the deploy —
       // say so honestly instead of pretending it failed.
       setLostConnection(true);
       setOutput((o) => `${o}\n(connection lost: ${(err as Error).message})`);
@@ -494,7 +494,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             </a>{' '}
             with <strong>Contents: Read</strong> + <strong>Metadata: Read</strong> on the
             repos you want to deploy (or a classic token with <code>repo</code> scope).
-            It is stored only on the phone.
+            It is stored only on the server.
           </p>
           <div className="flex gap-2">
             <Input
@@ -833,7 +833,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <div style={{ textWrap: 'pretty' }}>
             <strong>Connection to the panel dropped — the deployment is still running on
-            the phone.</strong>{' '}
+            the server.</strong>{' '}
             Give it a few minutes, then check the{' '}
             <Link href="/dashboard" className="underline">
               projects list

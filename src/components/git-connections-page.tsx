@@ -124,7 +124,7 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
           Git connections
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2 max-w-2xl" style={{ textWrap: 'pretty' }}>
-          Accounts BitPanel can read repositories from. Tokens are stored only on the phone
+          Accounts BitPanel can read repositories from. Tokens are stored only on the server
           and never sent to your browser.
         </p>
       </div>

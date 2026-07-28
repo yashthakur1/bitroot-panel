@@ -19,12 +19,6 @@ export default function DashboardNav() {
             <Logo size={22} />
             <span className="font-display font-medium">BitPanel</span>
           </Link>
-          <span
-            title="OnePlus 6 · Termux"
-            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400"
-          >
-            Dev Server
-          </span>
         </div>
 
         <div className="flex items-center space-x-2">

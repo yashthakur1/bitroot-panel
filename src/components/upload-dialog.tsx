@@ -5,7 +5,7 @@ import { AlertTriangle, Check, FileUp, Loader2, Sparkles, X } from 'lucide-react
 import { Button } from './ui/button';
 
 // Formats that are already compressed. Running gzip over these costs CPU and
-// time on a phone-bound upload and returns roughly nothing - occasionally
+// time on a server-bound upload and returns roughly nothing - occasionally
 // slightly more than the original.
 const ALREADY_COMPRESSED =
   /\.(jpe?g|png|gif|webp|avif|heic|mp[34]|m4[av]|mov|webm|mkv|ogg|opus|flac|zip|gz|bz2|xz|zst|7z|rar|pdf|woff2?|br)$/i;

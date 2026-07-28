@@ -276,7 +276,7 @@ export default function ResiduePage({ initialTab }: { initialTab?: string }) {
           <div className={tab === 'found' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-1">Found on the device</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-              A live scan of the phone, independent of what the panel did.
+              A live scan of the server, independent of what the panel did.
             </p>
 
             {items.length === 0 ? (
