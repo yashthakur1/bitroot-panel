@@ -74,7 +74,7 @@ export const CATALOG: CatalogEntry[] = [
     manager: 'pkg',
     pkg: 'openssh',
     locked:
-      'sshd serves the ssh-oneplus route and every remote session - including whichever one is driving the install. Upgrade it from a local Termux shell.',
+      'sshd serves the ssh route and every remote session - including whichever one is driving the install. Upgrade it from a local shell on the device.',
   },
   {
     id: 'pm2',

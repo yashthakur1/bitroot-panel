@@ -45,7 +45,7 @@ interface PbState {
 }
 
 const ADMIN_URL = `https://pocketbase.${DOMAIN_SUFFIX}/_/`;
-// Full MagicDNS name: browsers treat a single-label host like "oneplus-6" as a
+// Full MagicDNS name: browsers treat a single-label host as a
 // search term, so the short form looks broken when clicked.
 const TS_FQDN = 'localhost';
 

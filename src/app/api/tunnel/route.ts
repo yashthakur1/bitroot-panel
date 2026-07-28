@@ -4,7 +4,7 @@ import { assertPort, ValidationError } from '@/lib/validate';
 import { recordResidue } from '@/lib/residue';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
-const TS_HOST = process.env.TAILSCALE_HOST ?? 'oneplus-6';
+const TS_HOST = process.env.TAILSCALE_HOST ?? 'localhost';
 const TS_IP = process.env.TAILSCALE_IP ?? '127.0.0.1';
 
 function assertSubdomain(name: unknown): string {

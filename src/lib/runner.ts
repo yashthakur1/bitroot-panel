@@ -18,7 +18,7 @@ export interface RunResult {
 
 function buildArgv(wrapped: string): string[] {
   if (MODE === 'ssh') {
-    const key = process.env.SSH_KEY ?? `${os.homedir()}/.ssh/oneplus-deploy-key`;
+    const key = process.env.SSH_KEY ?? `${os.homedir()}/.ssh/id_ed25519`;
     const host = process.env.PHONE_HOST ?? '127.0.0.1';
     const port = process.env.PHONE_SSH_PORT ?? '8022';
     return [
