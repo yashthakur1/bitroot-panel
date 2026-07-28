@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
+  Check,
+  Copy,
   Download,
   FileText,
   Image as ImageIcon,
@@ -10,6 +13,7 @@ import {
   Music,
   File as FileIcon,
   Loader2,
+  ExternalLink,
   Search,
   Trash2,
   X,
@@ -66,10 +70,14 @@ function KindIcon({ kind }: { kind: ReturnType<typeof kindOf> }) {
 
 export default function ObjectBrowser({
   bucket,
+  publicUrl,
+  s3Endpoint,
   onBack,
   onChanged,
 }: {
   bucket: string;
+  publicUrl: string | null;
+  s3Endpoint: string;
   onBack: () => void;
   onChanged: () => void;
 }) {
@@ -206,6 +214,8 @@ export default function ObjectBrowser({
       {selected && (
         <Details
           bucket={bucket}
+          publicUrl={publicUrl}
+          s3Endpoint={s3Endpoint}
           object={selected}
           busy={busy === selected.key}
           onClose={() => setSelected(null)}
@@ -218,12 +228,16 @@ export default function ObjectBrowser({
 
 function Details({
   bucket,
+  publicUrl,
+  s3Endpoint,
   object,
   busy,
   onClose,
   onDelete,
 }: {
   bucket: string;
+  publicUrl: string | null;
+  s3Endpoint: string;
   object: S3Object;
   busy: boolean;
   onClose: () => void;
@@ -248,7 +262,10 @@ function Details({
     };
   }, [src, kind, object.size]);
 
-  return (
+  // Rendered into document.body. Inside the page it inherited a 16px top
+  // margin from the parent's space-y-4 - a margin offsets a fixed element just
+  // as it would any other - which left a gap above the panel.
+  return createPortal(
     <>
       {/* Dimmed rather than blurred: a backdrop-filter repaints the whole area
           behind it every frame, which is the expensive option on a phone. */}
@@ -318,6 +335,8 @@ function Details({
         <Row label="Bucket" value={bucket} mono />
       </dl>
 
+      <Access bucket={bucket} publicUrl={publicUrl} s3Endpoint={s3Endpoint} objectKey={object.key} />
+
       <div className="flex gap-2">
         <a href={`${src}&download=1`} className="flex-1">
           <Button variant="secondary" size="sm" fullWidth className="flex items-center gap-1.5">
@@ -337,7 +356,121 @@ function Details({
         </Button>
       </div>
       </aside>
-    </>
+    </>,
+    document.body,
+  );
+}
+
+// Where the object can actually be fetched from, and how. A private bucket has
+// no public URL at all, and saying so plainly is more useful than printing an
+// address that will not resolve.
+function Access({
+  bucket,
+  publicUrl,
+  s3Endpoint,
+  objectKey,
+}: {
+  bucket: string;
+  publicUrl: string | null;
+  s3Endpoint: string;
+  objectKey: string;
+}) {
+  const encoded = objectKey.split('/').map(encodeURIComponent).join('/');
+  const httpUrl = publicUrl ? `${publicUrl}/${encoded}` : null;
+  const s3Uri = `s3://${bucket}/${objectKey}`;
+  const endpointUrl = `${s3Endpoint}/${bucket}/${encoded}`;
+
+  return (
+    <div className="space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+      <p className="text-xs uppercase font-semibold tracking-widest text-gray-500 dark:text-gray-400">
+        Access
+      </p>
+
+      {httpUrl ? (
+        <Copyable label="Public URL" value={httpUrl} href={httpUrl} />
+      ) : (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 text-pretty">
+          This bucket is private, so the object has no public address. Publish the bucket to serve
+          it over HTTPS, or use one of the addresses below from the tailnet.
+        </p>
+      )}
+
+      <Copyable label="S3 URI" value={s3Uri} />
+      <Copyable label="Endpoint path" value={endpointUrl} />
+
+      <details className="text-[11px] text-gray-600 dark:text-gray-400">
+        <summary className="cursor-pointer select-none text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+          How to reach it
+        </summary>
+        <div className="mt-2 space-y-2 text-pretty">
+          <p>
+            The S3 endpoint answers over Tailscale only, with region{' '}
+            <code className="font-mono">garage</code> and path-style addressing. Create a key for
+            the bucket on the Storage page first.
+          </p>
+          <pre className="bg-gray-100 dark:bg-gray-800 rounded p-2 overflow-x-auto font-mono text-[10px] whitespace-pre">
+{`rclone copy ${s3Uri} . \\
+  --s3-provider Other \\
+  --s3-endpoint ${s3Endpoint} \\
+  --s3-region garage \\
+  --s3-access-key-id KEY --s3-secret-access-key SECRET
+
+aws --endpoint-url ${s3Endpoint} \\
+  s3 cp ${s3Uri} .`}
+          </pre>
+          {httpUrl ? (
+            <p>
+              The public URL needs no credentials and is cached at Cloudflare&apos;s edge, so
+              repeat reads do not touch the device.
+            </p>
+          ) : (
+            <p>
+              Downloading from this pane streams through the panel itself, which is why it works
+              for a private bucket without any key.
+            </p>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function Copyable({ label, value, href }: { label: string; value: string; href?: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <div>
+      <p className="text-[10px] uppercase tracking-widest text-gray-500 dark:text-gray-400">
+        {label}
+      </p>
+      <div className="flex items-center gap-1.5">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 min-w-0 font-mono text-[11px] text-accent-600 dark:text-accent-400 hover:underline truncate inline-flex items-center gap-1"
+          >
+            {value}
+            <ExternalLink size={10} className="shrink-0" />
+          </a>
+        ) : (
+          <code className="flex-1 min-w-0 font-mono text-[11px] text-gray-700 dark:text-gray-300 truncate">
+            {value}
+          </code>
+        )}
+        <button
+          aria-label={`Copy ${label}`}
+          onClick={() => {
+            navigator.clipboard.writeText(value);
+            setDone(true);
+            setTimeout(() => setDone(false), 1500);
+          }}
+          className="shrink-0 w-7 h-7 grid place-items-center rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+        >
+          {done ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
+        </button>
+      </div>
+    </div>
   );
 }
 

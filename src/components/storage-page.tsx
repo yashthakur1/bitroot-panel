@@ -75,7 +75,7 @@ export default function StoragePage() {
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
   const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
   const [tab, setTab] = useState<'buckets' | 'endpoint'>('buckets');
-  const [browsing, setBrowsing] = useState<string | null>(null);
+  const [browsing, setBrowsing] = useState<Bucket | null>(null);
   const [newKey, setNewKey] = useState<{ accessKeyId: string; secretAccessKey: string } | null>(
     null,
   );
@@ -200,7 +200,13 @@ export default function StoragePage() {
       )}
 
       {tab === 'buckets' && browsing && (
-        <ObjectBrowser bucket={browsing} onBack={() => setBrowsing(null)} onChanged={load} />
+        <ObjectBrowser
+          bucket={browsing.name}
+          publicUrl={browsing.publicUrl}
+          s3Endpoint={data?.s3Endpoint ?? ''}
+          onBack={() => setBrowsing(null)}
+          onChanged={load}
+        />
       )}
 
       {tab === 'buckets' && !browsing && (buckets.length === 0 ? (
@@ -304,7 +310,7 @@ export default function StoragePage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setBrowsing(b.name)}
+                      onClick={() => setBrowsing(b)}
                       className="active:scale-[0.96] transition-transform"
                     >
                       <FolderOpen size={14} className="mr-1.5" /> Files
