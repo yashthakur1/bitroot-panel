@@ -161,9 +161,57 @@ export async function deleteObject(
   }
 }
 
+// Enough of a mapping to repair objects whose Content-Type was lost, and to
+// give uploads a sensible type when a client sends none. Not a full table -
+// anything unlisted stays generic rather than being guessed at.
+const MIME: Record<string, string> = {
+  svg: 'image/svg+xml',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  json: 'application/json',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  csv: 'text/csv',
+  css: 'text/css',
+  js: 'text/javascript',
+  html: 'text/html',
+  xml: 'application/xml',
+  pdf: 'application/pdf',
+  zip: 'application/zip',
+};
+
+export function mimeForKey(key: string): string | undefined {
+  const ext = key.includes('.') ? key.split('.').pop()!.toLowerCase() : '';
+  return MIME[ext];
+}
+
+export async function headObject(
+  accessKeyId: string,
+  secretAccessKey: string,
+  bucket: string,
+  key: string,
+): Promise<Headers> {
+  const res = await signedFetch(accessKeyId, secretAccessKey, 'HEAD', `/${bucket}/${encodeKey(key)}`);
+  if (!res.ok) throw new Error(`S3 head failed: HTTP ${res.status}`);
+  return res.headers;
+}
+
 // Rewrites an object's headers in place. S3 has no metadata-only update, so it
 // is a copy onto itself with REPLACE - which is how Cache-Control on already
 // uploaded objects gets corrected when a bucket is published.
+//
+// REPLACE discards every header not restated, so the existing ones are read
+// first and carried over. Omitting that dropped Content-Type from a re-stamped
+// object and browsers stopped rendering it.
 export async function restampObject(
   accessKeyId: string,
   secretAccessKey: string,
@@ -171,12 +219,23 @@ export async function restampObject(
   key: string,
   opts: PutOptions = {},
 ): Promise<void> {
+  const existing = await headObject(accessKeyId, secretAccessKey, bucket, key);
+  // A generic type is as good as none for rendering, so fall back to the
+  // extension in that case too - which is what repairs an object whose type
+  // was already lost.
+  const stored = existing.get('content-type');
+  const contentType =
+    opts.contentType ??
+    (stored && stored !== 'application/octet-stream' ? stored : undefined) ??
+    mimeForKey(key);
+  const contentEncoding = opts.contentEncoding ?? existing.get('content-encoding') ?? undefined;
+
   const headers: Record<string, string> = {
     'x-amz-copy-source': `/${bucket}/${encodeKey(key)}`,
     'x-amz-metadata-directive': 'REPLACE',
   };
-  if (opts.contentType) headers['content-type'] = opts.contentType;
-  if (opts.contentEncoding) headers['content-encoding'] = opts.contentEncoding;
+  if (contentType) headers['content-type'] = contentType;
+  if (contentEncoding) headers['content-encoding'] = contentEncoding;
   if (opts.cacheControl) headers['cache-control'] = opts.cacheControl;
 
   const res = await signedFetch(
@@ -191,17 +250,6 @@ export async function restampObject(
   if (!res.ok) {
     throw new Error(`S3 copy failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   }
-}
-
-export async function headObject(
-  accessKeyId: string,
-  secretAccessKey: string,
-  bucket: string,
-  key: string,
-): Promise<Headers> {
-  const res = await signedFetch(accessKeyId, secretAccessKey, 'HEAD', `/${bucket}/${encodeKey(key)}`);
-  if (!res.ok) throw new Error(`S3 head failed: HTTP ${res.status}`);
-  return res.headers;
 }
 
 export async function putObject(
