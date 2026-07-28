@@ -44,7 +44,7 @@ esac
 # ─── 1. system packages ──────────────────────────────────────────
 say "installing system packages"
 sudo apt-get update -qq
-sudo apt-get install -y -qq git curl ca-certificates nginx netcat-openbsd jq >/dev/null
+sudo apt-get install -y -qq git curl ca-certificates nginx netcat-openbsd jq unzip openssl >/dev/null
 # netcat matters: the panel probes reachability with `nc -z` because /dev/tcp is
 # a bash feature and commands run under sh, which is dash on Debian too.
 
@@ -167,6 +167,53 @@ else
 	say ".env already exists — left alone"
 fi
 
+# ─── 6b. the directories every script assumes ────────────────────
+say "creating the directory layout"
+mkdir -p "$HOME/apps" "$HOME/apps/static" "$HOME/repos" \
+	"$HOME/etc/nginx/sites" "$HOME/.config/bitpanel" "$HOME/.cloudflared"
+
+# nginx serves the static sites from one config that includes a file per site.
+if [ ! -f "$HOME/etc/nginx/nginx.conf" ]; then
+	cat > "$HOME/etc/nginx/nginx.conf" <<-EOF
+		worker_processes 1;
+		error_log $HOME/etc/nginx/error.log;
+		pid $HOME/etc/nginx/nginx.pid;
+		events { worker_connections 256; }
+		http {
+		  include $(nginx -V 2>&1 | grep -oE 'conf-path=\S+' | cut -d= -f2 | xargs dirname)/mime.types;
+		  default_type application/octet-stream;
+		  access_log $HOME/etc/nginx/access.log;
+		  client_body_temp_path $HOME/etc/nginx/tmp;
+		  proxy_temp_path $HOME/etc/nginx/tmp-proxy;
+		  fastcgi_temp_path $HOME/etc/nginx/tmp-fcgi;
+		  uwsgi_temp_path $HOME/etc/nginx/tmp-uwsgi;
+		  scgi_temp_path $HOME/etc/nginx/tmp-scgi;
+		  sendfile on;
+		  include $HOME/etc/nginx/sites/*.conf;
+		}
+	EOF
+fi
+
+# tunnel-add inserts each route above this marker, so the file has to exist and
+# has to contain it. Without the marker the sed matches nothing and the route is
+# silently never added.
+if [ ! -f "$HOME/.cloudflared/config.yml" ]; then
+	say "seeding ~/.cloudflared/config.yml"
+	cat > "$HOME/.cloudflared/config.yml" <<-EOF
+		# tunnel: <uuid>            # filled in by 'cloudflared tunnel create'
+		# credentials-file: $HOME/.cloudflared/<uuid>.json
+
+		ingress:
+		  # Routes are inserted above the catch-all, which must stay last.
+		  # Catch-all
+		  - service: http_status:404
+	EOF
+	warn "~/.cloudflared/config.yml is a skeleton — add 'tunnel:' and 'credentials-file:' after 'cloudflared tunnel create'"
+fi
+
+# pm2 reads this when rebuilding from scratch; `project add` edits it.
+[ -f "$HOME/ecosystem.config.js" ] || echo 'module.exports = { apps: [] };' > "$HOME/ecosystem.config.js"
+
 # ─── 7. scripts and port registry ────────────────────────────────
 say "installing helper scripts into $BIN_DIR"
 mkdir -p "$BIN_DIR"
@@ -183,9 +230,27 @@ cd "$APP_DIR"
 npm ci --omit=dev >/dev/null 2>&1 || npm install >/dev/null
 npm run build
 
+# ─── 8b. optional pieces the panel can manage ────────────────────
+if [ ! -x "$HOME/apps/pocketbase/pocketbase" ]; then
+	say "installing PocketBase"
+	PB_VER="${POCKETBASE_VERSION:-0.30.0}"
+	mkdir -p "$HOME/apps/pocketbase"
+	if curl -fsSL -o /tmp/pb.zip \
+		"https://github.com/pocketbase/pocketbase/releases/download/v${PB_VER}/pocketbase_${PB_VER}_${PB_ARCH}.zip"; then
+		(cd "$HOME/apps/pocketbase" && unzip -oq /tmp/pb.zip pocketbase && chmod +x pocketbase)
+		rm -f /tmp/pb.zip
+	else
+		warn "could not download PocketBase ${PB_VER} — the PocketBase page will be empty until it is installed"
+	fi
+fi
+
 say "starting services under pm2"
 pm2 start garage --name garage -- server >/dev/null 2>&1 || pm2 restart garage >/dev/null
 pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || pm2 restart bitroot-panel >/dev/null
+pm2 start nginx --name nginx -- -c "$HOME/etc/nginx/nginx.conf" -g 'daemon off;' >/dev/null 2>&1 || pm2 restart nginx >/dev/null
+# The deploy webhook is what makes `git push` to this machine deploy anything.
+[ -x "$BIN_DIR/deploy-webhook" ] && { pm2 start "$BIN_DIR/deploy-webhook" --name deploy-webhook >/dev/null 2>&1 || pm2 restart deploy-webhook >/dev/null; }
+[ -x "$HOME/apps/pocketbase/pocketbase" ] && { pm2 start "$HOME/apps/pocketbase/pocketbase" --name pocketbase -- serve --http=127.0.0.1:8090 --dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1 || pm2 restart pocketbase >/dev/null; }
 pm2 save >/dev/null
 pm2 startup systemd -u "$USER" --hp "$HOME" 2>/dev/null | grep -E '^sudo' | sh || \
 	warn "could not register pm2 with systemd automatically — run 'pm2 startup' and follow its instructions"
