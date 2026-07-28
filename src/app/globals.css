@@ -188,3 +188,32 @@
 .animate-indeterminate {
   animation: indeterminate 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* Details panel slides in from the right. A transform animation stays on the
+   compositor, unlike animating width or position. */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.slide-in-right {
+  animation: slide-in-right 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-in-right { animation: none; }
+}
+
+/* Backdrop for the preview of an image with an alpha channel. The mid grey
+   reads against both black and white artwork, which a white or dark checker
+   would not, and the diagonals make it obvious which pixels are transparent
+   rather than genuinely grey. */
+.alpha-canvas {
+  background-color: #afafaf;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(0, 0, 0, 0.09) 0 5px,
+    rgba(0, 0, 0, 0) 5px 10px
+  );
+}
+.opaque-canvas {
+  background-color: #afafaf;
+}

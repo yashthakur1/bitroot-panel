@@ -42,6 +42,9 @@ const IMAGE = /^(png|jpe?g|gif|webp|avif|svg|bmp|ico)$/;
 const VIDEO = /^(mp4|webm|mov|mkv|m4v)$/;
 const AUDIO = /^(mp3|wav|ogg|opus|flac|m4a)$/;
 const TEXT = /^(txt|md|json|ya?ml|csv|log|js|ts|tsx|jsx|css|html|xml|sh|toml|ini|env)$/;
+// Formats that can carry an alpha channel. A JPEG never has transparent
+// pixels, so striping behind one would only imply something untrue.
+const ALPHA = /^(png|svg|webp|avif|gif|ico)$/;
 
 function kindOf(key: string): 'image' | 'video' | 'audio' | 'text' | 'other' {
   const e = EXT(key);
@@ -140,8 +143,8 @@ export default function ObjectBrowser({
         />
       </div>
 
-      <div className="flex gap-4 items-start">
-        <div className="flex-1 min-w-0">
+      <div>
+        <div className="min-w-0">
           {!objects && <TableSkeleton rows={4} cols={3} />}
           {objects && visible.length === 0 && (
             <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
@@ -198,16 +201,17 @@ export default function ObjectBrowser({
           )}
         </div>
 
-        {selected && (
-          <Details
-            bucket={bucket}
-            object={selected}
-            busy={busy === selected.key}
-            onClose={() => setSelected(null)}
-            onDelete={() => remove(selected.key)}
-          />
-        )}
       </div>
+
+      {selected && (
+        <Details
+          bucket={bucket}
+          object={selected}
+          busy={busy === selected.key}
+          onClose={() => setSelected(null)}
+          onDelete={() => remove(selected.key)}
+        />
+      )}
     </div>
   );
 }
@@ -245,7 +249,15 @@ function Details({
   }, [src, kind, object.size]);
 
   return (
-    <aside className="w-80 shrink-0 border border-gray-200 dark:border-gray-800 rounded-lg p-4 space-y-4 bounce-in">
+    <>
+      {/* Dimmed rather than blurred: a backdrop-filter repaints the whole area
+          behind it every frame, which is the expensive option on a phone. */}
+      <div
+        className="fixed inset-0 z-40 bg-black/50"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <aside className="slide-in-right fixed right-0 top-0 z-50 h-full w-full max-w-sm overflow-y-auto border-l border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-[0_0_40px_rgba(0,0,0,0.3)] p-5 space-y-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <KindIcon kind={kind} />
@@ -262,10 +274,18 @@ function Details({
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 overflow-hidden">
+      <div
+        className={`rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden ${
+          kind === 'image'
+            ? ALPHA.test(EXT(object.key))
+              ? 'alpha-canvas'
+              : 'opaque-canvas'
+            : 'bg-gray-50 dark:bg-gray-900/60'
+        }`}
+      >
         {kind === 'image' && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={src} alt={object.key} className="w-full max-h-56 object-contain" />
+          <img src={src} alt={object.key} className="w-full max-h-64 object-contain" />
         )}
         {kind === 'video' && <video src={src} controls className="w-full max-h-56" />}
         {kind === 'audio' && <audio src={src} controls className="w-full p-3" />}
@@ -316,7 +336,8 @@ function Details({
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
         </Button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
