@@ -85,6 +85,24 @@ if (cmd !== 'install') {
   process.exit(1);
 }
 
+// Node reports "android" under Termux. That is a machine BitPanel runs on very
+// well - it is what it was built for - but this installer is apt/systemd/sudo
+// and none of those exist there. Saying "run it on the machine that will host
+// the panel" to someone already sitting on that machine is the wrong answer.
+if (platform() === 'android') {
+  console.error(`This installer is for Debian and Ubuntu, and Android has no apt or systemd.
+
+BitPanel does run here — it was built on a phone — but the steps differ enough
+that they are written out separately:
+
+  ${DOCS}termux.md
+
+In short: pkg install the dependencies, clone the repo, npm install, and start
+things under pm2 by hand, because Android has no service manager to register
+with.`);
+  process.exit(1);
+}
+
 if (platform() !== 'linux') {
   console.error(`BitPanel installs on Linux; this is ${platform()}.
 Run it on the machine that will host the panel — see ${DOCS}`);

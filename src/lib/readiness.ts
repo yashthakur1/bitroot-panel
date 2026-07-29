@@ -9,7 +9,7 @@
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { run } from './runner';
-import { checkCloudflare } from './setup';
+import { checkCloudflare, detectTailnet } from './setup';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -280,97 +280,66 @@ async function tunnelStep(): Promise<Step> {
   };
 }
 
-// Tailscale hands out addresses from the CGNAT range, 100.64.0.0/10. Anything
-// outside 100.64-100.127 in that first octet is ordinary public space and must
-// not be mistaken for a tailnet address.
-async function tailnetAddress(): Promise<string | null> {
-  const r = await run('ip -4 addr 2>/dev/null || ifconfig 2>/dev/null || true', 15_000);
-  for (const m of r.output.matchAll(/\b100\.(\d{1,3})\.\d{1,3}\.\d{1,3}\b/g)) {
-    const second = Number(m[1]);
-    if (second >= 64 && second <= 127) return m[0];
-  }
-  return null;
-}
-
 async function tailscaleStep(e: Record<string, string>): Promise<Step> {
   const unlocks = ['Private URLs for unpublished services', 'Reaching storage without exposing it'];
+  const [cli, net] = await Promise.all([has('tailscale'), detectTailnet()]);
 
-  if (!(await has('tailscale'))) {
-    // No CLI does not mean no Tailscale. On Android it runs as the system app
-    // and nothing is exposed inside Termux, so asking for the binary reported
-    // "not installed" on a device that was sitting on the tailnet the whole
-    // time. Ask the interface instead, which is the capability that matters.
-    const addr = await tailnetAddress();
-    if (!addr) {
-      return {
-        id: 'tailscale',
-        title: 'Tailscale',
-        status: 'missing',
-        detail: 'Not installed. Services stay reachable only from this machine.',
-        unlocks,
-        link: { href: 'https://tailscale.com/download', label: 'Install Tailscale' },
-        fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
-      };
-    }
-    if (!e.TAILNET_HOST) {
-      return {
-        id: 'tailscale',
-        title: 'Tailscale',
-        status: 'partial',
-        detail: `On the tailnet at ${addr}, but TAILNET_HOST is unset so no private URLs are offered.`,
-        unlocks,
-        fields: [TAILNET_FIELD],
-      };
-    }
+  if (!net.address && !net.host) {
+    return cli
+      ? {
+          id: 'tailscale',
+          title: 'Tailscale',
+          status: 'partial',
+          detail: 'Installed but not logged in, so it has no name on the tailnet yet.',
+          unlocks,
+          fix: ['sudo tailscale up'],
+        }
+      : {
+          id: 'tailscale',
+          title: 'Tailscale',
+          status: 'missing',
+          detail: 'Not installed. Services stay reachable only from this machine.',
+          unlocks,
+          link: { href: 'https://tailscale.com/download', label: 'Install Tailscale' },
+          fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
+        };
+  }
+
+  const where = net.address ? ` at ${net.address}` : '';
+  const how = net.viaCli ? '' : ' Detected without the CLI, which is normal on Android.';
+
+  if (net.host && e.TAILNET_HOST === net.host) {
     return {
       id: 'tailscale',
       title: 'Tailscale',
       status: 'ready',
-      detail: `On the tailnet at ${addr} as ${e.TAILNET_HOST}. Detected from the interface — the CLI is not available here, which is normal on Android.`,
+      detail: `On the tailnet${where} as ${net.host}.${how}`,
       unlocks,
     };
   }
-  const r = await run('tailscale status --json 2>/dev/null || true', 15_000);
-  let host: string | null = null;
-  try {
-    host = (JSON.parse(r.output.slice(r.output.indexOf('{')))?.Self?.DNSName ?? '').replace(/\.$/, '') || null;
-  } catch {
-    host = null;
-  }
-  if (!host) {
+
+  // The name is known, so offer it rather than asking anyone to retype what is
+  // already on screen.
+  if (net.host) {
     return {
       id: 'tailscale',
       title: 'Tailscale',
       status: 'partial',
-      detail: 'Installed but not logged in, so it has no name on the tailnet yet.',
+      detail: !e.TAILNET_HOST
+        ? `On the tailnet${where} as ${net.host}, but TAILNET_HOST is unset so no private URLs are offered.${how}`
+        : `On the tailnet as ${net.host}, but TAILNET_HOST is set to "${e.TAILNET_HOST}".`,
       unlocks,
-      fix: ['sudo tailscale up'],
+      fields: [{ ...TAILNET_FIELD, suggestion: net.host }],
     };
   }
-  // Must be the full tailnet name, not the short hostname: private URLs are
-  // built from this value, and a bare hostname only resolves where MagicDNS
-  // search domains happen to be set up - which is not everywhere.
-  const recorded = e.TAILNET_HOST;
-  if (recorded !== host) {
-    return {
-      id: 'tailscale',
-      title: 'Tailscale',
-      status: 'partial',
-      detail: !recorded
-        ? `Logged in as ${host}, but TAILNET_HOST is unset, so no private URLs are offered.`
-        : recorded === host.split('.')[0]
-          ? `Logged in as ${host}, but TAILNET_HOST is the short name "${recorded}" — private URLs built from it only resolve where MagicDNS search domains are configured.`
-          : `Logged in as ${host}, but TAILNET_HOST is set to "${recorded}".`,
-      unlocks,
-      fields: [{ ...TAILNET_FIELD, suggestion: host }],
-    };
-  }
+
   return {
     id: 'tailscale',
     title: 'Tailscale',
-    status: 'ready',
-    detail: `Logged in as ${host}.`,
+    status: 'partial',
+    detail: `On the tailnet${where}, but its name could not be resolved, so TAILNET_HOST has to be set by hand.`,
     unlocks,
+    fields: [TAILNET_FIELD],
   };
 }
 
