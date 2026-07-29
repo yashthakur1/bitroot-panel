@@ -113,11 +113,15 @@ export async function startUpdate(target: string): Promise<void> {
     '{ echo "ref=$(git describe --tags --always 2>/dev/null)";',
     '  echo "commit=$(git rev-parse --short HEAD 2>/dev/null)";',
     '  echo "installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$APP/.bitpanel-version"',
+    // "done" is written before the restart, not after. Restarting takes this
+    // script's process group with it, so a marker written afterwards never
+    // appears - and a successful update looked like a timeout to anything
+    // waiting for it.
+    'echo "== done =="',
     'echo "== restarting =="',
     // panel-restart parses .env rather than sourcing it: a value with a space
-    // runs as a command and truncates the variable.
+    // runs as a command and empties the variable.
     '"$HOME/bin/panel-restart" || pm2 restart bitroot-panel --update-env',
-    'echo "== done =="',
   ].join('\n');
 
   await run(
