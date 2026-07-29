@@ -5,12 +5,17 @@ import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
 import { ownedPorts } from '@/lib/ports';
 
+// Daemons the panel installs and drives, as opposed to things you deployed.
+// garage belongs here and was missing, so it appeared as a deploy target when
+// creating a pipeline — and `project deploy garage` would have tried to git
+// pull and build object storage that came from a package.
 const SYSTEM_APPS = new Set([
   'cloudflared',
   'deploy-webhook',
   'bitroot-panel',
   'nginx',
   'pocketbase',
+  'garage',
 ]);
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 const TAILNET_HOST = process.env.TAILNET_HOST ?? 'localhost';
