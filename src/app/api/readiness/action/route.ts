@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
+import { shq } from '@/lib/validate';
 import { startUpdate, updateLog, versionInfo } from '@/lib/version';
 import { syncAdminBindLoopback, syncWebRootDomain } from '@/lib/garage-config';
 
@@ -32,36 +33,6 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
       echo "linked $uuid"
     `,
   },
-  // The recovery for a half-finished pm2 upgrade. Saves before cycling, and
-  // restores from that dump if the daemon comes back with nothing — which is
-  // exactly how a machine ends up with every service stopped.
-  'refresh-pm2': {
-    label: 'cycle the pm2 daemon',
-    script: `
-      pm2_online_count() {
-        pm2 jlist 2>/dev/null | node -e '
-          let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
-            // Strip colour codes and skip any banner pm2 prints ahead of the
-            // JSON - a stale daemon emits one, which is exactly when this runs.
-            const clean=d.replace(/\x1b\[[0-9;]*[A-Za-z]/g,"");
-            const m=clean.match(/^\s*\[/m);
-            if(!m){console.log(0);return;}
-            try{console.log(JSON.parse(clean.slice(m.index)).length);}catch(e){console.log(0);}
-          });' 2>/dev/null || echo 0
-      }
-      pm2 save 2>&1 || true
-      pm2 update 2>&1
-      sleep 3
-      if [ "$(pm2_online_count)" -eq 0 ]; then
-        echo "daemon came back empty — restoring from the saved dump"
-        pm2 resurrect 2>&1
-        sleep 3
-      fi
-      running=$(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const l=JSON.parse(d);console.log(l.filter(p=>p.pm2_env.status==="online").length+"/"+l.length);}catch(e){console.log("0/0");}});')
-      echo "pm2 refreshed — $running services online"
-    `,
-    timeout: 300_000,
-  },
   'start-tunnel': {
     label: 'start cloudflared',
     script: `
@@ -77,9 +48,13 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
   },
 };
 
-export async function GET() {
-  // The update runs detached, so its progress is read from the log rather than
-  // held open on the request that started it.
+export async function GET(req: NextRequest) {
+  // Detached jobs report through a log rather than the request that started
+  // them - the panel is often the thing being restarted.
+  if (new URL(req.url).searchParams.get('job') === 'pm2') {
+    const r = await run('cat "$HOME/.config/bitroot-panel/pm2-refresh.log" 2>/dev/null || true', 10_000);
+    return NextResponse.json({ log: r.output.slice(-4000) });
+  }
   return NextResponse.json({ log: await updateLog() });
 }
 
@@ -102,6 +77,44 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }
+  }
+
+  // Cycling pm2 kills the panel, which is the process running this request. An
+  // in-process script therefore dies before it can check what came back and
+  // resurrect - which is how the first version of this "recovery" deleted six
+  // services and restored none of them. It has to outlive the panel, so it is
+  // written to a file and detached, and its progress is read from a log.
+  if (body.action === 'refresh-pm2') {
+    const script = [
+      'set -e',
+      'LOG="$HOME/.config/bitroot-panel/pm2-refresh.log"',
+      'mkdir -p "$HOME/.config/bitroot-panel"',
+      'exec > "$LOG" 2>&1',
+      'echo "== saving the process list =="',
+      'pm2 save || true',
+      'echo "== cycling the daemon (every service restarts) =="',
+      'pm2 update || true',
+      'sleep 3',
+      // Counted after stripping escapes: a stale daemon prints a banner ahead
+      // of the JSON, so comparing the raw output to "[]" never matches.
+      'count=$(pm2 jlist 2>/dev/null | node -e \'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const c2=d.replace(/\\x1b\\[[0-9;]*[A-Za-z]/g,"");const m=c2.match(/^\\s*\\[/m);if(!m){console.log(0);return;}try{console.log(JSON.parse(c2.slice(m.index)).length);}catch(e){console.log(0);}});\' 2>/dev/null || echo 0)',
+      'echo "processes after cycle: $count"',
+      'if [ "$count" -eq 0 ]; then',
+      '  echo "== empty — restoring from the saved dump =="',
+      '  pm2 resurrect || true',
+      '  sleep 3',
+      'fi',
+      'pm2 save || true',
+      'echo "== done =="',
+      'pm2 list || true',
+    ].join('\n');
+
+    await run(
+      `mkdir -p "$HOME/.config/bitroot-panel" && printf %s ${shq(script)} > "$HOME/.config/bitroot-panel/pm2-refresh.sh" && ` +
+        'nohup sh "$HOME/.config/bitroot-panel/pm2-refresh.sh" >/dev/null 2>&1 &',
+      15_000,
+    );
+    return NextResponse.json({ ok: true, started: true }, { status: 202 });
   }
 
   if (body.action === 'sync-garage-domain') {
