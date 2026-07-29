@@ -35,6 +35,18 @@ fi
 # and left them behind. That failure is silent: deploy-webhook kept running an
 # older copy that had never heard of an endpoint the panel had just started
 # advertising, and deliveries 404'd with nothing obviously wrong.
+# Record what was deployed. The work tree is not a git repository - the hook
+# checks files out with --work-tree while the git data stays in the bare repo -
+# so `git describe` run inside it fails outright, and the panel could only
+# report "untagged build" no matter what was pushed.
+if [ "$NAME" = "bitroot-panel" ]; then
+  {
+    echo "ref=$(git --git-dir="$REPO" describe --tags --always 2>/dev/null || echo unknown)"
+    echo "commit=$(git --git-dir="$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    echo "installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } > "$WORK/.bitpanel-version"
+fi
+
 if [ "$NAME" = "bitroot-panel" ] && [ -d server-scripts ]; then
   echo "==> syncing ~/bin scripts"
   mkdir -p "$HOME/bin"
