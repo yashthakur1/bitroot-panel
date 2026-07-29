@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
+import { shq } from '@/lib/validate';
 import { startUpdate, updateLog, versionInfo } from '@/lib/version';
 import { syncAdminBindLoopback, syncWebRootDomain } from '@/lib/garage-config';
 
@@ -47,9 +48,13 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
   },
 };
 
-export async function GET() {
-  // The update runs detached, so its progress is read from the log rather than
-  // held open on the request that started it.
+export async function GET(req: NextRequest) {
+  // Detached jobs report through a log rather than the request that started
+  // them - the panel is often the thing being restarted.
+  if (new URL(req.url).searchParams.get('job') === 'pm2') {
+    const r = await run('cat "$HOME/.config/bitroot-panel/pm2-refresh.log" 2>/dev/null || true', 10_000);
+    return NextResponse.json({ log: r.output.slice(-4000) });
+  }
   return NextResponse.json({ log: await updateLog() });
 }
 
@@ -72,6 +77,44 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }
+  }
+
+  // Cycling pm2 kills the panel, which is the process running this request. An
+  // in-process script therefore dies before it can check what came back and
+  // resurrect - which is how the first version of this "recovery" deleted six
+  // services and restored none of them. It has to outlive the panel, so it is
+  // written to a file and detached, and its progress is read from a log.
+  if (body.action === 'refresh-pm2') {
+    const script = [
+      'set -e',
+      'LOG="$HOME/.config/bitroot-panel/pm2-refresh.log"',
+      'mkdir -p "$HOME/.config/bitroot-panel"',
+      'exec > "$LOG" 2>&1',
+      'echo "== saving the process list =="',
+      'pm2 save || true',
+      'echo "== cycling the daemon (every service restarts) =="',
+      'pm2 update || true',
+      'sleep 3',
+      // Counted after stripping escapes: a stale daemon prints a banner ahead
+      // of the JSON, so comparing the raw output to "[]" never matches.
+      'count=$(pm2 jlist 2>/dev/null | node -e \'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const c2=d.replace(/\\x1b\\[[0-9;]*[A-Za-z]/g,"");const m=c2.match(/^\\s*\\[/m);if(!m){console.log(0);return;}try{console.log(JSON.parse(c2.slice(m.index)).length);}catch(e){console.log(0);}});\' 2>/dev/null || echo 0)',
+      'echo "processes after cycle: $count"',
+      'if [ "$count" -eq 0 ]; then',
+      '  echo "== empty — restoring from the saved dump =="',
+      '  pm2 resurrect || true',
+      '  sleep 3',
+      'fi',
+      'pm2 save || true',
+      'echo "== done =="',
+      'pm2 list || true',
+    ].join('\n');
+
+    await run(
+      `mkdir -p "$HOME/.config/bitroot-panel" && printf %s ${shq(script)} > "$HOME/.config/bitroot-panel/pm2-refresh.sh" && ` +
+        'nohup sh "$HOME/.config/bitroot-panel/pm2-refresh.sh" >/dev/null 2>&1 &',
+      15_000,
+    );
+    return NextResponse.json({ ok: true, started: true }, { status: 202 });
   }
 
   if (body.action === 'sync-garage-domain') {

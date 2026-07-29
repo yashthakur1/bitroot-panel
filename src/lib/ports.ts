@@ -10,6 +10,28 @@
 
 import { run } from './runner';
 
+// pm2 colours its output and, when its daemon is stale, prints a banner before
+// the JSON. Both break naive parsing: stripping escapes then taking the first
+// line that opens an array is the only reliable way to get at jlist's payload.
+// Finding the first "[" does not work - escape sequences contain one.
+export function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, '');
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+export function parsePm2Json(output: string): any[] {
+  const clean = stripAnsi(output);
+  const start = clean.search(/^\s*\[/m);
+  if (start < 0) return [];
+  try {
+    const parsed = JSON.parse(clean.slice(start));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 /** A port named in the process's own arguments is stated, not inherited. */
 export function portFromArgs(app: any): number | null {
   const args: string[] = Array.isArray(app?.pm2_env?.args) ? app.pm2_env.args : [];

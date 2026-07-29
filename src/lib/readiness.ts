@@ -13,6 +13,7 @@ import { run } from './runner';
 import { checkCloudflare, detectTailnet } from './setup';
 import { versionInfo } from './version';
 import { adminBindAddr, bindIsLoopback, webRootDomain } from './garage-config';
+import { parsePm2Json, stripAnsi } from './ports';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -224,14 +225,10 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
 // stopped, right after the panel had started it.
 async function pm2Status(name: string): Promise<'online' | 'stopped' | 'absent'> {
   const r = await run('pm2 jlist 2>/dev/null || true', 15_000);
-  try {
-    const list = JSON.parse(r.output.slice(r.output.indexOf('[')));
-    const proc = list.find((p: { name?: string }) => p?.name === name);
-    if (!proc) return 'absent';
-    return proc?.pm2_env?.status === 'online' ? 'online' : 'stopped';
-  } catch {
-    return 'absent';
-  }
+  const list = parsePm2Json(r.output);
+  const proc = list.find((p: { name?: string }) => p?.name === name);
+  if (!proc) return 'absent';
+  return proc?.pm2_env?.status === 'online' ? 'online' : 'stopped';
 }
 
 async function tunnelStep(): Promise<Step> {
@@ -383,6 +380,37 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
     detail: `On the tailnet${where}, but its name could not be resolved, so TAILNET_HOST has to be set by hand.`,
     unlocks,
     fields: [TAILNET_FIELD],
+  };
+}
+
+// pm2 upgraded on disk while the running daemon stayed on the old version is a
+// state the machine can sit in indefinitely: everything looks installed, and
+// the process table is empty. It took a production outage to notice, so the
+// panel should say it out loud.
+async function pm2Step(): Promise<Step> {
+  const raw = await run('pm2 list 2>&1 | head -20; true', 20_000);
+  // pm2 colours this output, and the version numbers come back wrapped in
+  // escape codes that would otherwise be printed to the operator verbatim.
+  const out = stripAnsi(raw.output);
+  const stale = /out-of-date/i.test(out);
+  if (!stale) {
+    return {
+      id: 'pm2',
+      title: 'Process manager',
+      status: 'ready',
+      detail: 'pm2 is running the version installed on disk.',
+      unlocks: [],
+    };
+  }
+  const inMem = /In memory PM2 version:\s*(\S+)/.exec(out)?.[1] ?? 'an older version';
+  const local = /Local PM2 version:\s*(\S+)/.exec(out)?.[1] ?? 'the installed one';
+  return {
+    id: 'pm2',
+    title: 'Process manager',
+    status: 'partial',
+    detail: `pm2 ${local} is installed but the running daemon is still ${inMem}. Cycling it restarts every service on this machine, including the panel.`,
+    unlocks: ['Services surviving a reboot', 'Anything the panel starts or restarts'],
+    actions: [{ id: 'refresh-pm2', label: 'Cycle the pm2 daemon', note: 'Saves the process list first, then restores it if the daemon comes back empty. Every service restarts.' }],
   };
 }
 
@@ -589,6 +617,7 @@ export async function readiness(fresh = false): Promise<Readiness> {
     storageStep(e),
     pocketbaseStep(),
     panelVersionStep(fresh),
+    pm2Step(),
   ]);
   return {
     steps,
