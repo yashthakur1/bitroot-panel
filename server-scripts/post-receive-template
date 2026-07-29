@@ -42,9 +42,11 @@ if [ "$NAME" = "bitroot-panel" ] && [ -d server-scripts ]; then
   for f in server-scripts/*; do
     [ -f "$f" ] || continue
     base=$(basename "$f")
-    # Ask the file whether it is a script rather than guessing from its name.
-    # An extension blocklist let pocketbase-index.html into ~/bin, chmod +x and
-    # all - which is harmless only by luck.
+    # Two rules, because either alone lets something through. The shebang test
+    # keeps out data files - an extension blocklist had let pocketbase-index.html
+    # in, chmod +x and all. The name test keeps out templates, which have a
+    # shebang but are not meant to be run from PATH.
+    case "$base" in *-template|*.conf) continue ;; esac
     head -c 2 "$f" | grep -q '^#!' || continue
     if ! cmp -s "$f" "$HOME/bin/$base"; then
       cp "$f" "$HOME/bin/$base" && chmod +x "$HOME/bin/$base"
