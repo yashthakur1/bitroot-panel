@@ -16,6 +16,47 @@
 import { createServer } from 'http';
 import { execFile } from 'child_process';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
+
+const CONFIG_DIR = join(homedir(), '.config', 'bitroot-panel');
+const PIPELINES = join(CONFIG_DIR, 'pipelines.json');
+const RUNS = join(CONFIG_DIR, 'pipeline-runs.json');
+
+// Read per request rather than cached at boot: the panel rewrites this file
+// when a pipeline is added, and a webhook service that needed restarting to
+// notice would be a trap - deliveries would 404 with nothing obviously wrong.
+function readJson(path, fallback) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function recordRun(entry) {
+  try {
+    mkdirSync(CONFIG_DIR, { recursive: true });
+    const runs = readJson(RUNS, []);
+    // Newest first, and bounded: this file is read by a page, and an unbounded
+    // log on a phone is a slow leak.
+    writeFileSync(RUNS, JSON.stringify([entry, ...runs].slice(0, 50), null, 2), { mode: 0o600 });
+  } catch (e) {
+    console.error('could not record run:', e.message);
+  }
+}
+
+// GitHub signs the raw body with the pipeline's secret. Compare over fixed
+// length and in constant time - a length mismatch alone would leak information
+// through timingSafeEqual throwing.
+function signatureMatches(secret, rawBody, header) {
+  if (!secret || !header) return false;
+  const expected = 'sha256=' + createHmac('sha256', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(String(header));
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 const PORT = process.env.PORT || 9000;
 const SECRET = process.env.DEPLOY_SECRET || '';
@@ -41,6 +82,88 @@ const server = createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+    return;
+  }
+
+  // GitHub deliveries: /gh/<pipeline id>. Authenticated by signature, so this
+  // path needs no shared header and no session - which is what lets it sit on
+  // the public internet while the panel does not.
+  const ghMatch = req.method === 'POST' && /^\/gh\/([a-z0-9]{8,32})$/.exec(req.url || '');
+  if (ghMatch) {
+    const id = ghMatch[1];
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      const pipeline = readJson(PIPELINES, []).find((p) => p.id === id);
+      if (!pipeline) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'unknown pipeline' }));
+        return;
+      }
+      if (!signatureMatches(pipeline.secret, raw, req.headers['x-hub-signature-256'])) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'bad signature' }));
+        console.log(`[${new Date().toISOString()}] REJECTED ${id} (bad signature)`);
+        return;
+      }
+
+      const event = req.headers['x-github-event'];
+      if (event === 'ping') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, pong: true }));
+        return;
+      }
+      if (event !== 'push') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ignored: event }));
+        return;
+      }
+
+      let payload = {};
+      try { payload = JSON.parse(raw); } catch { /* handled below */ }
+
+      // refs/heads/<branch>. Tags and other branches are accepted and ignored
+      // rather than rejected: GitHub shows a non-2xx as a failed delivery, and
+      // "you pushed to a branch this pipeline does not watch" is not a failure.
+      const ref = String(payload.ref || '');
+      const branch = ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : '';
+      if (branch !== pipeline.branch) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ignored: `branch ${branch || ref}` }));
+        return;
+      }
+      if (payload.deleted) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ignored: 'branch deleted' }));
+        return;
+      }
+
+      const sha = String(payload.after || '').slice(0, 7);
+      const message = payload.head_commit?.message?.split('\n')[0] ?? '';
+      const pusher = payload.pusher?.name ?? '';
+      console.log(`[${new Date().toISOString()}] ${pipeline.repo}@${branch} -> deploy ${pipeline.project} (${sha})`);
+
+      // Answer GitHub now. A deploy takes minutes; GitHub times a delivery out
+      // in ten seconds and would mark every successful deploy as failed.
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, deploying: pipeline.project, sha }));
+
+      const env = { ...process.env, PATH: `${process.env.HOME}/bin:${process.env.PATH}` };
+      execFile('project', ['deploy', pipeline.project], { env, timeout: 600_000 }, (err, stdout, stderr) => {
+        const output = [stdout, stderr].filter(Boolean).join('\n');
+        console.log(`[deploy ${pipeline.project}] ${err ? 'FAILED' : 'OK'}`);
+        recordRun({
+          id: Math.random().toString(36).slice(2, 10),
+          pipelineId: pipeline.id,
+          at: new Date().toISOString(),
+          ok: !err,
+          sha,
+          message,
+          pusher,
+          output: output.slice(-4000),
+        });
+      });
+    });
     return;
   }
 

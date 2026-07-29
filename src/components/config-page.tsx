@@ -4,12 +4,13 @@
 const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
 const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
 
+import ReadinessTimeline from './readiness-timeline';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Eye,
   EyeOff,
   FileCode2,
-  Smartphone,
+  Server,
   Link2,
   Keyboard,
   ArrowUpCircle,
@@ -138,7 +139,7 @@ function Upgrades({
       onDone();
       check();
     } catch (e) {
-      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the phone)`);
+      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the server)`);
       setResult('fail');
     } finally {
       setRunning('');
@@ -228,11 +229,13 @@ function Upgrades({
   );
 }
 
-type Tab = 'runtime' | 'software' | 'device';
+type Tab = 'setup' | 'runtime' | 'software' | 'device';
 
 export default function ConfigPage({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'software' || initialTab === 'device' ? initialTab : 'runtime',
+    initialTab === 'software' || initialTab === 'device' || initialTab === 'runtime'
+      ? initialTab
+      : 'setup',
   );
   const [state, setState] = useState<ConfigState | null>(null);
   const [error, setError] = useState('');
@@ -258,7 +261,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
       <div>
         <h1 className="text-3xl font-display font-light tracking-tight">Config</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          The panel&apos;s own runtime configuration on the phone. Read-only — to change
+          The panel&apos;s own runtime configuration on the server. Read-only — to change
           values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
           <code>pm2 restart bitroot-panel</code>.
         </p>
@@ -266,6 +269,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
 
       <Tabs
         tabs={[
+          { key: 'setup', label: 'Setup' },
           { key: 'runtime', label: 'Runtime' },
           { key: 'software', label: 'Software' },
           { key: 'device', label: 'Device' },
@@ -273,6 +277,10 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
         active={tab}
         onChange={setTab}
       />
+
+      <div className={tab === 'setup' ? '' : 'hidden'}>
+        <ReadinessTimeline />
+      </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -418,11 +426,8 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           {/* Device */}
           <div className={tab === 'device' ? '' : 'hidden'}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
-              <Smartphone size={18} className="text-gray-500 dark:text-gray-400" />
+              <Server size={18} className="text-gray-500 dark:text-gray-400" />
               Device
-              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
-                OnePlus 6 · Termux · pm2
-              </span>
             </h2>
             <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
               {state.device || 'no device info'}

@@ -6,6 +6,45 @@ import { Plus, Settings, ShieldCheck, LogOut } from 'lucide-react';
 import ThemeToggle from './theme-toggle';
 import Logo from './logo';
 
+// Fetched once per page session rather than per mount: the nav renders on every
+// route and the answer cannot change without the process restarting.
+let serverPromise: Promise<{ name: string; platform: string }> | null = null;
+function serverInfo() {
+  if (!serverPromise) {
+    serverPromise = fetch('/api/server-name')
+      .then((r) => r.json())
+      .catch(() => ({ name: '', platform: '' }));
+  }
+  return serverPromise;
+}
+
+// Replaces a hardcoded "Dev Server" badge whose tooltip named one specific
+// phone. Now it names the machine you are actually looking at, which is the
+// thing worth knowing when the same panel runs on more than one.
+function ServerBadge() {
+  const [info, setInfo] = React.useState<{ name: string; platform: string } | null>(null);
+  React.useEffect(() => {
+    let live = true;
+    serverInfo().then((d) => live && setInfo(d));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Render nothing until it is known: a badge that briefly reads "loading" is
+  // worse than one that simply appears.
+  if (!info?.name) return null;
+
+  return (
+    <span
+      title={info.platform}
+      className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400"
+    >
+      {info.name}
+    </span>
+  );
+}
+
 export default function DashboardNav() {
   return (
     <header className="border-b border-gray-200 dark:border-gray-800">
@@ -19,12 +58,7 @@ export default function DashboardNav() {
             <Logo size={22} />
             <span className="font-display font-medium">BitPanel</span>
           </Link>
-          <span
-            title="OnePlus 6 · Termux"
-            className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-500 dark:text-gray-400"
-          >
-            Dev Server
-          </span>
+          <ServerBadge />
         </div>
 
         <div className="flex items-center space-x-2">

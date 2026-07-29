@@ -204,7 +204,7 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
               <div>
                 <div className="text-gray-700 dark:text-gray-300">Internal</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  For apps running on the phone — not reachable from your browser
+                  For apps running on the server — not reachable from your browser
                 </div>
               </div>
               <span className="font-mono text-gray-800 dark:text-gray-200">
@@ -272,7 +272,7 @@ function AccessSection() {
             the panel is unaffected.
           </p>
           <p style={{ textWrap: 'pretty' }}>
-            Its credential lives on the phone at{' '}
+            Its credential lives on the server at{' '}
             <code>~/apps/pocketbase/.superuser</code> (mode 600) and never reaches the
             browser. If it ever stops working — say the data directory is restored from a
             backup — the panel resets that one account through the local CLI and carries on.
@@ -373,7 +373,7 @@ function BackupsSection() {
         Nightly cron keeps a rolling 7-day window; manual snapshots are timestamped.
         Downloading gives you a point-in-time copy — untar it and open{' '}
         <code>pb_data/data.db</code> in any SQLite client. Edits to that copy stay local;
-        they are never written back to the phone.
+        they are never written back to the server.
       </p>
     </div>
   );
@@ -419,7 +419,7 @@ function SuperuserSection() {
       <form onSubmit={submit} className="border rounded-lg p-5 space-y-3 max-w-lg">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Add a new admin or reset an existing one&apos;s password (runs{' '}
-          <code>pocketbase superuser upsert</code> on the phone).
+          <code>pocketbase superuser upsert</code> on the server).
         </p>
         <div className="flex gap-2 flex-wrap">
           <div className="flex flex-col flex-1 min-w-48">

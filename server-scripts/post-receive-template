@@ -30,6 +30,41 @@ if [ -f package.json ]; then
   fi
 fi
 
+# The panel ships the scripts it drives - project, deploy-webhook, tunnel-add -
+# but they live in ~/bin, outside the deployed tree, so a push updated the app
+# and left them behind. That failure is silent: deploy-webhook kept running an
+# older copy that had never heard of an endpoint the panel had just started
+# advertising, and deliveries 404'd with nothing obviously wrong.
+if [ "$NAME" = "bitroot-panel" ] && [ -d server-scripts ]; then
+  echo "==> syncing ~/bin scripts"
+  mkdir -p "$HOME/bin"
+  changed=""
+  for f in server-scripts/*; do
+    [ -f "$f" ] || continue
+    base=$(basename "$f")
+    # Two rules, because either alone lets something through. The shebang test
+    # keeps out data files - an extension blocklist had let pocketbase-index.html
+    # in, chmod +x and all. The name test keeps out templates, which have a
+    # shebang but are not meant to be run from PATH.
+    case "$base" in *-template|*.conf) continue ;; esac
+    head -c 2 "$f" | grep -q '^#!' || continue
+    if ! cmp -s "$f" "$HOME/bin/$base"; then
+      cp "$f" "$HOME/bin/$base" && chmod +x "$HOME/bin/$base"
+      changed="$changed $base"
+    fi
+  done
+  if [ -n "$changed" ]; then
+    echo "    updated:$changed"
+    # A script that runs as a service needs restarting to pick up its own new
+    # copy; the rest are invoked fresh each time and do not.
+    case "$changed" in
+      *deploy-webhook*) pm2 restart deploy-webhook >/dev/null 2>&1 && echo "    restarted deploy-webhook" ;;
+    esac
+  else
+    echo "    already current"
+  fi
+fi
+
 if [ "$HAS_BUILD" = 1 ]; then
   echo "==> building"
   NODE_OPTIONS=--max-old-space-size=2048 npm run build

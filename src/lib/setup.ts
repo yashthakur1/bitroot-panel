@@ -8,6 +8,7 @@
 
 import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
+import dns from 'dns/promises';
 import { run } from './runner';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
@@ -53,19 +54,62 @@ export async function writeEnv(updates: Record<string, string>): Promise<void> {
   await writeFile(ENV_PATH, lines.join('\n').replace(/\n{3,}/g, '\n\n'), { mode: 0o600 });
 }
 
-export async function setupState(): Promise<SetupState> {
-  const env = { ...(await readEnv()), ...process.env } as Record<string, string>;
+export interface TailnetInfo {
+  /** Full .ts.net name, when it can be established. */
+  host: string | null;
+  /** The CGNAT address on this machine, when there is one. */
+  address: string | null;
+  /** Whether the CLI answered, or this was inferred. */
+  viaCli: boolean;
+}
 
-  // Ask Tailscale rather than asking the user: it knows its own name, and a
-  // typo here produces links that quietly do not resolve.
-  let detected: string | null = null;
+// Tailscale hands out addresses from 100.64.0.0/10. Anything outside
+// 100.64-100.127 is ordinary public space and must not be taken for a tailnet.
+export async function tailnetAddress(): Promise<string | null> {
+  const r = await run('ip -4 addr 2>/dev/null || ifconfig 2>/dev/null || true', 15_000);
+  for (const m of r.output.matchAll(/\b100\.(\d{1,3})\.\d{1,3}\.\d{1,3}\b/g)) {
+    const second = Number(m[1]);
+    if (second >= 64 && second <= 127) return m[0];
+  }
+  return null;
+}
+
+// The CLI is authoritative where it exists. Where it does not - Android runs
+// Tailscale as the system app and exposes nothing inside Termux - the address
+// is still on an interface, and MagicDNS will name it. That covers the machine
+// this panel was built for, which reported "no Tailscale" while sitting on the
+// tailnet.
+export async function detectTailnet(): Promise<TailnetInfo> {
   try {
     const r = await run('tailscale status --json 2>/dev/null || true', 10_000);
     const json = JSON.parse(r.output.slice(r.output.indexOf('{')));
-    detected = (json?.Self?.DNSName ?? '').replace(/\.$/, '') || null;
+    const host = (json?.Self?.DNSName ?? '').replace(/\.$/, '') || null;
+    const address = (json?.Self?.TailscaleIPs ?? [])[0] ?? null;
+    if (host) return { host, address, viaCli: true };
   } catch {
-    detected = null;
+    /* no CLI, or it answered with nothing usable */
   }
+
+  const address = await tailnetAddress();
+  if (!address) return { host: null, address: null, viaCli: false };
+
+  try {
+    // lookupService, not dns.reverse: reverse() goes through c-ares and needs
+    // /etc/resolv.conf, which Termux has no equivalent of - it fails there with
+    // ENOTFOUND. lookupService uses getnameinfo, the system resolver, which is
+    // exactly the path MagicDNS installs itself on.
+    const { hostname } = await dns.lookupService(address, 0);
+    const host = hostname.replace(/\.$/, '');
+    return { host: /\.ts\.net$/i.test(host) ? host : null, address, viaCli: false };
+  } catch {
+    return { host: null, address, viaCli: false };
+  }
+}
+
+export async function setupState(): Promise<SetupState> {
+  const env = { ...(await readEnv()), ...process.env } as Record<string, string>;
+
+  const detected = (await detectTailnet()).host;
 
   let garageReachable = false;
   if (env.GARAGE_ADMIN_TOKEN) {

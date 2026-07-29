@@ -15,7 +15,7 @@ export async function POST(
     const { action } = body;
 
     if (action === 'deploy') {
-      // Rebuilds can take minutes on the phone — stream it.
+      // Rebuilds can take minutes on the server — stream it.
       return new Response(runStream(`static-site deploy ${name}`, 900_000), {
         headers: {
           'Content-Type': 'text/plain; charset=utf-8',

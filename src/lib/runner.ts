@@ -3,9 +3,9 @@ import os from 'os';
 
 // Executes a command on the OnePlus server.
 //
-// EXEC_MODE=local  — the panel runs on the phone itself; commands run directly.
+// EXEC_MODE=local  — the panel runs on the server itself; commands run directly.
 // EXEC_MODE=ssh    — the panel runs elsewhere (e.g. dev on a laptop) and
-//                    reaches the phone via SSH over Tailscale.
+//                    reaches the server via SSH over Tailscale.
 //
 // Callers must only pass commands composed from validated tokens (see validate.ts).
 
@@ -62,7 +62,7 @@ export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
 
 // Short-lived cache for read-only commands that several pages ask for at once
 // (`pm2 jlist` above all). Spawning the pm2 CLI is the most expensive thing the
-// panel does routinely, so collapsing concurrent callers matters on a phone.
+// panel does routinely, so collapsing concurrent callers matters on modest hardware.
 const cache = new Map<string, { at: number; result: Promise<RunResult> }>();
 
 export function runCached(command: string, ttlMs = 3000): Promise<RunResult> {
@@ -73,7 +73,7 @@ export function runCached(command: string, ttlMs = 3000): Promise<RunResult> {
   return result;
 }
 
-// Raw byte stream of a file under $HOME on the phone. Unlike runStream this
+// Raw byte stream of a file under $HOME on the server. Unlike runStream this
 // adds no heartbeats or exit markers — anything injected would corrupt a
 // binary payload. The caller must have validated the path.
 export function readHomeFile(relativePath: string): ReadableStream<Uint8Array> {

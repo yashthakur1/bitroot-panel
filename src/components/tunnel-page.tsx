@@ -204,9 +204,9 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
         </div>
         <p style={{ textWrap: 'pretty' }}>
           <strong>Public routes</strong> go through <code>cloudflared</code>, which holds an
-          outbound connection to Cloudflare — no ports opened on the phone or your router,
+          outbound connection to Cloudflare — no ports opened on the server or your router,
           automatic HTTPS. <strong>Private access</strong> needs no route at all: anything
-          listening on the phone is already reachable from your Tailscale devices.
+          listening on the server is already reachable from your Tailscale devices.
         </p>
         <p className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
           <Globe size={14} />

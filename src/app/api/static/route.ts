@@ -6,7 +6,7 @@ import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 
-// The build command is executed on the phone. An authenticated admin can
+// The build command is executed on the server. An authenticated admin can
 // already run arbitrary code via a repo's package scripts, so this is not a
 // new capability — but disallow shell metacharacters so a typo can't chain
 // commands.

@@ -124,7 +124,7 @@ export default function RemoveDialog({
                 onChange={(e) => setDeleteFiles(e.target.checked)}
               />
               <span>
-                <span className="text-gray-800 dark:text-gray-200">Files on the phone</span>
+                <span className="text-gray-800 dark:text-gray-200">Files on the server</span>
                 <span className="block text-xs text-gray-500 dark:text-gray-400 font-mono">
                   {filesPath}
                 </span>
@@ -154,7 +154,7 @@ export default function RemoveDialog({
                     {repoPath}
                   </span>
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    &quot;git push phone main&quot; for this app stops working.
+                    pushing to this app&apos;s deploy remote stops working.
                   </span>
                 </span>
               </label>

@@ -188,7 +188,7 @@ export async function GET() {
       action: {
         type: 'rm-repo',
         target: name,
-        danger: `Deletes the bare repo — "git push phone main" for ${name} stops working`,
+        danger: `Deletes the bare repo — pushing to the deploy remote for ${name} stops working`,
       },
       hint: 'Only delete once you are sure you will not push to this app again.',
     });

@@ -85,6 +85,24 @@ if (cmd !== 'install') {
   process.exit(1);
 }
 
+// Node reports "android" under Termux. That is a machine BitPanel runs on very
+// well - it is what it was built for - but this installer is apt/systemd/sudo
+// and none of those exist there. Saying "run it on the machine that will host
+// the panel" to someone already sitting on that machine is the wrong answer.
+if (platform() === 'android') {
+  console.error(`This installer is for Debian and Ubuntu, and Android has no apt or systemd.
+
+BitPanel does run here — it was built on a phone — but the steps differ enough
+that they are written out separately:
+
+  ${DOCS}termux.md
+
+In short: pkg install the dependencies, clone the repo, npm install, and start
+things under pm2 by hand, because Android has no service manager to register
+with.`);
+  process.exit(1);
+}
+
 if (platform() !== 'linux') {
   console.error(`BitPanel installs on Linux; this is ${platform()}.
 Run it on the machine that will host the panel — see ${DOCS}`);
@@ -106,5 +124,10 @@ if (!pinned) {
 // Piped straight to bash rather than written to a temp file: nothing is left on
 // disk if it fails, and it is the same script the docs tell you to read first.
 console.log(`Fetching ${url}\n`);
-const child = spawn('bash', ['-c', `curl -fsSL ${url} | bash`], { stdio: 'inherit' });
+// The version travels with the request, so the installer can check out the tag
+// that matches this package. Without it the script pins itself and then clones
+// whatever main is, which makes the version on the package a decoration.
+const child = spawn('bash', ['-c', `curl -fsSL ${url} | BITPANEL_VERSION=${version} bash`], {
+  stdio: 'inherit',
+});
 child.on('exit', (code) => process.exit(code ?? 1));

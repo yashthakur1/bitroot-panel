@@ -216,7 +216,7 @@ export async function GET() {
 }
 
 // Create a new project: runs `project clone <name> <repo> <port> [branch] [--no-tunnel]`
-// on the phone — clone, install deps, register with pm2, and (for public
+// on the server — clone, install deps, register with pm2, and (for public
 // environment) add the Cloudflare tunnel route.
 //
 // Two sources: `github` (repo = "owner/name"; private repos authenticate via
@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
     const cmd =
       `GIT_TERMINAL_PROMPT=0 project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
       (internal ? ' --no-tunnel' : '');
-    // Stream the phone's output live so the UI can render a step timeline.
+    // Stream the server's output live so the UI can render a step timeline.
     return new Response(runStream(cmd, 600_000), {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',

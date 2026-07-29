@@ -22,6 +22,7 @@ GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 APP_DIR="${BITPANEL_DIR:-$HOME/apps/bitroot-panel}"
 BIN_DIR="$HOME/bin"
 PANEL_PORT="${BITPANEL_PORT:-3210}"
+DEFAULT_BRANCH="${BITPANEL_BRANCH:-main}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -125,23 +126,57 @@ clone_url() {
 	fi
 }
 
+# The version this installer belongs to, passed by the npm package. Without it
+# there is nothing to pin to and main is the only sensible answer.
+#
+# This is what makes `bitpanel@x.y.z` mean anything: the CLI pinned *this
+# script* to the tag, but the script then cloned the default branch, so the
+# panel that arrived was whatever main happened to be that afternoon.
+WANT_TAG=""
+[ -n "${BITPANEL_VERSION:-}" ] && WANT_TAG="v${BITPANEL_VERSION#v}"
+
+record_version() {
+	# git describe is the truth, but a shallow clone can lose the tag on a later
+	# fetch, so the resolved version is written down as well.
+	{
+		echo "ref=$(git -C "$APP_DIR" describe --tags --always 2>/dev/null || echo unknown)"
+		echo "commit=$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+		echo "installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	} > "$APP_DIR/.bitpanel-version"
+}
+
 if [ -d "$APP_DIR/.git" ]; then
 	say "updating the panel"
 	git -C "$APP_DIR" remote set-url origin "$(clone_url)"
-	git -C "$APP_DIR" pull --ff-only
+	if [ -n "$WANT_TAG" ] && git -C "$APP_DIR" fetch --depth 1 origin "refs/tags/$WANT_TAG:refs/tags/$WANT_TAG" 2>/dev/null; then
+		git -C "$APP_DIR" checkout -q --detach "$WANT_TAG"
+		say "checked out $WANT_TAG"
+	else
+		# No tag asked for, or it does not exist upstream. A detached HEAD has no
+		# branch to fast-forward, so re-attach before pulling.
+		git -C "$APP_DIR" symbolic-ref -q HEAD >/dev/null 2>&1 || git -C "$APP_DIR" checkout -q "$DEFAULT_BRANCH" 2>/dev/null || true
+		git -C "$APP_DIR" pull --ff-only
+	fi
 	git -C "$APP_DIR" remote set-url origin "$REPO"
+	record_version
 else
 	say "cloning the panel"
 	mkdir -p "$(dirname "$APP_DIR")"
-	if ! git clone --depth 1 "$(clone_url)" "$APP_DIR" 2>/dev/null; then
+	if [ -n "$WANT_TAG" ] && git clone --depth 1 --branch "$WANT_TAG" "$(clone_url)" "$APP_DIR" 2>/dev/null; then
+		say "cloned at $WANT_TAG"
+		git -C "$APP_DIR" remote set-url origin "$REPO"
+		record_version
+	elif ! git clone --depth 1 "$(clone_url)" "$APP_DIR" 2>/dev/null; then
 		if [ -z "$GH_TOKEN" ]; then
 			die "clone failed. If the repository is private, supply a token:
     GH_TOKEN=ghp_xxx curl -fsSL -H \"Authorization: Bearer \$GH_TOKEN\" <raw-url>/install.sh | GH_TOKEN=\$GH_TOKEN bash
   The token needs the 'repo' scope (classic) or Contents:Read (fine-grained)."
 		fi
 		die "clone failed even with a token — check the token has access to $REPO"
+	else
+		git -C "$APP_DIR" remote set-url origin "$REPO"
+		record_version
 	fi
-	git -C "$APP_DIR" remote set-url origin "$REPO"
 fi
 
 # ─── 6. environment ──────────────────────────────────────────────
@@ -263,6 +298,28 @@ if [ ! -x "$HOME/apps/pocketbase/pocketbase" ]; then
 	else
 		warn "could not download PocketBase ${PB_VER} — the PocketBase page will be empty until it is installed"
 	fi
+fi
+
+# PocketBase starts with no account at all, so the panel's Databases and Backups
+# tabs have nothing to authenticate against and report the credentials as
+# missing. Create one here and record it where the panel looks for it.
+PB_CRED="$HOME/apps/pocketbase/.superuser"
+if [ -x "$HOME/apps/pocketbase/pocketbase" ] && [ ! -f "$PB_CRED" ]; then
+	say "creating the PocketBase superuser"
+	PB_EMAIL="${POCKETBASE_EMAIL:-panel@bitpanel.local}"
+	PB_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)"
+	# upsert writes to the same SQLite data directory the running instance holds
+	# open, so stop it for the moment it takes rather than racing the lock.
+	pm2 stop pocketbase >/dev/null 2>&1 || true
+	if "$HOME/apps/pocketbase/pocketbase" superuser upsert "$PB_EMAIL" "$PB_PASSWORD" \
+		--dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1; then
+		printf 'PB_EMAIL=%s\nPB_PASSWORD=%s\n' "$PB_EMAIL" "$PB_PASSWORD" > "$PB_CRED"
+		chmod 600 "$PB_CRED"
+	else
+		warn "could not create the PocketBase superuser — databases and backups stay unavailable until you run:
+     ~/apps/pocketbase/pocketbase superuser upsert <email> <password> --dir ~/apps/pocketbase/pb_data"
+	fi
+	pm2 start pocketbase >/dev/null 2>&1 || true
 fi
 
 say "starting services under pm2"

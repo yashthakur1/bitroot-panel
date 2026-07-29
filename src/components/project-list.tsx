@@ -144,7 +144,7 @@ export default function ProjectList() {
   }, []);
 
   // Package state is read only while the System tab is open: it costs a shell
-  // round trip on the phone and cannot change without someone installing
+  // round trip on the server and cannot change without someone installing
   // something, so it has no business on the live poll.
   const loadSystem = useCallback(async (fresh = false) => {
     try {

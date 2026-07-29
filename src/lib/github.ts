@@ -3,7 +3,7 @@ import { shq, ValidationError } from './validate';
 import { addConnection, getPrimaryToken, listConnections, removeConnection } from './git-connections';
 
 // GitHub access for the panel. Tokens live in the git-connections registry on
-// the phone (600 files, never sent to the browser); this module is the thin
+// the server (600 files, never sent to the browser); this module is the thin
 // GitHub-specific layer over it.
 
 // Git operations use whichever connection is marked primary.

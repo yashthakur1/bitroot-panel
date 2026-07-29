@@ -1,7 +1,7 @@
 import localFont from 'next/font/local'
 
 // Self-hosted variable fonts. Kept local rather than pulled from Google at
-// build time — the phone rebuilds on every deploy and shouldn't depend on
+// build time — the server rebuilds on every deploy and shouldn't depend on
 // reaching the network for fonts.
 
 // Display: page and section headings.
