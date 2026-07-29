@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     // copies whatever the *calling* shell has - neither reads .env. Without
     // this, a value written a line ago is still invisible to the process.
     run(
-      'nohup sh -c "sleep 1; set -a; . $HOME/apps/bitroot-panel/.env; set +a; ' +
+      'nohup sh -c "sleep 1; \"$HOME/bin/panel-restart\" || ' +
         'pm2 restart bitroot-panel --update-env" >/dev/null 2>&1 &',
       5_000,
     ).catch(() => {});

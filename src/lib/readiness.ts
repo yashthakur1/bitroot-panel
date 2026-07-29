@@ -444,7 +444,7 @@ async function storageStep(e: Record<string, string>): Promise<Step> {
       status: 'missing',
       detail: 'No Garage admin token, so the panel cannot manage buckets.',
       unlocks,
-      fix: ['Set GARAGE_ADMIN_TOKEN in ~/apps/bitroot-panel/.env', 'set -a; . ~/apps/bitroot-panel/.env; set +a; pm2 restart bitroot-panel --update-env'],
+      fix: ['Set GARAGE_ADMIN_TOKEN in ~/apps/bitroot-panel/.env', 'panel-restart'],
     };
   }
   let reachable = false;
