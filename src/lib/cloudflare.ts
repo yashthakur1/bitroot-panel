@@ -36,14 +36,39 @@ async function cf(path: string, init: RequestInit = {}) {
 
 // The tunnel this machine runs, read from its own config. A zone is shared by
 // every device pointed at it, so each machine must only judge its own records.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function localTunnelId(): Promise<string | null> {
-  if (process.env.TUNNEL_ID) return process.env.TUNNEL_ID;
+  if (UUID.test(process.env.TUNNEL_ID ?? '')) return process.env.TUNNEL_ID!;
+
+  // config.yml may name the tunnel either way. `tunnel: oneplus-tunnel` is
+  // perfectly valid and is what cloudflared writes when a tunnel is created by
+  // name - but a DNS record's content carries the UUID, so a name cannot be
+  // compared against it. The credentials file is named for the UUID, which
+  // makes it the reliable source when the config gives a name.
   const r = await run(
-    `grep -E "^[[:space:]]*tunnel:" "$HOME/.cloudflared/config.yml" 2>/dev/null | head -1 | awk '{print $2}'; true`,
-    10_000,
+    'cfg="$HOME/.cloudflared/config.yml"; ' +
+      `grep -E "^[[:space:]]*tunnel:" "$cfg" 2>/dev/null | head -1 | awk '{print "tunnel=" $2}'; ` +
+      `grep -E "^[[:space:]]*credentials-file:" "$cfg" 2>/dev/null | head -1 | awk '{print "creds=" $2}'; ` +
+      // Last resort: whatever credentials exist on disk, when the config names
+      // neither - one file is unambiguous, several are not.
+      'ls -1 "$HOME"/.cloudflared/*.json 2>/dev/null | head -2 | sed "s|^|file=|"; true',
+    15_000,
   );
-  const id = r.output.trim().split('\n').pop()?.trim() ?? '';
-  return /^[0-9a-f-]{30,40}$/i.test(id) ? id : null;
+
+  const named = /^tunnel=(.+)$/m.exec(r.output)?.[1]?.trim() ?? '';
+  if (UUID.test(named)) return named;
+
+  const creds = /^creds=(.+)$/m.exec(r.output)?.[1]?.trim() ?? '';
+  const fromCreds = creds.split('/').pop()?.replace(/\.json$/i, '') ?? '';
+  if (UUID.test(fromCreds)) return fromCreds;
+
+  const files = [...r.output.matchAll(/^file=(.+)$/gm)].map((m) => m[1].trim());
+  if (files.length === 1) {
+    const only = files[0].split('/').pop()?.replace(/\.json$/i, '') ?? '';
+    if (UUID.test(only)) return only;
+  }
+  return null;
 }
 
 // Only records that resolve to *this machine's* tunnel are ours to reason
