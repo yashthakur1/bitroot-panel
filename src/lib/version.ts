@@ -114,8 +114,9 @@ export async function startUpdate(target: string): Promise<void> {
     '  echo "commit=$(git rev-parse --short HEAD 2>/dev/null)";',
     '  echo "installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$APP/.bitpanel-version"',
     'echo "== restarting =="',
-    'set -a; . "$APP/.env" 2>/dev/null || true; set +a',
-    'pm2 restart bitroot-panel --update-env',
+    // panel-restart parses .env rather than sourcing it: a value with a space
+    // runs as a command and truncates the variable.
+    '"$HOME/bin/panel-restart" || pm2 restart bitroot-panel --update-env',
     'echo "== done =="',
   ].join('\n');
 
