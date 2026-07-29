@@ -57,7 +57,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
 
   if (body.action === 'update-panel') {
-    const v = await versionInfo();
+    // Forced: this is a deliberate request to update, and refusing it against
+    // an hour-old cache is how "already on the latest release" gets said to
+    // someone looking at a newer one.
+    const v = await versionInfo(true);
     if (!v.latest || !v.updateAvailable) {
       return NextResponse.json({ error: 'already on the latest release' }, { status: 400 });
     }

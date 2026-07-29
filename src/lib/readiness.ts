@@ -386,8 +386,8 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
   };
 }
 
-async function panelVersionStep(): Promise<Step> {
-  const v = await versionInfo();
+async function panelVersionStep(fresh: boolean): Promise<Step> {
+  const v = await versionInfo(fresh);
   const unlocks = ['Fixes and features released since this was installed'];
 
   if (v.unpinned) {
@@ -544,7 +544,7 @@ export interface Readiness {
   scannedAt: string;
 }
 
-export async function readiness(): Promise<Readiness> {
+export async function readiness(fresh = false): Promise<Readiness> {
   const e = await env();
   // Probed concurrently: several shell out or hit the network, and doing them
   // in series makes the page feel broken on modest hardware.
@@ -556,7 +556,7 @@ export async function readiness(): Promise<Readiness> {
     tailscaleStep(e),
     storageStep(e),
     pocketbaseStep(),
-    panelVersionStep(),
+    panelVersionStep(fresh),
   ]);
   return {
     steps,
