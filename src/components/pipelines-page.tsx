@@ -264,9 +264,24 @@ function NewPipeline({
   const [project, setProject] = useState('');
   const [connectionId, setConnectionId] = useState(connections[0]?.id ?? '');
   const [branches, setBranches] = useState<string[] | null>(null);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [repos, setRepos] = useState<string[]>([]);
   const [projects, setProjects] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // The panel already knows every repo the connection can see, so there is no
+  // reason to make someone type owner/name from memory and guess at spelling.
+  useEffect(() => {
+    fetch('/api/github/repos')
+      .then((r) => r.json())
+      .then((d) =>
+        setRepos(
+          (d.repos ?? []).map((r: { fullName: string }) => r.fullName).filter(Boolean),
+        ),
+      )
+      .catch(() => setRepos([]));
+  }, []);
 
   useEffect(() => {
     fetch('/api/projects')
@@ -281,27 +296,43 @@ function NewPipeline({
       .catch(() => setProjects([]));
   }, []);
 
-  // Branches are fetched on demand rather than as you type: each keystroke
-  // would be a GitHub API call against a rate limit shared with everything else
-  // the panel does.
-  async function loadBranches() {
+  // Loads once the repo is a real one, not on every keystroke: each call is a
+  // GitHub API request against a rate limit shared with everything else the
+  // panel does.
+  const valid = /^[^/\s]+\/[^/\s]+$/.test(repo);
+  useEffect(() => {
+    if (!valid) {
+      setBranches(null);
+      return;
+    }
+    let live = true;
+    setLoadingBranches(true);
     setBranches(null);
     setError('');
-    try {
-      const res = await fetch(
-        `/api/github/branches?repo=${encodeURIComponent(repo)}&connection=${encodeURIComponent(connectionId)}`,
-      );
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
-      const names: string[] = d.branches ?? d ?? [];
-      setBranches(names);
-      if (names.includes('main')) setBranch('main');
-      else if (names.length) setBranch(names[0]);
-    } catch (e) {
-      setError((e as Error).message);
-      setBranches([]);
-    }
-  }
+    fetch(
+      `/api/github/branches?repo=${encodeURIComponent(repo)}&connection=${encodeURIComponent(connectionId)}`,
+    )
+      .then(async (res) => {
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+        if (!live) return;
+        const names: string[] = d.branches ?? [];
+        setBranches(names);
+        // The repository's own default, rather than assuming main - plenty of
+        // repos still use master, or something else entirely.
+        const preferred = d.defaultBranch && names.includes(d.defaultBranch) ? d.defaultBranch : names[0];
+        if (preferred) setBranch(preferred);
+      })
+      .catch((e) => {
+        if (!live) return;
+        setError((e as Error).message);
+        setBranches([]);
+      })
+      .finally(() => live && setLoadingBranches(false));
+    return () => {
+      live = false;
+    };
+  }, [repo, connectionId, valid]);
 
   async function create() {
     setBusy(true);
@@ -342,29 +373,36 @@ function NewPipeline({
 
       <label className="block">
         <span className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Repository</span>
-        <div className="flex gap-2">
-          <input
-            value={repo}
-            onChange={(e) => setRepo(e.target.value.trim())}
-            placeholder="owner/name"
-            spellCheck={false}
-            className={`${input} font-mono`}
-          />
-          <button
-            onClick={loadBranches}
-            disabled={!/^[^/\s]+\/[^/\s]+$/.test(repo)}
-            className="shrink-0 text-sm h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-800
-                       text-gray-700 dark:text-gray-300
-                       transition-[background-color,scale] duration-200 ease-swift
-                       hover:bg-gray-50 dark:hover:bg-gray-800/60 active:scale-[0.96]
-                       disabled:opacity-40 disabled:active:scale-100"
-          >
-            Find branches
-          </button>
-        </div>
+        {/* A list-backed input rather than a select: 156 repos is too many to
+            scroll, and typing filters them. Anything not in the list can still
+            be typed by hand. */}
+        <input
+          value={repo}
+          onChange={(e) => setRepo(e.target.value.trim())}
+          list="pipeline-repos"
+          placeholder={repos.length ? 'Start typing to search…' : 'owner/name'}
+          spellCheck={false}
+          className={`${input} font-mono`}
+        />
+        <datalist id="pipeline-repos">
+          {repos.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
+        <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+          {repos.length
+            ? `${repos.length} repositories this connection can see, most recently pushed first.`
+            : 'No repositories loaded — check the connection under Git connections.'}
+        </span>
       </label>
 
-      {branches !== null && (
+      {loadingBranches && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+          <Loader2 size={12} className="animate-spin" /> Loading branches…
+        </p>
+      )}
+
+      {branches !== null && branches.length > 0 && (
         <label className="block">
           <span className="block text-xs text-gray-600 dark:text-gray-400 mb-1">Branch</span>
           <select value={branch} onChange={(e) => setBranch(e.target.value)} className={input}>
