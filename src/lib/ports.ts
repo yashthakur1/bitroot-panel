@@ -37,7 +37,12 @@ export interface PortOwnership {
  *    shared value proves nothing about either process
  *  - a port written into the process's own arguments, which is stated outright
  */
-export function ownedPorts(apps: any[], portsConf: string): PortOwnership {
+export function ownedPorts(
+  apps: any[],
+  portsConf: string,
+  /** The panel's own name and port: it is the process answering the request. */
+  self?: { name: string; port: number },
+): PortOwnership {
   const byName: Record<string, number> = {};
   const byPort: Record<number, string> = {};
 
@@ -66,6 +71,17 @@ export function ownedPorts(apps: any[], portsConf: string): PortOwnership {
     if (!p) continue;
     byName[a.name] = p;
     byPort[p] = a.name;
+  }
+
+  // Highest authority of all: the panel is serving this request on this port,
+  // so no inference is involved. Without it, a daemon that merely inherited
+  // PORT from the shell that launched it makes the value ambiguous and the
+  // panel drops off its own list.
+  if (self && Number.isFinite(self.port) && self.port > 0) {
+    if (apps.some((a) => a?.name === self.name)) {
+      byName[self.name] = self.port;
+      byPort[self.port] = self.name;
+    }
   }
 
   return { byName, byPort };

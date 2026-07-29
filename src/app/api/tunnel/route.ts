@@ -42,7 +42,10 @@ export async function GET() {
   // Shared with the services list, so the two pages cannot disagree about which
   // process owns which port - and so a port stated in a process's arguments,
   // like PocketBase's, is seen at all.
-  const { byPort: portToService } = ownedPorts(apps, ports.output);
+  const { byPort: portToService } = ownedPorts(apps, ports.output, {
+    name: 'bitroot-panel',
+    port: Number(process.env.PORT),
+  });
 
   const routes: Array<{
     hostname: string;
