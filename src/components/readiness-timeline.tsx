@@ -296,10 +296,12 @@ function StepAction({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [log, setLog] = useState('');
 
   async function go() {
     setBusy(true);
     setError('');
+    setLog('');
     try {
       const res = await fetch('/api/readiness/action', {
         method: 'POST',
@@ -308,6 +310,28 @@ function StepAction({
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+
+      // Started, not finished. The work outlives the request and ends by
+      // restarting the process that served it, so progress is polled from the
+      // log rather than awaited on a connection that will be cut.
+      if (d.started) {
+        for (let i = 0; i < 180; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const p = await fetch('/api/readiness/action', { cache: 'no-store' });
+            const pd = await p.json();
+            if (pd.log) setLog(pd.log);
+            if (typeof pd.log === 'string' && pd.log.includes('== done ==')) {
+              onDone();
+              return;
+            }
+          } catch {
+            // The restart cuts the connection - expected near the end.
+          }
+        }
+        setError('still running after six minutes — check the log on the server');
+        return;
+      }
       onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -329,6 +353,17 @@ function StepAction({
         {busy && <Loader2 size={13} className="animate-spin" />}
         {action.label}
       </button>
+      {action.note && !busy && !log && (
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 text-pretty">
+          {action.note}
+        </p>
+      )}
+      {log && (
+        <pre className="mt-2 text-[11px] font-mono bg-gray-950 text-gray-300 rounded-lg p-2.5
+                        max-h-40 overflow-auto whitespace-pre-wrap">
+          {log.slice(-1500)}
+        </pre>
+      )}
       {error && (
         <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 flex items-start gap-1.5">
           <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {error}

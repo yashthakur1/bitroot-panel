@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
+import { startUpdate, updateLog, versionInfo } from '@/lib/version';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,8 +46,30 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
   },
 };
 
+export async function GET() {
+  // The update runs detached, so its progress is read from the log rather than
+  // held open on the request that started it.
+  return NextResponse.json({ log: await updateLog() });
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
+
+  if (body.action === 'update-panel') {
+    const v = await versionInfo();
+    if (!v.latest || !v.updateAvailable) {
+      return NextResponse.json({ error: 'already on the latest release' }, { status: 400 });
+    }
+    try {
+      await startUpdate(v.latest);
+      // 202: the work outlives this request, and the process serving it is the
+      // one that will be restarted at the end.
+      return NextResponse.json({ ok: true, started: true, target: v.latest }, { status: 202 });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
+
   const action = ACTIONS[String(body.action ?? '')];
   if (!action) {
     return NextResponse.json({ error: 'unknown action' }, { status: 400 });

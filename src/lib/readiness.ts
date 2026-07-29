@@ -11,6 +11,7 @@ import { readFile } from 'fs/promises';
 import path from 'path';
 import { run } from './runner';
 import { checkCloudflare, detectTailnet } from './setup';
+import { versionInfo } from './version';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -384,6 +385,55 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
   };
 }
 
+async function panelVersionStep(): Promise<Step> {
+  const v = await versionInfo();
+  const unlocks = ['Fixes and features released since this was installed'];
+
+  if (v.unpinned) {
+    // Installed from a branch rather than a release. Nothing is broken, but
+    // there is no version to compare against, so nothing can be offered.
+    return {
+      id: 'version',
+      title: 'Panel version',
+      status: 'ready',
+      detail: `Running ${v.commit ? `commit ${v.commit}` : 'an untagged build'} — installed from a branch, so there is no release to compare against.`,
+      unlocks: [],
+    };
+  }
+  if (!v.latest) {
+    return {
+      id: 'version',
+      title: 'Panel version',
+      status: 'ready',
+      detail: `Running ${v.installed}. The registry could not be reached, so whether anything newer exists is unknown.`,
+      unlocks: [],
+    };
+  }
+  if (!v.updateAvailable) {
+    return {
+      id: 'version',
+      title: 'Panel version',
+      status: 'ready',
+      detail: `Running ${v.installed}, which is the latest release.`,
+      unlocks: [],
+    };
+  }
+  return {
+    id: 'version',
+    title: 'Panel version',
+    status: 'partial',
+    detail: `${v.latest} is available — this is running ${v.installed}.`,
+    unlocks,
+    actions: [
+      {
+        id: 'update-panel',
+        label: `Update to ${v.latest}`,
+        note: 'Fetches the release, installs, builds and restarts. Several minutes on a phone.',
+      },
+    ],
+  };
+}
+
 async function storageStep(e: Record<string, string>): Promise<Step> {
   const unlocks = ['Buckets, uploads and presigned links'];
   if (!e.GARAGE_ADMIN_TOKEN) {
@@ -479,6 +529,7 @@ export async function readiness(): Promise<Readiness> {
     tailscaleStep(e),
     storageStep(e),
     pocketbaseStep(),
+    panelVersionStep(),
   ]);
   return {
     steps,

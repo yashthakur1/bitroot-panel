@@ -124,5 +124,10 @@ if (!pinned) {
 // Piped straight to bash rather than written to a temp file: nothing is left on
 // disk if it fails, and it is the same script the docs tell you to read first.
 console.log(`Fetching ${url}\n`);
-const child = spawn('bash', ['-c', `curl -fsSL ${url} | bash`], { stdio: 'inherit' });
+// The version travels with the request, so the installer can check out the tag
+// that matches this package. Without it the script pins itself and then clones
+// whatever main is, which makes the version on the package a decoration.
+const child = spawn('bash', ['-c', `curl -fsSL ${url} | BITPANEL_VERSION=${version} bash`], {
+  stdio: 'inherit',
+});
 child.on('exit', (code) => process.exit(code ?? 1));
