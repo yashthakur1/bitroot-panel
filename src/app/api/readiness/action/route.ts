@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { startUpdate, updateLog, versionInfo } from '@/lib/version';
-import { syncWebRootDomain } from '@/lib/garage-config';
+import { syncAdminBindLoopback, syncWebRootDomain } from '@/lib/garage-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +80,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no domain is set' }, { status: 400 });
     }
     const r = await syncWebRootDomain(domain);
+    return NextResponse.json(r.ok ? { ok: true, output: r.message } : { error: r.message }, {
+      status: r.ok ? 200 : 500,
+    });
+  }
+
+  // Installs before 0.1.8 wrote api_bind_addr = "[::]:3903", putting a
+  // credentialed admin API on every interface while the docs said loopback.
+  // Fixed at the source for new installs; this is the repair for the rest.
+  if (body.action === 'secure-garage-admin') {
+    const r = await syncAdminBindLoopback();
     return NextResponse.json(r.ok ? { ok: true, output: r.message } : { error: r.message }, {
       status: r.ok ? 200 : 500,
     });

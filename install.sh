@@ -105,13 +105,43 @@ if [ ! -f /etc/garage.toml ]; then
 		root_domain = ".${DOMAIN_SUFFIX:-example.com}"
 		index = "index.html"
 
+		# Loopback only, deliberately. The admin API creates buckets, mints S3
+		# keys and rewrites the cluster layout, with a bearer token as the only
+		# thing in front of it. Nothing outside this machine needs to reach it —
+		# the panel talks to it over 127.0.0.1 — and "[::]:3903" published it on
+		# every interface while the port table promised loopback.
 		[admin]
-		api_bind_addr = "[::]:3903"
+		api_bind_addr = "127.0.0.1:3903"
 		admin_token = "$ADMIN_TOKEN"
 	EOF
 else
 	say "/etc/garage.toml already exists — left alone"
 	ADMIN_TOKEN=$(sudo grep -E '^admin_token' /etc/garage.toml | cut -d'"' -f2)
+	# The one exception to leaving it alone. Installs made before this change
+	# have the admin API on every interface; that is the bug being fixed, and a
+	# re-run is the cheapest place to fix it. Only the address inside [admin] is
+	# touched - [s3_api] and [s3_web] are meant to be reachable.
+	ADMIN_BIND=$(awk '/^[[:space:]]*\[/ { s=$1 } s=="[admin]" && /^[[:space:]]*api_bind_addr[[:space:]]*=/ { print; exit }' /etc/garage.toml 2>/dev/null || true)
+	case "$ADMIN_BIND" in
+		*'"127.0.0.1:'*|*'"[::1]:'*|*'"localhost:'*|'') ;;
+		*)
+			say "moving the Garage admin API onto loopback (was ${ADMIN_BIND#*= })"
+			ADMIN_PORT=$(printf '%s' "$ADMIN_BIND" | sed -n 's/.*:\([0-9]\{1,5\}\)".*/\1/p')
+			ADMIN_TMP=$(mktemp)
+			awk -v p="${ADMIN_PORT:-3903}" '
+				/^[[:space:]]*\[/ { s=$1 }
+				s=="[admin]" && /^[[:space:]]*api_bind_addr[[:space:]]*=/ { print "api_bind_addr = \"127.0.0.1:" p "\""; next }
+				{ print }
+			' /etc/garage.toml > "$ADMIN_TMP"
+			if [ -s "$ADMIN_TMP" ]; then
+				sudo cp "$ADMIN_TMP" /etc/garage.toml
+				pm2 restart garage >/dev/null 2>&1 || true
+			else
+				warn "could not rewrite the Garage admin bind address — check [admin] api_bind_addr in /etc/garage.toml"
+			fi
+			rm -f "$ADMIN_TMP"
+			;;
+	esac
 fi
 
 # ─── 5. the panel itself ─────────────────────────────────────────
@@ -334,8 +364,30 @@ pm2 start nginx --name nginx -- -c "$HOME/etc/nginx/nginx.conf" -g 'daemon off;'
 [ -x "$BIN_DIR/deploy-webhook" ] && { pm2 start "$BIN_DIR/deploy-webhook" --name deploy-webhook >/dev/null 2>&1 || pm2 restart deploy-webhook >/dev/null; }
 [ -x "$HOME/apps/pocketbase/pocketbase" ] && { pm2 start "$HOME/apps/pocketbase/pocketbase" --name pocketbase -- serve --http=127.0.0.1:8090 --dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1 || pm2 restart pocketbase >/dev/null; }
 pm2 save >/dev/null
-pm2 startup systemd -u "$USER" --hp "$HOME" 2>/dev/null | grep -E '^sudo' | sh || \
-	warn "could not register pm2 with systemd automatically — run 'pm2 startup' and follow its instructions"
+# Boot persistence. `pm2 startup` does the registration itself whenever it can
+# reach sudo, and only *prints* a `sudo …` line for you to run when it cannot.
+# The old form here piped its output into grep and trusted the pipeline's exit
+# status: on every machine where pm2 succeeded there was no `sudo` line to
+# match, grep exited 1, `set -o pipefail` turned that into a failure, and the
+# warning fired directly underneath pm2's own "[v] Command successfully
+# executed." Ask systemd instead of guessing from an exit code - the unit being
+# enabled is the thing that was actually wanted.
+PM2_UNIT="pm2-$USER"
+if ! have systemctl; then
+	warn "no systemd here, so pm2 will not start at boot — start it yourself, or run 'pm2 startup' for the right instructions"
+else
+	PM2_STARTUP_OUT=$(pm2 startup systemd -u "$USER" --hp "$HOME" 2>&1 || true)
+	# Present only when pm2 declined to run it, which is the case worth acting on.
+	PM2_STARTUP_CMD=$(printf '%s\n' "$PM2_STARTUP_OUT" | grep -E '^[[:space:]]*sudo ' | head -1 || true)
+	if [ -n "$PM2_STARTUP_CMD" ]; then
+		eval "$PM2_STARTUP_CMD" >/dev/null 2>&1 || true
+	fi
+	if systemctl is-enabled "$PM2_UNIT" >/dev/null 2>&1; then
+		say "pm2 will start at boot ($PM2_UNIT is enabled)"
+	else
+		warn "could not register pm2 with systemd automatically — run 'pm2 startup' and follow its instructions"
+	fi
+fi
 
 # a single-node Garage still needs a layout before it will accept objects
 if ! garage status 2>/dev/null | grep -q 'NO ROLE ASSIGNED'; then
