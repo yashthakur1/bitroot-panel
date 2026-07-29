@@ -216,6 +216,22 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
   };
 }
 
+// pm2 jlist is JSON, so read it as JSON. The previous check looked for
+// "status":"online" within 400 characters of the process name, and pm2_env is
+// far larger than that - so a process that was plainly running was reported
+// stopped, right after the panel had started it.
+async function pm2Status(name: string): Promise<'online' | 'stopped' | 'absent'> {
+  const r = await run('pm2 jlist 2>/dev/null || true', 15_000);
+  try {
+    const list = JSON.parse(r.output.slice(r.output.indexOf('[')));
+    const proc = list.find((p: { name?: string }) => p?.name === name);
+    if (!proc) return 'absent';
+    return proc?.pm2_env?.status === 'online' ? 'online' : 'stopped';
+  } catch {
+    return 'absent';
+  }
+}
+
 async function tunnelStep(): Promise<Step> {
   const unlocks = ['Serving public URLs without opening a port'];
   if (!(await has('cloudflared'))) {
@@ -234,20 +250,20 @@ async function tunnelStep(): Promise<Step> {
   // testing for the skeleton reported a configured tunnel on a machine that had
   // never been logged in, and then offered a restart command for a process that
   // did not exist.
-  const [probe, running] = await Promise.all([
+  const [probe, procStatus] = await Promise.all([
     run(
       'test -f "$HOME/.cloudflared/cert.pem" && echo cert; ' +
         'ls "$HOME"/.cloudflared/*.json >/dev/null 2>&1 && echo creds; ' +
         'grep -Eq "^[[:space:]]*tunnel:[[:space:]]*[^#[:space:]]" "$HOME/.cloudflared/config.yml" 2>/dev/null && echo named; true',
       15_000,
     ),
-    run('pm2 jlist 2>/dev/null || true', 15_000),
+    pm2Status('cloudflared'),
   ]);
   const loggedIn = emitted(probe.output, 'cert');
   const created = emitted(probe.output, 'creds');
   const named = emitted(probe.output, 'named');
-  const known = /"name"\s*:\s*"cloudflared"/.test(running.output);
-  const up = /"name"\s*:\s*"cloudflared"[\s\S]{0,400}?"status"\s*:\s*"online"/.test(running.output);
+  const known = procStatus !== 'absent';
+  const up = procStatus === 'online';
 
   if (!loggedIn) {
     return {
