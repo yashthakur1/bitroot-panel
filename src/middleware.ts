@@ -5,6 +5,10 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname === '/api/login') return NextResponse.next();
+  // The login page has to ask whether this panel wants an email before anyone
+  // can log in, so this cannot sit behind the session it is a prerequisite for.
+  // It answers yes or no and nothing else - never the address itself.
+  if (pathname === '/api/auth-mode') return NextResponse.next();
   // The setup wizard has to be reachable before any credential exists. It
   // refuses itself once the panel is configured, so this does not leave a way
   // in afterwards.
