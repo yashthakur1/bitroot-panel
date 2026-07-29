@@ -3,6 +3,7 @@ import { run, runCached, runStream } from '@/lib/runner';
 import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
+import { ownedPorts } from '@/lib/ports';
 
 const SYSTEM_APPS = new Set([
   'cloudflared',
