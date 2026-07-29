@@ -353,16 +353,78 @@ if [ -x "$HOME/apps/pocketbase/pocketbase" ] && [ ! -f "$PB_CRED" ]; then
 fi
 
 say "starting services under pm2"
-pm2 start garage --name garage -- server >/dev/null 2>&1 || pm2 restart garage >/dev/null
+
+# `pm2 start X --name N` does NOT fail when a process called N already exists.
+# For most services pm2 notices the same script path and errors, so the `||
+# restart` fallback fired and re-running was harmless. For the panel the script
+# is `npm`, pm2 happily starts a second one, and it crash-loops forever on
+# EADDRINUSE because the first still holds 3210 - then `pm2 save` persists the
+# wreckage. The installer promises re-running upgrades rather than duplicating,
+# so ask pm2 what exists instead of relying on start to fail.
+pm2_has() { pm2 describe "$1" >/dev/null 2>&1; }
+
+# How many processes carry this name. These are all single-instance services,
+# so more than one means an earlier run duplicated it - and restarting a name
+# restarts every copy, so they fight over the port forever.
+pm2_count() {
+	pm2 jlist 2>/dev/null | node -e '
+		let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+			try{console.log(JSON.parse(d).filter(p=>p.name===process.argv[1]).length);}
+			catch(e){console.log(0);}
+		});' "$1" 2>/dev/null || echo 0
+}
+
+# Collapse a duplicated name back to nothing, so the caller starts one clean
+# copy. pm2 delete <name> removes every process carrying it.
+pm2_dedupe() {
+	if [ "$(pm2_count "$1")" -gt 1 ]; then
+		say "removing duplicate \"$1\" processes left by an earlier run"
+		pm2 delete "$1" >/dev/null 2>&1 || true
+	fi
+}
+
+pm2_dedupe garage
+if pm2_has garage; then pm2 restart garage >/dev/null
+else pm2 start garage --name garage -- server >/dev/null 2>&1 || true; fi
+
 # PORT has to be in the real environment: next start reads it there, not from
 # .env, so writing PORT into .env alone silently leaves the panel on 3000
 # while every link, nginx vhost and doc points at 3210.
-PORT="$PANEL_PORT" pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || \
+pm2_dedupe bitroot-panel
+if pm2_has bitroot-panel; then
 	PORT="$PANEL_PORT" pm2 restart bitroot-panel --update-env >/dev/null
-pm2 start nginx --name nginx -- -c "$HOME/etc/nginx/nginx.conf" -g 'daemon off;' >/dev/null 2>&1 || pm2 restart nginx >/dev/null
+else
+	PORT="$PANEL_PORT" pm2 start npm --name bitroot-panel --cwd "$APP_DIR" -- start >/dev/null 2>&1 || true
+fi
+
+pm2_dedupe nginx
+if pm2_has nginx; then pm2 restart nginx >/dev/null
+else pm2 start nginx --name nginx -- -c "$HOME/etc/nginx/nginx.conf" -g 'daemon off;' >/dev/null 2>&1 || true; fi
+
 # The deploy webhook is what makes `git push` to this machine deploy anything.
-[ -x "$BIN_DIR/deploy-webhook" ] && { pm2 start "$BIN_DIR/deploy-webhook" --name deploy-webhook >/dev/null 2>&1 || pm2 restart deploy-webhook >/dev/null; }
-[ -x "$HOME/apps/pocketbase/pocketbase" ] && { pm2 start "$HOME/apps/pocketbase/pocketbase" --name pocketbase -- serve --http=127.0.0.1:8090 --dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1 || pm2 restart pocketbase >/dev/null; }
+if [ -x "$BIN_DIR/deploy-webhook" ]; then
+	pm2_dedupe deploy-webhook
+if pm2_has deploy-webhook; then pm2 restart deploy-webhook >/dev/null
+	else pm2 start "$BIN_DIR/deploy-webhook" --name deploy-webhook >/dev/null 2>&1 || true; fi
+fi
+
+if [ -x "$HOME/apps/pocketbase/pocketbase" ]; then
+	pm2_dedupe pocketbase
+if pm2_has pocketbase; then pm2 restart pocketbase >/dev/null
+	else pm2 start "$HOME/apps/pocketbase/pocketbase" --name pocketbase -- serve --http=127.0.0.1:8090 --dir "$HOME/apps/pocketbase/pb_data" >/dev/null 2>&1 || true; fi
+fi
+
+# An earlier install may have left duplicates behind; clear any that are stuck.
+if pm2 jlist 2>/dev/null | grep -q '"status":"errored"'; then
+	say "removing errored duplicates left by an earlier run"
+	pm2 jlist 2>/dev/null | node -e '
+		let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+			try{JSON.parse(d).filter(p=>p.pm2_env&&p.pm2_env.status==="errored")
+				.forEach(p=>console.log(p.pm_id));}catch(e){}
+		});' | while read -r id; do
+		[ -n "$id" ] && pm2 delete "$id" >/dev/null 2>&1 || true
+	done
+fi
 pm2 save >/dev/null
 # Boot persistence. `pm2 startup` does the registration itself whenever it can
 # reach sudo, and only *prints* a `sudo …` line for you to run when it cannot.
