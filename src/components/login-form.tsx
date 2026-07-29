@@ -1,19 +1,31 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Terminal } from 'lucide-react';
+import { ArrowRight, Check, Eye, EyeOff, Loader2, Lock, Mail, Terminal } from 'lucide-react';
 import Logo from './logo';
 
 export default function LoginForm({ server }: { server: string }) {
   const router = useRouter();
+  const [email, setEmail] = useState('');
+  // Asked for only when this panel actually has an identity. Installs that
+  // predate sign-up sign in with the password alone, and showing them a field
+  // they cannot fill would lock them out of their own machine.
+  const [requiresEmail, setRequiresEmail] = useState<boolean | null>(null);
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [reveal, setReveal] = useState(false);
   const [recovery, setRecovery] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth-mode')
+      .then((r) => r.json())
+      .then((d) => setRequiresEmail(Boolean(d.requiresEmail)))
+      .catch(() => setRequiresEmail(false));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +35,7 @@ export default function LoginForm({ server }: { server: string }) {
       const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password, remember }),
+        body: JSON.stringify({ email, password, remember }),
       });
       if (res.ok) {
         router.push('/dashboard');
@@ -89,6 +101,40 @@ export default function LoginForm({ server }: { server: string }) {
 
           <form onSubmit={handleSubmit} className="mt-9">
             <div className="animate-rise" style={{ animationDelay: '160ms' }}>
+              {requiresEmail && (
+                <div className="mb-4">
+                  <label
+                    htmlFor="email"
+                    className="block text-[11px] font-medium tracking-[0.16em] text-accent-400/90 mb-2"
+                  >
+                    EMAIL
+                  </label>
+                  <div className="relative">
+                    <Mail
+                      size={15}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+                    />
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="username"
+                      autoFocus
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full h-12 pl-10 pr-4 rounded-xl bg-white/[0.03] border border-white/10
+                                 text-[15px] text-gray-100 placeholder:text-gray-600
+                                 transition-[border-color,background-color,box-shadow] duration-200
+                                 ease-swift
+                                 hover:border-white/[0.16]
+                                 focus:outline-none focus:border-accent-500/70
+                                 focus:bg-white/[0.05] focus:ring-4 focus:ring-accent-500/10"
+                    />
+                  </div>
+                </div>
+              )}
+
               <label
                 htmlFor="password"
                 className="block text-[11px] font-medium tracking-[0.16em] text-accent-400/90 mb-2"
@@ -105,7 +151,7 @@ export default function LoginForm({ server }: { server: string }) {
                   name="password"
                   type={reveal ? 'text' : 'password'}
                   autoComplete="current-password"
-                  autoFocus
+                  autoFocus={requiresEmail === false}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -145,7 +191,7 @@ export default function LoginForm({ server }: { server: string }) {
             <div className="animate-rise" style={{ animationDelay: '240ms' }}>
               <button
                 type="submit"
-                disabled={busy || !password}
+                disabled={busy || !password || (requiresEmail === true && !email)}
                 className="mt-5 w-full h-12 rounded-xl flex items-center justify-center gap-2
                            text-[15px] font-medium text-white
                            bg-gradient-to-r from-accent-600 to-accent-500

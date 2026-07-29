@@ -12,9 +12,24 @@ export async function POST(req: NextRequest) {
 
   const a = Buffer.from(String(body.password ?? ''));
   const b = Buffer.from(expected);
-  const ok = a.length === b.length && timingSafeEqual(a, b);
-  if (!ok) {
-    return NextResponse.json({ error: 'wrong password' }, { status: 401 });
+  const passwordOk = a.length === b.length && timingSafeEqual(a, b);
+
+  // An identity is only required once one exists. Installs that predate
+  // sign-up, or machines where nobody set an address, keep signing in with the
+  // password alone rather than being locked out by a field they never filled.
+  const identity = process.env.SUPERADMIN_EMAIL;
+  const hasIdentity = Boolean(identity && identity !== 'admin@example.com');
+  const emailOk =
+    !hasIdentity ||
+    String(body.email ?? '').trim().toLowerCase() === identity!.trim().toLowerCase();
+
+  if (!passwordOk || !emailOk) {
+    // One message for both: saying which half was wrong tells an attacker
+    // whether an address is the right one.
+    return NextResponse.json(
+      { error: hasIdentity ? 'wrong email or password' : 'wrong password' },
+      { status: 401 },
+    );
   }
 
   // "Remember me" is a real difference rather than a decorative checkbox:
