@@ -78,8 +78,13 @@ export async function POST(req: NextRequest) {
   // panel is the process being restarted - it cannot answer this request from
   // the other side of it. Detach it so the response is already on its way.
   if (body.restart) {
+    // .env is sourced into the restarting shell first. `pm2 restart` alone
+    // restores the environment pm2 captured at first start, and --update-env
+    // copies whatever the *calling* shell has - neither reads .env. Without
+    // this, a value written a line ago is still invisible to the process.
     run(
-      'nohup sh -c "sleep 1; pm2 restart bitroot-panel --update-env" >/dev/null 2>&1 &',
+      'nohup sh -c "sleep 1; set -a; . $HOME/apps/bitroot-panel/.env; set +a; ' +
+        'pm2 restart bitroot-panel --update-env" >/dev/null 2>&1 &',
       5_000,
     ).catch(() => {});
   }

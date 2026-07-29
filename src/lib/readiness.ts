@@ -58,7 +58,16 @@ async function env(): Promise<Record<string, string>> {
       const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
       if (m) out[m[1]] = m[2].trim();
     }
-    return { ...out, ...(process.env as Record<string, string>) };
+    // An empty process.env value must not mask a real one from the file. The
+    // installer writes blank placeholders, pm2 captures them at first start,
+    // and dotenv refuses to overwrite anything already set - so the blank
+    // outlives every later edit and the panel reports a credential missing
+    // while it sits in the file, filled in.
+    const merged = { ...out };
+    for (const [k, v] of Object.entries(process.env)) {
+      if (typeof v === 'string' && v !== '') merged[k] = v;
+    }
+    return merged;
   } catch {
     return process.env as Record<string, string>;
   }
@@ -352,7 +361,7 @@ async function storageStep(e: Record<string, string>): Promise<Step> {
       status: 'missing',
       detail: 'No Garage admin token, so the panel cannot manage buckets.',
       unlocks,
-      fix: ['Set GARAGE_ADMIN_TOKEN in ~/apps/bitroot-panel/.env', 'pm2 restart bitroot-panel --update-env'],
+      fix: ['Set GARAGE_ADMIN_TOKEN in ~/apps/bitroot-panel/.env', 'set -a; . ~/apps/bitroot-panel/.env; set +a; pm2 restart bitroot-panel --update-env'],
     };
   }
   let reachable = false;

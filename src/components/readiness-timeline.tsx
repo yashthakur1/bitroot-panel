@@ -152,6 +152,7 @@ function CredentialForm({ step, onSaved }: { step: Step; onSaved: () => void }) 
     Object.fromEntries((step.fields ?? []).map((f) => [f.key, f.suggestion ?? ''])),
   );
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<'idle' | 'restarting' | 'done'>('idle');
   const [error, setError] = useState('');
   const [canForce, setCanForce] = useState(false);
   const [failed, setFailed] = useState<Array<{ name: string; ok: boolean }> | null>(null);
@@ -174,9 +175,29 @@ function CredentialForm({ step, onSaved }: { step: Step; onSaved: () => void }) 
         setFailed(d.verified?.permissions ?? null);
         return;
       }
-      onSaved();
+      // The panel restarts itself here, so the obvious next step - re-scan
+      // immediately - fires at a server that is on its way down. That request
+      // failed silently and the whole thing looked like a dead button. Say what
+      // happened, wait for it to answer again, then re-scan.
+      setStage('restarting');
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        try {
+          const ping = await fetch('/api/readiness', { cache: 'no-store' });
+          if (ping.ok) {
+            setStage('done');
+            onSaved();
+            return;
+          }
+        } catch {
+          /* still restarting */
+        }
+      }
+      setStage('idle');
+      setError('Saved, but the panel has not come back. Check: pm2 list');
     } catch (e) {
       setError((e as Error).message);
+      setStage('idle');
     } finally {
       setBusy(false);
     }
@@ -232,6 +253,17 @@ function CredentialForm({ step, onSaved }: { step: Step; onSaved: () => void }) 
           {busy && <Loader2 size={13} className="animate-spin" />}
           Save and apply
         </button>
+        {stage === 'restarting' && (
+          <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <Loader2 size={12} className="animate-spin" />
+            Saved. Restarting the panel…
+          </span>
+        )}
+        {stage === 'done' && (
+          <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-500">
+            <Check size={12} /> Applied
+          </span>
+        )}
         {canForce && (
           <button
             onClick={() => save(true)}
