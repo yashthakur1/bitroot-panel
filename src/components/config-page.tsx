@@ -390,6 +390,14 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
 
           {/* Software & upgrades */}
           <div className={tab === 'software' ? '' : 'hidden'}>
+          <div className="mb-4 rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/[0.06] p-3">
+            <p className="text-sm text-amber-800 dark:text-amber-400 text-pretty">
+              <strong>Upgrading pm2 restarts every service on this machine</strong>, including this
+              panel — the page will drop while it happens. The process list is saved first and
+              restored if the daemon comes back empty, but do it when a few minutes of downtime is
+              acceptable.
+            </p>
+          </div>
             <Upgrades versions={state.versions ?? {}} onDone={load} />
           </div>
 

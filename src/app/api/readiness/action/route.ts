@@ -32,6 +32,25 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
       echo "linked $uuid"
     `,
   },
+  // The recovery for a half-finished pm2 upgrade. Saves before cycling, and
+  // restores from that dump if the daemon comes back with nothing — which is
+  // exactly how a machine ends up with every service stopped.
+  'refresh-pm2': {
+    label: 'cycle the pm2 daemon',
+    script: `
+      pm2 save 2>&1 || true
+      pm2 update 2>&1
+      sleep 2
+      if [ "$(pm2 jlist 2>/dev/null | tr -d ' \n')" = "[]" ]; then
+        echo "daemon came back empty — restoring from the saved dump"
+        pm2 resurrect 2>&1
+        sleep 2
+      fi
+      running=$(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const l=JSON.parse(d);console.log(l.filter(p=>p.pm2_env.status==="online").length+"/"+l.length);}catch(e){console.log("0/0");}});')
+      echo "pm2 refreshed — $running services online"
+    `,
+    timeout: 300_000,
+  },
   'start-tunnel': {
     label: 'start cloudflared',
     script: `

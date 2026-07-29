@@ -386,6 +386,34 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
   };
 }
 
+// pm2 upgraded on disk while the running daemon stayed on the old version is a
+// state the machine can sit in indefinitely: everything looks installed, and
+// the process table is empty. It took a production outage to notice, so the
+// panel should say it out loud.
+async function pm2Step(): Promise<Step> {
+  const r = await run('pm2 list 2>&1 | head -20; true', 20_000);
+  const stale = /out-of-date/i.test(r.output);
+  if (!stale) {
+    return {
+      id: 'pm2',
+      title: 'Process manager',
+      status: 'ready',
+      detail: 'pm2 is running the version installed on disk.',
+      unlocks: [],
+    };
+  }
+  const inMem = /In memory PM2 version:\s*(\S+)/.exec(r.output)?.[1] ?? 'an older version';
+  const local = /Local PM2 version:\s*(\S+)/.exec(r.output)?.[1] ?? 'the installed one';
+  return {
+    id: 'pm2',
+    title: 'Process manager',
+    status: 'partial',
+    detail: `pm2 ${local} is installed but the running daemon is still ${inMem}. Cycling it restarts every service on this machine, including the panel.`,
+    unlocks: ['Services surviving a reboot', 'Anything the panel starts or restarts'],
+    actions: [{ id: 'refresh-pm2', label: 'Cycle the pm2 daemon', note: 'Saves the process list first, then restores it if the daemon comes back empty. Every service restarts.' }],
+  };
+}
+
 async function panelVersionStep(fresh: boolean): Promise<Step> {
   const v = await versionInfo(fresh);
   const unlocks = ['Fixes and features released since this was installed'];
@@ -589,6 +617,7 @@ export async function readiness(fresh = false): Promise<Readiness> {
     storageStep(e),
     pocketbaseStep(),
     panelVersionStep(fresh),
+    pm2Step(),
   ]);
   return {
     steps,
