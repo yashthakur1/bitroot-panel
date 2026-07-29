@@ -12,7 +12,7 @@ import path from 'path';
 import { run } from './runner';
 import { checkCloudflare, detectTailnet } from './setup';
 import { versionInfo } from './version';
-import { webRootDomain } from './garage-config';
+import { adminBindAddr, bindIsLoopback, webRootDomain } from './garage-config';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -469,19 +469,51 @@ async function storageStep(e: Record<string, string>): Promise<Step> {
     };
   }
 
+  // Two things can be wrong while Garage is up and answering, and a machine can
+  // have both, so they are collected rather than raced for a single early
+  // return: fixing one should not hide the other for a refresh.
+  const details: string[] = [];
+  const actions: Step['actions'] = [];
+  let issueUnlocks: string[] = [];
+
+  // The admin API creates buckets, mints S3 keys and rewrites the cluster
+  // layout, with a bearer token as the only thing in front of it. Installs
+  // before 0.1.8 bound it to "[::]:3903" - every interface - while the port
+  // table promised loopback. Nothing off this machine needs to reach it.
+  const adminBind = await adminBindAddr();
+  if (adminBind && !bindIsLoopback(adminBind)) {
+    details.push(
+      `The Garage admin API is bound to ${adminBind}, which is every interface — it should answer on loopback only.`,
+    );
+    actions.push({
+      id: 'secure-garage-admin',
+      label: 'Bind admin API to 127.0.0.1',
+      note: 'Rewrites [admin] api_bind_addr in garage.toml and restarts Garage. The S3 API and website endpoint are left reachable.',
+    });
+    issueUnlocks = unlocks;
+  }
+
   // Garage's website endpoint resolves a Host to a bucket by stripping this.
   // When it disagrees with the domain the panel publishes under, every public
   // object 404s - from Garage, which reads exactly like a missing file.
   const domain = e.DOMAIN_SUFFIX && e.DOMAIN_SUFFIX !== 'example.com' ? e.DOMAIN_SUFFIX : null;
   const webRoot = await webRootDomain();
   if (domain && webRoot && webRoot !== domain) {
+    details.push(
+      `Its website endpoint serves .${webRoot} while the panel publishes under ${domain} — published objects will 404.`,
+    );
+    actions.push({ id: 'sync-garage-domain', label: `Point Garage at ${domain}` });
+    issueUnlocks = [...new Set([...issueUnlocks, 'Public URLs for published buckets'])];
+  }
+
+  if (details.length) {
     return {
       id: 'storage',
       title: 'Object storage',
       status: 'partial',
-      detail: `Garage is running, but its website endpoint serves .${webRoot} while the panel publishes under ${domain} — published objects will 404.`,
-      unlocks: ['Public URLs for published buckets'],
-      actions: [{ id: 'sync-garage-domain', label: `Point Garage at ${domain}` }],
+      detail: `Garage is running, but: ${details.join(' ')}`,
+      unlocks: issueUnlocks,
+      actions,
     };
   }
 

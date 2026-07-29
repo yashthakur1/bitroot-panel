@@ -68,10 +68,28 @@
         The installer finishes by printing a URL and a generated password. Open it and the setup
         wizard collects everything else — no editing files over SSH.
       </p>
+      <p>
+        The URL it prints is the loopback one, which is the right one when the browser is on the
+        same machine:
+      </p>
       <div class="cmd">
-        <pre id="c4">http://&lt;this-machine&gt;:3210</pre>
+        <pre id="c4">http://127.0.0.1:3210</pre>
         <button onclick="copyCmd(this, 'c4')">Copy</button>
       </div>
+      <p>
+        Installed on a headless box over SSH — the usual case — open it from your own machine
+        instead, using the server's LAN address or its hostname. Ask the server for the address:
+      </p>
+      <div class="cmd">
+        <pre id="c4b" class="wrap-code">hostname -I | awk '{print "http://" $1 ":3210"}'   # e.g. http://192.168.1.42:3210</pre>
+        <button onclick="copyCmd(this, 'c4b')">Copy</button>
+      </div>
+      <p class="note">
+        <code>http://<em>hostname</em>:3210</code> works too wherever the network resolves the
+        name, and once Tailscale is up the tailnet address reaches it from anywhere. The panel
+        listens on all interfaces on 3210 — the password is what stands in front of it, so do not
+        put that port on the public internet.
+      </p>
       <p>
         After that, <strong>Config → Setup</strong> shows what this machine can and cannot do, and
         why. Each dependency is probed by asking the service rather than reading config, and says
@@ -84,7 +102,18 @@
         <li><p>Node 22 from NodeSource, and pm2 globally</p></li>
         <li><p>cloudflared from Cloudflare's own <code>.deb</code></p></li>
         <li><p>Garage from the official release for your architecture, plus <code>/etc/garage.toml</code> with generated secrets</p></li>
-        <li><p>PocketBase, and the service account the panel authenticates with</p></li>
+        <li>
+          <p>
+            PocketBase, and the superuser account the panel authenticates with. That account is
+            created silently and never printed, so its email and password are written to
+            <code>~/apps/pocketbase/.superuser</code> (mode <code>600</code>) — read them from
+            there when you want to sign in to PocketBase's own admin UI on port 8090:
+          </p>
+          <div class="cmd">
+            <pre id="c6">cat ~/apps/pocketbase/.superuser</pre>
+            <button onclick="copyCmd(this, 'c6')">Copy</button>
+          </div>
+        </li>
         <li><p>The panel itself, built, with a generated password in <code>.env</code></p></li>
         <li><p>The helper scripts into <code>~/bin</code></p></li>
         <li><p>A single-node Garage layout, then everything under pm2, registered with systemd</p></li>
@@ -103,6 +132,21 @@ curl -fsSL https://tailscale.com/install.sh | sh &amp;&amp; sudo tailscale up
 cloudflared tunnel login
 cloudflared tunnel create $(hostname)</pre>
         <button onclick="copyCmd(this, 'c5')">Copy</button>
+      </div>
+      <div class="callout warn">
+        <p>
+          <strong><code>cloudflared tunnel login</code> needs a browser, and blocks until it gets
+          one.</strong> It prints a <code>dash.cloudflare.com</code> URL, tries to open it, and
+          then waits — there is no timeout and no prompt. On a headless server nothing opens, so
+          copy that URL into a browser on your laptop or phone, sign in, and pick the zone. Only
+          when you authorise it there does the command return, writing
+          <code>~/.cloudflared/cert.pem</code>. <code>cloudflared tunnel create</code> fails
+          without that file, so it has to be second.
+        </p>
+        <p>
+          If it looks stuck, it is waiting for you. <code>Ctrl-C</code> and re-run it if the URL
+          scrolled away.
+        </p>
       </div>
       <p>
         The Cloudflare token needs four permissions, and the setup view lists them with what each is
@@ -137,8 +181,8 @@ cloudflared tunnel create $(hostname)</pre>
             <tr><td>3210</td><td>the panel</td></tr>
             <tr><td>3900</td><td>Garage S3 API</td></tr>
             <tr><td>3902</td><td>Garage website endpoint, for published buckets</td></tr>
-            <tr><td>3903</td><td>Garage admin API, loopback only</td></tr>
-            <tr><td>8090</td><td>PocketBase</td></tr>
+            <tr><td>3903</td><td>Garage admin API, bound to <code>127.0.0.1</code> only</td></tr>
+            <tr><td>8090</td><td>PocketBase, bound to <code>127.0.0.1</code> only</td></tr>
             <tr><td>9000</td><td>deploy webhook, for push-to-deploy pipelines</td></tr>
           </tbody>
         </table>
@@ -147,6 +191,22 @@ cloudflared tunnel create $(hostname)</pre>
         Only the panel, published buckets and the deploy webhook need to be reachable from outside.
         Keep the rest on loopback or the tailnet.
       </p>
+      <div class="callout warn">
+        <p>
+          <strong>Installed before 0.1.8? Check port 3903.</strong> Those installs wrote
+          <code>api_bind_addr = "[::]:3903"</code> into <code>/etc/garage.toml</code>, which is
+          every interface, not loopback — so the Garage admin API, which creates buckets and mints
+          S3 keys behind nothing but a bearer token, answered on the LAN while this table said it
+          did not.
+        </p>
+        <p>
+          <code>ss -lntp | grep 3903</code> tells you: <code>127.0.0.1:3903</code> is fixed,
+          <code>*:3903</code> is not. <strong>Config → Setup</strong> detects it and offers
+          <em>Bind admin API to 127.0.0.1</em>, which rewrites the one line and restarts Garage;
+          re-running the installer does the same. Ports 3900 and 3902 stay reachable either way —
+          published buckets need them.
+        </p>
+      </div>
 
       <h2 id="updates">Updates</h2>
       <p>
