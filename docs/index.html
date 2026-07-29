@@ -134,10 +134,35 @@
           <p>Cloudflare Tunnel ingress and DNS, with an edge cache rule so published files are served without touching the device.</p>
         </div>
         <div class="card">
+          <h3>Pipelines</h3>
+          <p>A push to a branch deploys a service. The panel registers the webhook with GitHub itself and verifies every delivery's signature.</p>
+        </div>
+        <div class="card">
           <h3>Residue</h3>
           <p>What a removal left behind — DNS records, files, access keys — and a way to finish the job.</p>
         </div>
       </div>
+
+      <h2>It tells you what it cannot do</h2>
+      <p class="honest">
+        Cloudflare, Tailscale, storage and the tunnel are each optional and each independently
+        broken-able — a token missing one permission, an app installed but never signed in. A panel
+        that degrades quietly around those is correct and useless: you find out when a feature
+        silently does nothing. The setup view probes each one by asking the service rather than
+        reading config, leads with what stops working until it is fixed, and takes the credential
+        right there instead of sending you to a terminal to edit a file it owns.
+      </p>
+
+      <h2>Updates</h2>
+      <p>
+        <code>bitpanel@x.y.z</code> installs the panel released as <code>x.y.z</code> — the installer
+        checks out that tag rather than the tip of a branch. The panel then compares itself against
+        the latest published release, and can fetch, build and restart into it without a terminal.
+      </p>
+      <p class="note">
+        Packages are published from CI through npm trusted publishing, so each carries a signed
+        provenance attestation tying it to the commit it was built from.
+      </p>
 
       <h2>Runs on</h2>
       <table>
