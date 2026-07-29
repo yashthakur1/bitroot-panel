@@ -12,6 +12,7 @@ import path from 'path';
 import { run } from './runner';
 import { checkCloudflare, detectTailnet } from './setup';
 import { versionInfo } from './version';
+import { webRootDomain } from './garage-config';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -457,13 +458,39 @@ async function storageStep(e: Record<string, string>): Promise<Step> {
   } catch {
     reachable = false;
   }
+  if (!reachable) {
+    return {
+      id: 'storage',
+      title: 'Object storage',
+      status: 'partial',
+      detail: 'Token is set but Garage did not answer.',
+      unlocks,
+      fix: ['pm2 restart garage'],
+    };
+  }
+
+  // Garage's website endpoint resolves a Host to a bucket by stripping this.
+  // When it disagrees with the domain the panel publishes under, every public
+  // object 404s - from Garage, which reads exactly like a missing file.
+  const domain = e.DOMAIN_SUFFIX && e.DOMAIN_SUFFIX !== 'example.com' ? e.DOMAIN_SUFFIX : null;
+  const webRoot = await webRootDomain();
+  if (domain && webRoot && webRoot !== domain) {
+    return {
+      id: 'storage',
+      title: 'Object storage',
+      status: 'partial',
+      detail: `Garage is running, but its website endpoint serves .${webRoot} while the panel publishes under ${domain} — published objects will 404.`,
+      unlocks: ['Public URLs for published buckets'],
+      actions: [{ id: 'sync-garage-domain', label: `Point Garage at ${domain}` }],
+    };
+  }
+
   return {
     id: 'storage',
     title: 'Object storage',
-    status: reachable ? 'ready' : 'partial',
-    detail: reachable ? 'Garage is running and the token works.' : 'Token is set but Garage did not answer.',
+    status: 'ready',
+    detail: 'Garage is running and the token works.',
     unlocks,
-    fix: reachable ? undefined : ['pm2 restart garage'],
   };
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkCloudflare, writeEnv } from '@/lib/setup';
 import { run } from '@/lib/runner';
+import { syncWebRootDomain } from '@/lib/garage-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,6 +75,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
 
+  // Setting the domain has a second consequence: Garage resolves published
+  // hostnames by stripping its own root_domain, and if that is left behind
+  // every public object 404s. Reconcile it here rather than leaving a
+  // configuration that only looks right.
+  let garage: string | undefined;
+  if (values.DOMAIN_SUFFIX) {
+    const r = await syncWebRootDomain(values.DOMAIN_SUFFIX);
+    garage = r.message;
+  }
+
   // Restarting is what makes the new values take effect everywhere, but the
   // panel is the process being restarted - it cannot answer this request from
   // the other side of it. Detach it so the response is already on its way.
@@ -93,6 +104,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     saved: Object.keys(values),
     verified,
+    garage,
     restarting: Boolean(body.restart),
   });
 }
