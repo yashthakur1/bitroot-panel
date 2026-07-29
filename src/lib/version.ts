@@ -112,6 +112,20 @@ export async function startUpdate(target: string): Promise<void> {
     'env -u NODE_ENV npm install --include=dev --no-audit --no-fund',
     'echo "== building =="',
     'NODE_OPTIONS=--max-old-space-size=2048 npm run build',
+    // The panel drives scripts that live in ~/bin, outside the tree it just
+    // updated. The installer and the push hook both sync them; updating from
+    // the panel did not, so a release could ship a new script and leave the old
+    // one running - silently, because nothing fails, it just behaves like the
+    // version before.
+    'echo "== syncing ~/bin scripts =="',
+    'mkdir -p "$HOME/bin"',
+    'for f in server-scripts/*; do',
+    '  [ -f "$f" ] || continue',
+    '  b=$(basename "$f")',
+    '  case "$b" in *-template|*.conf) continue ;; esac',
+    '  head -c 2 "$f" | grep -q "^#!" || continue',
+    '  cmp -s "$f" "$HOME/bin/$b" || { cp "$f" "$HOME/bin/$b"; chmod +x "$HOME/bin/$b"; echo "   updated $b"; }',
+    'done',
     '{ echo "ref=$(git describe --tags --always 2>/dev/null)";',
     '  echo "commit=$(git rev-parse --short HEAD 2>/dev/null)";',
     '  echo "installed=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; } > "$APP/.bitpanel-version"',
