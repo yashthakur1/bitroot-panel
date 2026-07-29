@@ -22,11 +22,11 @@ export default function ReadinessTimeline() {
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
 
-  const scan = useCallback(async () => {
+  const scan = useCallback(async (fresh = false) => {
     setScanning(true);
     setError('');
     try {
-      const res = await fetch('/api/readiness', { cache: 'no-store' });
+      const res = await fetch(`/api/readiness${fresh ? '?fresh=1' : ''}`, { cache: 'no-store' });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       setData(d);
@@ -71,7 +71,7 @@ export default function ReadinessTimeline() {
             </p>
           </div>
           <button
-            onClick={scan}
+            onClick={() => scan(true)}
             disabled={scanning}
             className="shrink-0 flex items-center gap-1.5 text-sm px-2.5 h-9 rounded-lg
                        border border-gray-200 dark:border-gray-800

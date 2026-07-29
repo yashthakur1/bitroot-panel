@@ -41,10 +41,12 @@ function newer(a: string, b: string): boolean {
 
 let cached: { at: number; latest: string | null } | null = null;
 
-async function latestPublished(): Promise<string | null> {
-  // Cached for an hour: this is checked on every visit to the setup page, and
-  // the answer changes at the pace of releases.
-  if (cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.latest;
+async function latestPublished(force = false): Promise<string | null> {
+  // Cached for an hour, because this is checked on every visit to the setup
+  // page. But an explicit re-scan has to bypass it: otherwise a release
+  // published minutes ago stays invisible for an hour, and pressing the button
+  // meant for exactly that question changes nothing.
+  if (!force && cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.latest;
   try {
     const res = await fetch('https://registry.npmjs.org/bitpanel/latest', {
       cache: 'no-store',
@@ -59,7 +61,7 @@ async function latestPublished(): Promise<string | null> {
   }
 }
 
-export async function versionInfo(): Promise<VersionInfo> {
+export async function versionInfo(force = false): Promise<VersionInfo> {
   const [marker, described, head] = await Promise.all([
     run(`cat ${APP}/.bitpanel-version 2>/dev/null || true`, 10_000),
     run(`git -C ${APP} describe --tags --exact-match 2>/dev/null || true`, 15_000),
@@ -71,7 +73,7 @@ export async function versionInfo(): Promise<VersionInfo> {
   const installed =
     clean(described.output) || clean(marker.output.match(/^ref=(.*)$/m)?.[1]) || null;
   const commit = head.output.trim().split('\n').pop()?.trim() || null;
-  const latest = await latestPublished();
+  const latest = await latestPublished(force);
 
   return {
     installed,
