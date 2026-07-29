@@ -4,6 +4,8 @@
 // gave them meaning, so the panel reads them straight from Cloudflare (rather
 // than trusting a local list) and can delete the ones nothing serves.
 
+import { run } from './runner';
+
 const ZONE = process.env.CF_ZONE_ID ?? '';
 const TOKEN = process.env.CF_API_TOKEN ?? '';
 
@@ -32,12 +34,37 @@ async function cf(path: string, init: RequestInit = {}) {
   return data.result;
 }
 
-// Only records that resolve to a tunnel are ours to reason about; A records,
-// MX, verification TXTs and anything else are left strictly alone.
+// The tunnel this machine runs, read from its own config. A zone is shared by
+// every device pointed at it, so each machine must only judge its own records.
+async function localTunnelId(): Promise<string | null> {
+  if (process.env.TUNNEL_ID) return process.env.TUNNEL_ID;
+  const r = await run(
+    `grep -E "^[[:space:]]*tunnel:" "$HOME/.cloudflared/config.yml" 2>/dev/null | head -1 | awk '{print $2}'; true`,
+    10_000,
+  );
+  const id = r.output.trim().split('\n').pop()?.trim() ?? '';
+  return /^[0-9a-f-]{30,40}$/i.test(id) ? id : null;
+}
+
+// Only records that resolve to *this machine's* tunnel are ours to reason
+// about; A records, MX, verification TXTs and anything else are left alone.
+//
+// This used to match every CNAME in the zone ending in .cfargotunnel.com. With
+// two devices on one zone - the normal case as soon as there is a second
+// machine - each saw the other's hostnames as served by nothing and offered to
+// delete them. A second panel could have taken the first off the internet from
+// the page whose entire purpose is tidying up.
+//
+// When the local tunnel cannot be identified this returns nothing rather than
+// everything: refusing to act beats offering to delete records we cannot prove
+// belong to us.
 export async function listTunnelRecords(): Promise<DnsRecord[]> {
+  const id = await localTunnelId();
+  if (!id) return [];
+  const target = `${id}.cfargotunnel.com`.toLowerCase();
   const all = await cf('/dns_records?per_page=200');
   return (all as DnsRecord[]).filter(
-    (r) => r.type === 'CNAME' && r.content.endsWith('.cfargotunnel.com'),
+    (r) => r.type === 'CNAME' && r.content.toLowerCase() === target,
   );
 }
 
