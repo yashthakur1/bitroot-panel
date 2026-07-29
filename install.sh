@@ -465,26 +465,36 @@ fi
 
 # ─── 9. what is left for a human ─────────────────────────────────
 echo
-say "BitPanel is running on http://127.0.0.1:$PANEL_PORT"
+# Every address this panel can actually be opened on. Printing only the
+# loopback one is useless from the laptop you are almost certainly sitting at,
+# and leaves people guessing what to substitute for "this machine".
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+TS_NAME=$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName":"\([^"]*\)".*/\1/p' | head -1 | sed 's/\.$//')
+
+say "BitPanel is running"
+echo "    on this machine:  http://127.0.0.1:$PANEL_PORT"
+[ -n "$LAN_IP" ] && echo "    on your network:  http://$LAN_IP:$PANEL_PORT"
+[ -n "$TS_NAME" ] && echo "    over Tailscale:   http://$TS_NAME:$PANEL_PORT"
 if [ "${NEW_ENV:-0}" = "1" ]; then
-	echo "    dashboard password:  $(grep '^DASHBOARD_PASSWORD=' "$ENV_FILE" | cut -d= -f2)"
+	echo ""
+	echo "    password:         $(grep '^DASHBOARD_PASSWORD=' "$ENV_FILE" | cut -d= -f2)"
+	echo "    (you will be asked to replace this with one of your own)"
 fi
 cat <<EOF
 
-  Still to do, because these need credentials only you have:
+  Open one of those addresses and sign up: pick an email and a password, and
+  the panel takes it from there — domain, Cloudflare, storage. You do not need
+  to edit any files by hand.
 
-    1. Tailscale, for private access:
-         curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
-       then set TAILNET_HOST in $ENV_FILE to the name it reports.
+  Config -> Setup then shows what this machine can and cannot do yet, and takes
+  each credential right there. What it will ask for:
 
-    2. Cloudflare, for public routes and the edge cache rule:
-         cloudflared tunnel login && cloudflared tunnel create \$(hostname)
-       then put CF_API_TOKEN and CF_ZONE_ID in $ENV_FILE. The token needs
-       Zone:DNS:Edit, Zone:Cache Rules:Edit, Account:Account Rulesets:Edit
-       and Zone:Cache Purge:Purge.
-
-    3. Set DOMAIN_SUFFIX in $ENV_FILE to the zone you route under.
-
-  Then: pm2 restart bitroot-panel
+    * a domain, if you want public URLs
+    * a Cloudflare API token, for DNS and the edge cache rule
+    * Tailscale, for private access without opening anything:
+        curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
+    * a Cloudflare tunnel, for public routes:
+        cloudflared tunnel login && cloudflared tunnel create \$(hostname)
+      (the login opens a browser — do it from a machine that has one)
 
 EOF

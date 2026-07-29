@@ -26,6 +26,9 @@ export default function SetupWizard() {
   const [done, setDone] = useState(false);
 
   const [domain, setDomain] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailCredentials, setEmailCredentials] = useState(true);
+  const [mailNote, setMailNote] = useState('');
   const [password, setPassword] = useState('');
   const [tailnetHost, setTailnetHost] = useState('');
   const [cfToken, setCfToken] = useState('');
@@ -72,6 +75,11 @@ export default function SetupWizard() {
         body: JSON.stringify({
           step: 'save',
           domain,
+          email,
+          emailCredentials,
+          // The address the operator actually reached this page on beats
+          // anything the server can guess about how it is reachable.
+          panelUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
           password,
           tailnetHost: tailnetHost || undefined,
           cfToken: cfToken || undefined,
@@ -80,6 +88,7 @@ export default function SetupWizard() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      if (d.mail) setMailNote(d.mail);
       setDone(true);
     } catch (e) {
       setError((e as Error).message);
@@ -114,6 +123,11 @@ export default function SetupWizard() {
           before it takes effect — some values are compiled into the browser bundle, so a restart
           alone is not enough for those.
         </p>
+        {mailNote && (
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-pretty">
+            Email: {mailNote}
+          </p>
+        )}
         <pre className="bg-gray-950 text-gray-200 rounded-lg p-3 text-xs font-mono overflow-x-auto">
 {`cd ~/apps/bitroot-panel
 npm run build && pm2 restart bitroot-panel`}
@@ -122,7 +136,7 @@ npm run build && pm2 restart bitroot-panel`}
     );
   }
 
-  const steps = ['Panel', 'Domain', 'Cloudflare', 'Review'];
+  const steps = ['Sign up', 'Domain', 'Cloudflare', 'Review'];
 
   return (
     <Shell>
@@ -154,18 +168,52 @@ npm run build && pm2 restart bitroot-panel`}
       {step === 0 && (
         <div className="space-y-4">
           <Field
-            label="Dashboard password"
-            hint="At least 12 characters. This is the only thing standing between the panel and anyone who can reach the port."
+            label="Your email"
+            hint="This becomes your sign-in name, and is what the panel means by the admin."
+          >
+            <input
+              type="email"
+              autoFocus
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value.trim())}
+              className={inputCls}
+            />
+          </Field>
+          <Field
+            label="Password"
+            hint="At least 12 characters. This replaces the one the installer generated."
           >
             <input
               type="password"
-              autoFocus
+              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={inputCls}
             />
           </Field>
-          <Nav onNext={() => setStep(1)} nextDisabled={password.length < 12} />
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={emailCredentials}
+              onChange={(e) => setEmailCredentials(e.target.checked)}
+              className="mt-1"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              Email me the address and password
+              <span className="block text-xs text-gray-500 dark:text-gray-400 text-pretty">
+                Sent once, from this server. If mail is not configured here, nothing is sent and
+                setup carries on regardless.
+              </span>
+            </span>
+          </label>
+
+          <Nav
+            onNext={() => setStep(1)}
+            nextDisabled={password.length < 12 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)}
+          />
         </div>
       )}
 
@@ -252,6 +300,7 @@ npm run build && pm2 restart bitroot-panel`}
       {step === 3 && (
         <div className="space-y-4">
           <dl className="text-sm space-y-2">
+            <Row k="Email" v={email} />
             <Row k="Domain" v={domain} />
             <Row k="Tailscale" v={tailnetHost || 'not configured'} />
             <Row k="Cloudflare" v={cfToken ? (checked?.ok ? 'verified' : 'set, not verified') : 'not configured'} />
