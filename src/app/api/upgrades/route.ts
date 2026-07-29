@@ -23,11 +23,16 @@ const TARGETS: Record<string, { cmd: string; timeoutMs: number }> = {
       'npm install -g pm2@latest 2>&1',
       'echo "== cycling the pm2 daemon =="',
       'pm2 update 2>&1',
-      'sleep 2',
-      'if [ "$(pm2 jlist 2>/dev/null | tr -d " \n")" = "[]" ]; then',
+      'sleep 3',
+      // Counted, not string-compared. A stale daemon prints a banner and colour
+      // codes ahead of the JSON, so "is the output exactly []" is never true —
+      // precisely when this check is the thing standing between the operator
+      // and a machine with nothing running on it.
+      'count=$(pm2 jlist 2>/dev/null | node -e \'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const c2=d.replace(/\\x1b\\[[0-9;]*[A-Za-z]/g,"");const m=c2.match(/^\\s*\\[/m);if(!m){console.log(0);return;}try{console.log(JSON.parse(c2.slice(m.index)).length);}catch(e){console.log(0);}});\' 2>/dev/null || echo 0)',
+      'if [ "$count" -eq 0 ]; then',
       '  echo "== daemon came back empty — restoring from the saved dump =="',
       '  pm2 resurrect 2>&1',
-      '  sleep 2',
+      '  sleep 3',
       'fi',
       'echo "== result =="',
       'pm2 list 2>&1',

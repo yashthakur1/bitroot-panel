@@ -38,13 +38,24 @@ const ACTIONS: Record<string, { label: string; script: string; timeout?: number 
   'refresh-pm2': {
     label: 'cycle the pm2 daemon',
     script: `
+      pm2_online_count() {
+        pm2 jlist 2>/dev/null | node -e '
+          let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{
+            // Strip colour codes and skip any banner pm2 prints ahead of the
+            // JSON - a stale daemon emits one, which is exactly when this runs.
+            const clean=d.replace(/\x1b\[[0-9;]*[A-Za-z]/g,"");
+            const m=clean.match(/^\s*\[/m);
+            if(!m){console.log(0);return;}
+            try{console.log(JSON.parse(clean.slice(m.index)).length);}catch(e){console.log(0);}
+          });' 2>/dev/null || echo 0
+      }
       pm2 save 2>&1 || true
       pm2 update 2>&1
-      sleep 2
-      if [ "$(pm2 jlist 2>/dev/null | tr -d ' \n')" = "[]" ]; then
+      sleep 3
+      if [ "$(pm2_online_count)" -eq 0 ]; then
         echo "daemon came back empty — restoring from the saved dump"
         pm2 resurrect 2>&1
-        sleep 2
+        sleep 3
       fi
       running=$(pm2 jlist 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const l=JSON.parse(d);console.log(l.filter(p=>p.pm2_env.status==="online").length+"/"+l.length);}catch(e){console.log("0/0");}});')
       echo "pm2 refreshed — $running services online"
