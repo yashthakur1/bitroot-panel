@@ -25,6 +25,8 @@ export interface Project {
   uptimeMs: number;
   restarts: number;
   port: number | null;
+  /** Node, Go, C, Binary - from pm2 rather than the service's name. */
+  runtime?: string;
   url: string | null;
   // Reachable over Tailscale but not published. Null when the service binds to
   // loopback only, so the panel never offers a link that cannot open.
@@ -34,6 +36,40 @@ export interface Project {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// pm2 knows whether it launched an interpreter or a binary. Beyond that only
+// the daemons the panel installs itself can be named honestly - nginx is C, and
+// calling it Go because it sat in a list beside three Go programs is the kind
+// of detail that quietly teaches people the panel is guessing.
+const DAEMON_RUNTIME: Record<string, string> = {
+  nginx: 'C',
+  garage: 'Go',
+  cloudflared: 'Go',
+  pocketbase: 'Go',
+};
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+function portFromArgs(a: any): number | null {
+  const args: string[] = Array.isArray(a?.pm2_env?.args) ? a.pm2_env.args : [];
+  const joined = args.join(' ');
+  // --http=127.0.0.1:8090, --port 8080, -p 3000, --addr :9000
+  const m =
+    /--(?:http|addr|listen)[= ]\S*?:(\d{2,5})/.exec(joined) ??
+    /--port[= ](\d{2,5})/.exec(joined) ??
+    /(?:^|\s)-p\s+(\d{2,5})/.exec(joined);
+  const port = m ? Number(m[1]) : NaN;
+  return Number.isFinite(port) && port > 0 && port < 65536 ? port : null;
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+function runtimeOf(a: any): string {
+  // pm2 stores the interpreter's full path, so /usr/bin/node has to be reduced
+  // to a name before it means anything to a reader.
+  const interp = String(a?.pm2_env?.exec_interpreter ?? '').split('/').pop();
+  if (interp && interp !== 'none') return interp === 'node' ? 'Node' : interp;
+  return DAEMON_RUNTIME[a?.name] ?? 'Binary';
+}
 
 export async function GET() {
   const [pm2, ports, tunnel, statics] = await Promise.all([
@@ -109,12 +145,37 @@ export async function GET() {
     // fall through with empty list
   }
 
+  // pm2 records the environment a process was started with, and a child
+  // inherits PORT from whatever shell launched it. cloudflared started from a
+  // shell that had sourced .env carried PORT=3210 and was then credited with
+  // the panel's own address. A port claimed by more than one process is
+  // inherited, not owned, and proves nothing about either.
+  const envPortClaims: Record<number, string[]> = {};
   for (const a of apps) {
     const envPort = Number(a.pm2_env?.env?.PORT);
-    if (envPort) {
-      portsInUse[envPort] ??= `pm2 app "${a.name}"`;
-      pm2Port[a.name] = envPort;
+    if (envPort) (envPortClaims[envPort] ??= []).push(a.name);
+  }
+  for (const [portStr, names] of Object.entries(envPortClaims)) {
+    if (names.length !== 1) continue;
+    const envPort = Number(portStr);
+    portsInUse[envPort] ??= `pm2 app "${names[0]}"`;
+    pm2Port[names[0]] = envPort;
+  }
+  // A port written into the process's own arguments is stated, not inherited,
+  // so it outranks anything read from the environment.
+  for (const a of apps) {
+    const argPort = portFromArgs(a);
+    if (argPort) {
+      pm2Port[a.name] = argPort;
+      portsInUse[argPort] ??= `pm2 app "${a.name}"`;
     }
+  }
+  // The panel is the process answering this request, so its own port is the one
+  // thing here that needs no inference at all.
+  const selfPort = Number(process.env.PORT);
+  if (Number.isFinite(selfPort) && selfPort > 0) {
+    const self = apps.find((a: { name?: string }) => a?.name === 'bitroot-panel');
+    if (self) pm2Port['bitroot-panel'] = selfPort;
   }
 
   for (const p of Object.values(pm2Port)) candidatePorts.add(p);
@@ -155,8 +216,13 @@ export async function GET() {
         ? Date.now() - a.pm2_env.pm_uptime
         : 0,
     restarts: a.pm2_env?.restart_time ?? 0,
-    port: portMap[a.name] ?? null,
-    url: hostForPort[portMap[a.name]] ? `https://${hostForPort[portMap[a.name]]}` : null,
+    // ports.conf first, then what pm2 was started with: the panel and the
+    // deploy webhook were never written to the registry, so the column sat
+    // empty for services whose port is plainly known.
+    port: portMap[a.name] ?? pm2Port[a.name] ?? null,
+    url: hostForPort[portMap[a.name] ?? pm2Port[a.name]]
+      ? `https://${hostForPort[portMap[a.name] ?? pm2Port[a.name]]}`
+      : null,
     // An app may listen on more than one port - an API plus a dashboard. Prefer
     // whichever is actually reachable, since the registered port is often the
     // internal one.
@@ -167,6 +233,7 @@ export async function GET() {
       ) ??
       privateUrlFor(pm2Port[a.name] ?? null),
     system: SYSTEM_APPS.has(a.name),
+    runtime: runtimeOf(a),
     type: 'node' as const,
   }));
 

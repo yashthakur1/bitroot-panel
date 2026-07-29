@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { detectTailnet } from '@/lib/setup';
 import { run, runCached } from '@/lib/runner';
 import { assertPort, ValidationError } from '@/lib/validate';
 import { recordResidue } from '@/lib/residue';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
-const TS_HOST = process.env.TAILSCALE_HOST ?? 'localhost';
-const TS_IP = process.env.TAILSCALE_IP ?? '127.0.0.1';
+const TS_HOST = process.env.TAILNET_HOST ?? process.env.TAILSCALE_HOST ?? '';
+const TS_IP = process.env.TAILNET_IP ?? process.env.TAILSCALE_IP ?? '';
 
 function assertSubdomain(name: unknown): string {
   if (typeof name !== 'string' || !/^[a-z0-9-]{1,40}$/.test(name)) {
@@ -112,7 +113,13 @@ export async function GET() {
     routes,
     services,
     domain: DOMAIN_SUFFIX,
-    tailscale: { host: TS_HOST, ip: TS_IP },
+      // Resolved live rather than read from variables that may never have been
+      // set: the page showed "localhost.ts.net" on a machine whose tailnet name
+      // the panel already knew how to find.
+      tailscale: await (async () => {
+        const net = await detectTailnet();
+        return { host: net.host || TS_HOST || null, ip: net.address || TS_IP || null };
+      })(),
   });
 }
 

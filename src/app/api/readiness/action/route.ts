@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { startUpdate, updateLog, versionInfo } from '@/lib/version';
+import { syncWebRootDomain } from '@/lib/garage-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +69,17 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ error: (e as Error).message }, { status: 500 });
     }
+  }
+
+  if (body.action === 'sync-garage-domain') {
+    const domain = process.env.DOMAIN_SUFFIX;
+    if (!domain || domain === 'example.com') {
+      return NextResponse.json({ error: 'no domain is set' }, { status: 400 });
+    }
+    const r = await syncWebRootDomain(domain);
+    return NextResponse.json(r.ok ? { ok: true, output: r.message } : { error: r.message }, {
+      status: r.ok ? 200 : 500,
+    });
   }
 
   const action = ACTIONS[String(body.action ?? '')];

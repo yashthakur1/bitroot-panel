@@ -35,6 +35,7 @@ export interface Project {
   uptimeMs: number;
   restarts: number;
   port: number | null;
+  runtime?: string;
   url: string | null;
   privateUrl: string | null;
   system: boolean;
@@ -95,8 +96,9 @@ function DeployBadge({ status }: { status: string }) {
 
 function runtimeOf(p: Project): string {
   if (p.type === 'static') return 'Static';
-  if (p.name === 'pocketbase' || p.name === 'cloudflared' || p.name === 'nginx') return 'Go';
-  return 'Node';
+  // The server decides this from pm2's interpreter; the old rule here listed
+  // nginx alongside three Go daemons and labelled it Go.
+  return p.runtime ?? 'Node';
 }
 
 // The row menu is at most four items plus padding; used to decide whether it
