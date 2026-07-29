@@ -1,6 +1,6 @@
 {
   "name": "bitpanel",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Installer for BitPanel \u2014 a self-hosted deploy panel for a machine you own",
   "bin": {
     "bitpanel": "index.js"
