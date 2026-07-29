@@ -321,9 +321,19 @@ function StepAction({
             const p = await fetch('/api/readiness/action', { cache: 'no-store' });
             const pd = await p.json();
             if (pd.log) setLog(pd.log);
+            // The log says the work finished; the panel answering again on the
+            // new version is what says it worked. Waiting only on a log marker
+            // trusted a file written by a script the restart was about to kill.
             if (typeof pd.log === 'string' && pd.log.includes('== done ==')) {
-              onDone();
-              return;
+              try {
+                const r = await fetch('/api/readiness', { cache: 'no-store' });
+                if (r.ok) {
+                  onDone();
+                  return;
+                }
+              } catch {
+                /* still coming back up */
+              }
             }
           } catch {
             // The restart cuts the connection - expected near the end.
