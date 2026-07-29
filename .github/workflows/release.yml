@@ -20,6 +20,11 @@ on:
   push:
     tags:
       - 'v*'
+  # Run by hand to check the workflow itself still works. This path deliberately
+  # cannot publish: it checks out, installs and packs, then stops. Pushing a tag
+  # stays the only way anything reaches the registry, which is what keeps the
+  # published artefact tied to a ref rather than to whoever pressed a button.
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -43,6 +48,7 @@ jobs:
       # the published package would not match the tag it claims to come from,
       # which is exactly the confusion pinning was meant to remove.
       - name: Check the tag matches the package version
+        if: github.event_name == 'push'
         working-directory: cli
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -60,5 +66,13 @@ jobs:
         run: npm pack --dry-run
 
       - name: Publish
+        if: github.event_name == 'push'
         working-directory: cli
         run: npm publish
+
+      - name: Validation run
+        if: github.event_name != 'push'
+        run: |
+          echo "Workflow validated: checkout, node, npm and packing all work."
+          echo "Nothing was published — push a v* tag to release."
+
