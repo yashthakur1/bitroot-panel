@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BitPanel on Android &amp; Termux</title>
+    <meta
+      name="description"
+      content="Run BitPanel on an Android phone under Termux: what to install, how to start it, and the Android-specific constraints that will bite you."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="./">&larr; BitPanel</a>
+
+      <h1>Android &amp; Termux</h1>
+      <p class="lede">
+        This is what the panel was built on — a OnePlus 6 in a drawer. It runs well here, but the
+        installer does not: Android has no service manager, <code>apt</code> is Termux's own, and
+        several dependencies have no Android build at all.
+      </p>
+
+      <div class="callout warn">
+        <p>
+          <strong><code>npx bitpanel install</code> will refuse to run here</strong>, on purpose.
+          It is apt- and systemd-shaped. The steps below are the equivalent, and they are not long.
+        </p>
+      </div>
+
+      <nav class="toc" aria-label="On this page">
+        <p>On this page</p>
+        <ol>
+          <li><a href="#packages">Packages</a></li>
+          <li><a href="#apps">Two Termux add-ons</a></li>
+          <li><a href="#install">Install the panel</a></li>
+          <li><a href="#start">Start it</a></li>
+          <li><a href="#bite">What will bite you</a></li>
+          <li><a href="#alive">Keeping it alive</a></li>
+          <li><a href="#updates">Updates</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="packages">Packages</h2>
+      <div class="cmd">
+        <pre id="c1" class="wrap-code">pkg install nodejs git nginx openssh netcat-openbsd garage rclone
+npm install -g pm2</pre>
+        <button onclick="copyCmd(this, 'c1')">Copy</button>
+      </div>
+      <p class="note">
+        Garage comes from <code>pkg</code> rather than the upstream release: Termux packages are
+        compiled for bionic, and the official binary is glibc-linked and will not start.
+      </p>
+
+      <h2 id="apps">Two Termux add-ons</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Termux:Boot</h3>
+          <p>Replays the pm2 dump after a reboot. Without it nothing comes back — there is no systemd here to do it.</p>
+        </div>
+        <div class="card">
+          <h3>termux-exec</h3>
+          <p>Rewrites <code>#!/usr/bin/env</code> shebangs, which the helper scripts rely on. Termux has no <code>/usr/bin</code>.</p>
+        </div>
+      </div>
+
+      <h2 id="install">Install the panel</h2>
+      <p>
+        Clone at a release tag rather than a branch, so the panel knows which version it is and can
+        update itself later.
+      </p>
+      <div class="cmd">
+        <pre id="c2" class="wrap-code">git clone --depth 1 --branch v0.1.7 \
+  https://github.com/yashthakur1/bitroot-panel.git ~/apps/bitroot-panel
+cd ~/apps/bitroot-panel
+npm install --include=dev
+npm run build</pre>
+        <button onclick="copyCmd(this, 'c2')">Copy</button>
+      </div>
+      <p class="note">
+        <code>--include=dev</code> matters: the build needs TypeScript, and npm drops dev
+        dependencies whenever <code>NODE_ENV=production</code> is set.
+      </p>
+
+      <p>Then the helper scripts, and a minimal <code>.env</code>:</p>
+      <div class="cmd">
+        <pre id="c3" class="wrap-code">mkdir -p ~/bin
+for f in server-scripts/*; do
+  head -c 2 "$f" | grep -q '^#!' &amp;&amp; install -m 755 "$f" ~/bin/
+done
+
+printf 'PORT=3210\nSESSION_SECRET=%s\nDASHBOARD_PASSWORD=%s\n' \
+  "$(openssl rand -hex 32)" "$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | cut -c1-20)" \
+  &gt; ~/apps/bitroot-panel/.env
+chmod 600 ~/apps/bitroot-panel/.env</pre>
+        <button onclick="copyCmd(this, 'c3')">Copy</button>
+      </div>
+      <p class="note">
+        Only scripts are copied — the loop checks for a shebang, so data files like
+        <code>ports.conf</code> stay put. Overwriting that one would wipe the machine's port
+        registry.
+      </p>
+
+      <h2 id="start">Start it</h2>
+      <div class="cmd">
+        <pre id="c4" class="wrap-code">PORT=3210 pm2 start npm --name bitroot-panel --cwd ~/apps/bitroot-panel -- start
+pm2 start garage --name garage -- server
+pm2 save</pre>
+        <button onclick="copyCmd(this, 'c4')">Copy</button>
+      </div>
+      <div class="callout">
+        <p>
+          <strong><code>PORT</code> has to be in the environment, not just <code>.env</code>.</strong>
+          <code>next start</code> reads the port from the process environment; a
+          <code>PORT</code> line in a dotenv file alone leaves the panel on 3000 while everything
+          else expects 3210.
+        </p>
+        <p>
+          <strong><code>pm2 save</code> matters more here than on Linux.</strong> With no systemd,
+          Termux:Boot replays that saved dump and nothing else will.
+        </p>
+      </div>
+      <p>
+        Open <code>http://localhost:3210</code> on the phone, or reach it from another device over
+        Tailscale. The setup wizard takes it from there.
+      </p>
+
+      <h2 id="bite">What will bite you</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Thing</th><th>What actually happens</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>/dev/tcp</td>
+              <td>Fails silently under <code>sh</code>, which is dash. Anything probing a port must use <code>nc -z</code>.</td>
+            </tr>
+            <tr>
+              <td>ss, netstat</td>
+              <td>Return nothing — Android denies netlink to apps. Listening sockets cannot be enumerated; connect to them instead.</td>
+            </tr>
+            <tr>
+              <td>node-gyp</td>
+              <td>Native modules need <code>GYP_DEFINES="android_ndk_path="</code> or it will not configure.</td>
+            </tr>
+            <tr>
+              <td>docker</td>
+              <td>The package exists but ships no daemon.</td>
+            </tr>
+            <tr>
+              <td>ports &lt; 1024</td>
+              <td>Unavailable to a non-root process.</td>
+            </tr>
+            <tr>
+              <td>glibc binaries</td>
+              <td>Fail with <code>cannot execute: required file not found</code> — the ELF interpreter is missing, not the file. Bun, turbo and Claude Code past 2.1.112 are all in this category.</td>
+            </tr>
+            <tr>
+              <td>tailscale</td>
+              <td>Runs as the Android app, so there is no CLI in Termux. The panel detects the tailnet from the interface address instead, and <code>tailscale serve</code> cannot run here.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="alive">Keeping it alive</h2>
+      <p>
+        Android is aggressive about background processes. Acquire a wakelock and exclude Termux from
+        battery optimisation, or the device drops off the network while it sleeps — the services stay
+        running, but nothing can reach them.
+      </p>
+      <div class="cmd">
+        <pre id="c5">termux-wake-lock</pre>
+        <button onclick="copyCmd(this, 'c5')">Copy</button>
+      </div>
+      <p class="honest">
+        A phone is a real server with real limits. Its upload link is the ceiling on everything
+        public, which is why storage leans on edge caching and compresses before it sends. None of
+        that is hidden in the UI: a service bound to loopback says so rather than offering a link
+        that will not open.
+      </p>
+
+      <h2 id="updates">Updates</h2>
+      <p>
+        Because the clone is at a tag, <strong>Config → Setup</strong> knows which release is running
+        and offers the newer one when there is one — it fetches, builds and restarts by itself. A
+        build takes several minutes on a phone, so it runs detached and streams its log.
+      </p>
+
+      <footer>
+        <a href="./">Overview</a> ·
+        <a href="ubuntu.html">Debian / Ubuntu</a> ·
+        <a href="https://github.com/yashthakur1/bitroot-panel">Source</a> ·
+        <a href="https://www.npmjs.com/package/bitpanel">npm</a>
+      </footer>
+    </div>
+
+    <script>
+      function copyCmd(btn, id) {
+        navigator.clipboard.writeText(document.getElementById(id).textContent.trim());
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = 'Copy'), 1500);
+      }
+    </script>
+  </body>
+</html>

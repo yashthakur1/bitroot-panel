@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BitPanel on Debian &amp; Ubuntu</title>
+    <meta
+      name="description"
+      content="Install BitPanel on Debian or Ubuntu: one command, what it installs, what it leaves to you, and the ports it uses."
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="./">&larr; BitPanel</a>
+
+      <h1>Debian &amp; Ubuntu</h1>
+      <p class="lede">
+        One command installs the panel and everything it drives. Re-running upgrades rather than
+        duplicating, and nothing already present at a good version is touched.
+      </p>
+
+      <nav class="toc" aria-label="On this page">
+        <p>On this page</p>
+        <ol>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#then">Then: the browser does the rest</a></li>
+          <li><a href="#what">What it installs</a></li>
+          <li><a href="#yours">What it leaves to you</a></li>
+          <li><a href="#ports">Ports</a></li>
+          <li><a href="#updates">Updates</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="install">Install</h2>
+      <div class="cmd">
+        <pre id="c1">npx bitpanel install</pre>
+        <button onclick="copyCmd(this, 'c1')">Copy</button>
+      </div>
+      <p class="note">
+        Run it as your normal user, not root — it installs into <code>$HOME</code> and calls
+        <code>sudo</code> only where a package needs it.
+      </p>
+
+      <div class="callout">
+        <p>
+          <strong>It is a shell script that installs system packages.</strong> That deserves a look
+          before you run it:
+        </p>
+      </div>
+      <div class="cmd">
+        <pre id="c2" class="wrap-code">npx bitpanel url | xargs curl -fsSL | less</pre>
+        <button onclick="copyCmd(this, 'c2')">Copy</button>
+      </div>
+
+      <h3>Without npm</h3>
+      <div class="cmd">
+        <pre id="c3" class="wrap-code">curl -fsSL https://raw.githubusercontent.com/yashthakur1/bitroot-panel/main/install.sh | bash</pre>
+        <button onclick="copyCmd(this, 'c3')">Copy</button>
+      </div>
+      <p class="note">
+        The same script. The npm package pins it to a released tag and installs the panel at that
+        tag; this one always takes the tip of <code>main</code>.
+      </p>
+
+      <h2 id="then">Then: the browser does the rest</h2>
+      <p>
+        The installer finishes by printing a URL and a generated password. Open it and the setup
+        wizard collects everything else — no editing files over SSH.
+      </p>
+      <div class="cmd">
+        <pre id="c4">http://&lt;this-machine&gt;:3210</pre>
+        <button onclick="copyCmd(this, 'c4')">Copy</button>
+      </div>
+      <p>
+        After that, <strong>Config → Setup</strong> shows what this machine can and cannot do, and
+        why. Each dependency is probed by asking the service rather than reading config, and says
+        what stops working until it is configured. Credentials are entered there directly.
+      </p>
+
+      <h2 id="what">What it installs</h2>
+      <ol class="steps">
+        <li><p><code>git</code>, <code>curl</code>, <code>nginx</code>, <code>netcat-openbsd</code>, <code>jq</code> from apt</p></li>
+        <li><p>Node 22 from NodeSource, and pm2 globally</p></li>
+        <li><p>cloudflared from Cloudflare's own <code>.deb</code></p></li>
+        <li><p>Garage from the official release for your architecture, plus <code>/etc/garage.toml</code> with generated secrets</p></li>
+        <li><p>PocketBase, and the service account the panel authenticates with</p></li>
+        <li><p>The panel itself, built, with a generated password in <code>.env</code></p></li>
+        <li><p>The helper scripts into <code>~/bin</code></p></li>
+        <li><p>A single-node Garage layout, then everything under pm2, registered with systemd</p></li>
+      </ol>
+
+      <h2 id="yours">What it leaves to you</h2>
+      <p>
+        No Cloudflare or Tailscale credentials are generated. They are account-level secrets, and
+        creating them silently would be worse than asking.
+      </p>
+      <div class="cmd">
+        <pre id="c5" class="wrap-code"># private access from anywhere
+curl -fsSL https://tailscale.com/install.sh | sh &amp;&amp; sudo tailscale up
+
+# public routes
+cloudflared tunnel login
+cloudflared tunnel create $(hostname)</pre>
+        <button onclick="copyCmd(this, 'c5')">Copy</button>
+      </div>
+      <p>
+        The Cloudflare token needs four permissions, and the setup view lists them with what each is
+        for:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Scope</th><th>Permission</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Zone</td><td>DNS · Edit</td><td>creates the DNS record behind each route</td></tr>
+            <tr><td>Zone</td><td>Cache Rules · Edit</td><td>the edge cache rule for published buckets</td></tr>
+            <tr><td>Zone</td><td>Cache Purge · Purge</td><td>clears the edge when you replace a file</td></tr>
+            <tr><td>Account</td><td>Account Rulesets · Edit</td><td>cache rules live on the account, not the zone</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout warn">
+        <p>
+          <strong>The account-level one is the one people miss.</strong> A token with every Zone
+          permission and none of that looks complete, and then a cache rule fails with a bare 403
+          the first time a bucket is published.
+        </p>
+      </div>
+
+      <h2 id="ports">Ports</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Port</th><th>Service</th></tr></thead>
+          <tbody>
+            <tr><td>3210</td><td>the panel</td></tr>
+            <tr><td>3900</td><td>Garage S3 API</td></tr>
+            <tr><td>3902</td><td>Garage website endpoint, for published buckets</td></tr>
+            <tr><td>3903</td><td>Garage admin API, loopback only</td></tr>
+            <tr><td>8090</td><td>PocketBase</td></tr>
+            <tr><td>9000</td><td>deploy webhook, for push-to-deploy pipelines</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        Only the panel, published buckets and the deploy webhook need to be reachable from outside.
+        Keep the rest on loopback or the tailnet.
+      </p>
+
+      <h2 id="updates">Updates</h2>
+      <p>
+        <code>bitpanel@x.y.z</code> installs the panel released as <code>x.y.z</code> — the installer
+        checks out that tag rather than the tip of a branch. The panel then compares itself against
+        the latest published release and can fetch, build and restart into it from
+        <strong>Config → Setup</strong>.
+      </p>
+      <p class="honest">
+        Packages are published from CI through npm trusted publishing, so each carries a signed
+        provenance attestation tying it to the commit it was built from. A panel installed from a
+        branch says so rather than inventing a comparison.
+      </p>
+
+      <footer>
+        <a href="./">Overview</a> ·
+        <a href="termux.html">Android / Termux</a> ·
+        <a href="https://github.com/yashthakur1/bitroot-panel">Source</a> ·
+        <a href="https://www.npmjs.com/package/bitpanel">npm</a>
+      </footer>
+    </div>
+
+    <script>
+      function copyCmd(btn, id) {
+        navigator.clipboard.writeText(document.getElementById(id).textContent.trim());
+        btn.textContent = 'Copied';
+        setTimeout(() => (btn.textContent = 'Copy'), 1500);
+      }
+    </script>
+  </body>
+</html>
