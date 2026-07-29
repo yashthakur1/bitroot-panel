@@ -6,6 +6,7 @@
 // is correct behaviour and terrible feedback - you discover it when a feature
 // silently does nothing. This probes each one and says what it costs you.
 
+import os from 'os';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { run } from './runner';
@@ -26,7 +27,9 @@ export interface Step {
   /** Commands to run on the server, in order. */
   fix?: string[];
   /** Where to get the credential this needs. */
-  link?: { href: string; label: string };
+  link?: { href: string; label: string; logo?: string };
+  /** Things the panel can do itself, rather than describing them. */
+  actions?: Array<{ id: string; label: string; note?: string }>;
   /** Per-permission or per-check breakdown, when there is one. */
   checks?: Array<{ name: string; ok: boolean }>;
   /** Ordered steps for a credential that has to be created somewhere else. */
@@ -265,9 +268,8 @@ async function tunnelStep(): Promise<Step> {
         ? 'A tunnel exists, but config.yml does not name it yet.'
         : 'Logged in, but no tunnel has been created.',
       unlocks,
-      fix: created
-        ? ['Uncomment tunnel: and credentials-file: in ~/.cloudflared/config.yml']
-        : ['cloudflared tunnel create $(hostname)'],
+      actions: created ? [{ id: 'link-tunnel', label: 'Point config.yml at this tunnel' }] : undefined,
+      fix: created ? undefined : ['cloudflared tunnel create $(hostname)'],
     };
   }
   return {
@@ -281,11 +283,7 @@ async function tunnelStep(): Promise<Step> {
         : 'Tunnel is configured but nothing is running it.',
     unlocks,
     // Offering "pm2 restart" for a process pm2 has never heard of just errors.
-    fix: up
-      ? undefined
-      : known
-        ? ['pm2 restart cloudflared']
-        : ['pm2 start cloudflared --name cloudflared -- tunnel run $(hostname)', 'pm2 save'],
+    actions: up ? undefined : [{ id: 'start-tunnel', label: known ? 'Restart cloudflared' : 'Start cloudflared' }],
   };
 }
 
@@ -303,15 +301,33 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
           unlocks,
           fix: ['sudo tailscale up'],
         }
-      : {
-          id: 'tailscale',
-          title: 'Tailscale',
-          status: 'missing',
-          detail: 'Not installed. Services stay reachable only from this machine.',
-          unlocks,
-          link: { href: 'https://tailscale.com/download', label: 'Install Tailscale' },
-          fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
-        };
+      : os.platform() === 'android'
+        ? {
+            id: 'tailscale',
+            title: 'Tailscale',
+            status: 'missing',
+            detail:
+              'Not connected. On Android, Tailscale is an app rather than a package — install it, sign in, and the panel picks up the rest by itself.',
+            unlocks,
+            link: {
+              href: 'https://play.google.com/store/apps/details?id=com.tailscale.ipn',
+              label: 'Get Tailscale on Google Play',
+              logo: '/images/tailscale.svg',
+            },
+          }
+        : {
+            id: 'tailscale',
+            title: 'Tailscale',
+            status: 'missing',
+            detail: 'Not installed. Services stay reachable only from this machine.',
+            unlocks,
+            link: {
+              href: 'https://tailscale.com/download',
+              label: 'Install Tailscale',
+              logo: '/images/tailscale.svg',
+            },
+            fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
+          };
   }
 
   const where = net.address ? ` at ${net.address}` : '';

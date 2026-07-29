@@ -285,6 +285,59 @@ function CredentialForm({ step, onSaved }: { step: Step; onSaved: () => void }) 
   );
 }
 
+// Runs one of the panel's own repairs and reports what came back, rather than
+// leaving the button looking inert while a shell command decides its fate.
+function StepAction({
+  action,
+  onDone,
+}: {
+  action: { id: string; label: string; note?: string };
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function go() {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/readiness/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action.id }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={go}
+        disabled={busy}
+        className="flex items-center gap-1.5 text-sm h-9 px-3 rounded-lg font-medium text-white
+                   bg-accent-600 transition-[opacity,scale] duration-200 ease-swift
+                   hover:bg-accent-500 active:scale-[0.96]
+                   disabled:opacity-40 disabled:active:scale-100"
+      >
+        {busy && <Loader2 size={13} className="animate-spin" />}
+        {action.label}
+      </button>
+      {error && (
+        <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 flex items-start gap-1.5">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StepBody({ step, onSaved }: { step: Step; onSaved: () => void }) {
   const tone =
     step.status === 'ready'
@@ -385,6 +438,14 @@ function StepBody({ step, onSaved }: { step: Step; onSaved: () => void }) {
         </div>
       )}
 
+      {step.status !== 'ready' && step.actions && (
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {step.actions.map((a) => (
+            <StepAction key={a.id} action={a} onDone={onSaved} />
+          ))}
+        </div>
+      )}
+
       {step.status !== 'ready' && step.fields && (
         <CredentialForm step={step} onSaved={onSaved} />
       )}
@@ -397,11 +458,29 @@ function StepBody({ step, onSaved }: { step: Step; onSaved: () => void }) {
               href={step.link.href}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400
-                         transition-colors duration-200 ease-swift hover:text-accent-500"
+              className={
+                step.link.logo
+                  ? `inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm
+                     border border-gray-200 dark:border-gray-800
+                     text-gray-700 dark:text-gray-200
+                     transition-[background-color,scale] duration-200 ease-swift
+                     hover:bg-gray-50 dark:hover:bg-gray-800/60 active:scale-[0.96]`
+                  : `inline-flex items-center gap-1 text-xs text-accent-600 dark:text-accent-400
+                     transition-colors duration-200 ease-swift hover:text-accent-500`
+              }
             >
+              {step.link.logo && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={step.link.logo}
+                  alt=""
+                  width={15}
+                  height={15}
+                  className="dark:invert dark:opacity-90"
+                />
+              )}
               {step.link.label}
-              <ArrowUpRight size={12} />
+              <ArrowUpRight size={step.link.logo ? 13 : 12} className="opacity-60" />
             </a>
           )}
         </div>
