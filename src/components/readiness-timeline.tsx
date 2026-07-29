@@ -11,28 +11,11 @@ import {
   Circle,
 } from 'lucide-react';
 
-type Status = 'ready' | 'partial' | 'missing';
-
-interface Step {
-  id: string;
-  title: string;
-  status: Status;
-  detail: string;
-  unlocks: string[];
-  fix?: string[];
-  link?: { href: string; label: string };
-  checks?: Array<{ name: string; ok: boolean }>;
-  guide?: string[];
-  grants?: Array<{ scope: string; permission: string; why: string; missed?: boolean }>;
-  required?: boolean;
-}
-
-interface Readiness {
-  steps: Step[];
-  ready: number;
-  total: number;
-  scannedAt: string;
-}
+// Types come from the probe module rather than a copy kept here: a local
+// duplicate silently drifts every time a field is added server-side, and only
+// complains at type-check time. `import type` is erased at build, so no
+// server-only code follows it into the bundle.
+import type { Readiness, Status, Step } from '@/lib/readiness';
 
 export default function ReadinessTimeline() {
   const [data, setData] = useState<Readiness | null>(null);
@@ -127,7 +110,7 @@ export default function ReadinessTimeline() {
               />
             )}
             <StatusDot status={step.status} />
-            <StepBody step={step} />
+            <StepBody step={step} onSaved={scan} />
           </li>
         ))}
       </ol>
@@ -161,7 +144,116 @@ function StatusDot({ status }: { status: Status }) {
   );
 }
 
-function StepBody({ step }: { step: Step }) {
+// Lets the panel take the value instead of sending you to a terminal to edit
+// the file it reads. Verification happens before the write, so a token that
+// does not work is refused here rather than discovered later.
+function CredentialForm({ step, onSaved }: { step: Step; onSaved: () => void }) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries((step.fields ?? []).map((f) => [f.key, f.suggestion ?? ''])),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [canForce, setCanForce] = useState(false);
+  const [failed, setFailed] = useState<Array<{ name: string; ok: boolean }> | null>(null);
+
+  const filled = (step.fields ?? []).every((f) => values[f.key]?.trim());
+
+  async function save(force: boolean) {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/readiness/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values, force, restart: true }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setError(d.error ?? `HTTP ${res.status}`);
+        setCanForce(Boolean(d.canForce));
+        setFailed(d.verified?.permissions ?? null);
+        return;
+      }
+      onSaved();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2.5">
+      {(step.fields ?? []).map((f) => (
+        <label key={f.key} className="block">
+          <span className="block text-xs text-gray-600 dark:text-gray-400 mb-1">{f.label}</span>
+          <input
+            type={f.secret ? 'password' : 'text'}
+            value={values[f.key] ?? ''}
+            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full h-9 px-2.5 rounded-lg text-sm font-mono
+                       border border-gray-200 dark:border-gray-800
+                       bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200
+                       transition-[border-color,box-shadow] duration-200 ease-swift
+                       focus:outline-none focus:border-accent-500/70 focus:ring-4 focus:ring-accent-500/10"
+          />
+          {f.hint && (
+            <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-1 text-pretty">
+              {f.hint}
+            </span>
+          )}
+        </label>
+      ))}
+
+      {error && (
+        <div className="text-xs text-red-600 dark:text-red-400 space-y-1">
+          <p className="flex items-start gap-1.5">
+            <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {error}
+          </p>
+          {failed?.filter((p) => !p.ok).map((p) => (
+            <p key={p.name} className="pl-5">
+              · {p.name}
+            </p>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => save(false)}
+          disabled={busy || !filled}
+          className="flex items-center gap-1.5 text-sm h-9 px-3 rounded-lg font-medium text-white
+                     bg-accent-600 transition-[opacity,scale] duration-200 ease-swift
+                     hover:bg-accent-500 active:scale-[0.96]
+                     disabled:opacity-40 disabled:active:scale-100"
+        >
+          {busy && <Loader2 size={13} className="animate-spin" />}
+          Save and apply
+        </button>
+        {canForce && (
+          <button
+            onClick={() => save(true)}
+            disabled={busy}
+            className="text-sm h-9 px-3 rounded-lg text-gray-600 dark:text-gray-400
+                       border border-gray-200 dark:border-gray-800
+                       transition-[background-color,scale] duration-200 ease-swift
+                       hover:bg-gray-50 dark:hover:bg-gray-800/60 active:scale-[0.96]"
+          >
+            Save anyway
+          </button>
+        )}
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        Written to <code className="font-mono">.env</code> on the server and the panel restarts
+        itself. It stays on this machine.
+      </p>
+    </div>
+  );
+}
+
+function StepBody({ step, onSaved }: { step: Step; onSaved: () => void }) {
   const tone =
     step.status === 'ready'
       ? 'text-gray-900 dark:text-gray-100'
@@ -259,6 +351,10 @@ function StepBody({ step }: { step: Step }) {
             </div>
           ))}
         </div>
+      )}
+
+      {step.status !== 'ready' && step.fields && (
+        <CredentialForm step={step} onSaved={onSaved} />
       )}
 
       {step.status !== 'ready' && (step.fix || step.link) && (

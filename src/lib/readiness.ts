@@ -33,6 +33,19 @@ export interface Step {
   guide?: string[];
   /** Exactly what a token must be granted, and why each one is needed. */
   grants?: Array<{ scope: string; permission: string; why: string; missed?: boolean }>;
+  /**
+   * Values the panel can write to .env itself. Telling someone to SSH in and
+   * edit a file, from a web panel whose whole job is to save them that trip, is
+   * the wrong answer when the value is a string it could just accept.
+   */
+  fields?: Array<{
+    key: string;
+    label: string;
+    hint?: string;
+    secret?: boolean;
+    /** Prefilled when the panel already knows the right answer. */
+    suggestion?: string;
+  }>;
   /** Nothing else can be judged until this is done. */
   required?: boolean;
 }
@@ -90,9 +103,9 @@ async function domainStep(e: Record<string, string>): Promise<Step> {
       ? `Routes are created under ${domain}.`
       : 'No domain set, so there is nothing to build public hostnames from.',
     unlocks: ['Public URLs for services', 'Published storage buckets'],
-    fix: domain
+    fields: domain
       ? undefined
-      : ['Set DOMAIN_SUFFIX in ~/apps/bitroot-panel/.env', 'pm2 restart bitroot-panel --update-env'],
+      : [{ key: 'DOMAIN_SUFFIX', label: 'Domain', hint: 'A service called blog becomes blog.<domain>.' }],
   };
 }
 
@@ -110,6 +123,26 @@ const CF_GRANTS: NonNullable<Step['grants']> = [
     permission: 'Account Rulesets · Edit',
     why: 'cache rules are stored on the account, not the zone — without this the rule fails with a bare 403',
     missed: true,
+  },
+];
+
+const TAILNET_FIELD = {
+  key: 'TAILNET_HOST',
+  label: 'Tailnet hostname',
+  hint: 'The full name, e.g. machine.tailnet.ts.net — private URLs are built from it.',
+};
+
+const CF_FIELDS = [
+  {
+    key: 'CF_API_TOKEN',
+    label: 'API token',
+    hint: 'Shown once by Cloudflare when you create it.',
+    secret: true,
+  },
+  {
+    key: 'CF_ZONE_ID',
+    label: 'Zone ID',
+    hint: "On the zone's Overview page, right-hand sidebar.",
   },
 ];
 
@@ -132,14 +165,11 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
       unlocks,
       guide: CF_GUIDE,
       grants: CF_GRANTS,
+      fields: CF_FIELDS,
       link: {
         href: 'https://dash.cloudflare.com/profile/api-tokens',
         label: 'Open Cloudflare API tokens',
       },
-      fix: [
-        'Set CF_API_TOKEN and CF_ZONE_ID in ~/apps/bitroot-panel/.env',
-        'pm2 restart bitroot-panel --update-env',
-      ],
     };
   }
 
@@ -167,6 +197,7 @@ async function cloudflareStep(e: Record<string, string>): Promise<Step> {
     checks: result.permissions.map((p) => ({ name: p.name, ok: p.ok })),
     guide: result.ok ? undefined : CF_GUIDE,
     grants: result.ok ? undefined : CF_GRANTS,
+    fields: result.ok ? undefined : CF_FIELDS,
     link: result.ok
       ? undefined
       : { href: 'https://dash.cloudflare.com/profile/api-tokens', label: 'Edit the token' },
@@ -249,17 +280,54 @@ async function tunnelStep(): Promise<Step> {
   };
 }
 
+// Tailscale hands out addresses from the CGNAT range, 100.64.0.0/10. Anything
+// outside 100.64-100.127 in that first octet is ordinary public space and must
+// not be mistaken for a tailnet address.
+async function tailnetAddress(): Promise<string | null> {
+  const r = await run('ip -4 addr 2>/dev/null || ifconfig 2>/dev/null || true', 15_000);
+  for (const m of r.output.matchAll(/\b100\.(\d{1,3})\.\d{1,3}\.\d{1,3}\b/g)) {
+    const second = Number(m[1]);
+    if (second >= 64 && second <= 127) return m[0];
+  }
+  return null;
+}
+
 async function tailscaleStep(e: Record<string, string>): Promise<Step> {
   const unlocks = ['Private URLs for unpublished services', 'Reaching storage without exposing it'];
+
   if (!(await has('tailscale'))) {
+    // No CLI does not mean no Tailscale. On Android it runs as the system app
+    // and nothing is exposed inside Termux, so asking for the binary reported
+    // "not installed" on a device that was sitting on the tailnet the whole
+    // time. Ask the interface instead, which is the capability that matters.
+    const addr = await tailnetAddress();
+    if (!addr) {
+      return {
+        id: 'tailscale',
+        title: 'Tailscale',
+        status: 'missing',
+        detail: 'Not installed. Services stay reachable only from this machine.',
+        unlocks,
+        link: { href: 'https://tailscale.com/download', label: 'Install Tailscale' },
+        fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
+      };
+    }
+    if (!e.TAILNET_HOST) {
+      return {
+        id: 'tailscale',
+        title: 'Tailscale',
+        status: 'partial',
+        detail: `On the tailnet at ${addr}, but TAILNET_HOST is unset so no private URLs are offered.`,
+        unlocks,
+        fields: [TAILNET_FIELD],
+      };
+    }
     return {
       id: 'tailscale',
       title: 'Tailscale',
-      status: 'missing',
-      detail: 'Not installed. Services stay reachable only from this machine.',
+      status: 'ready',
+      detail: `On the tailnet at ${addr} as ${e.TAILNET_HOST}. Detected from the interface — the CLI is not available here, which is normal on Android.`,
       unlocks,
-      link: { href: 'https://tailscale.com/download', label: 'Install Tailscale' },
-      fix: ['curl -fsSL https://tailscale.com/install.sh | sh', 'sudo tailscale up'],
     };
   }
   const r = await run('tailscale status --json 2>/dev/null || true', 15_000);
@@ -294,7 +362,7 @@ async function tailscaleStep(e: Record<string, string>): Promise<Step> {
           ? `Logged in as ${host}, but TAILNET_HOST is the short name "${recorded}" — private URLs built from it only resolve where MagicDNS search domains are configured.`
           : `Logged in as ${host}, but TAILNET_HOST is set to "${recorded}".`,
       unlocks,
-      fix: [`Set TAILNET_HOST=${host} in ~/apps/bitroot-panel/.env`, 'pm2 restart bitroot-panel --update-env'],
+      fields: [{ ...TAILNET_FIELD, suggestion: host }],
     };
   }
   return {
