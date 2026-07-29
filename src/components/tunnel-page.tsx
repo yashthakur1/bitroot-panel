@@ -31,6 +31,8 @@ interface TunnelRoute {
 interface Service {
   name: string;
   port: number;
+  /** Whether it answers on the tailnet address, or only on loopback. */
+  reachable?: boolean;
 }
 
 interface TunnelState {
@@ -432,6 +434,11 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                         {s.name}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-700 dark:text-gray-300">
+                        {s.reachable === false ? (
+                          <span className="text-gray-500 dark:text-gray-400">
+                            loopback only — reachable from this machine, not the tailnet
+                          </span>
+                        ) : (
                         <a
                           href={`http://${state.tailscale.host}:${s.port}`}
                           target="_blank"
@@ -440,9 +447,12 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                         >
                           {state.tailscale.host}:{s.port}
                         </a>
+                        )}
                       </td>
                       <td className="px-4 py-2.5 whitespace-nowrap font-mono text-sm text-gray-500 dark:text-gray-400">
-                        {state.tailscale.ip ? `http://${state.tailscale.ip}:${s.port}` : '—'}
+                        {s.reachable === false || !state.tailscale.ip
+                          ? '—'
+                          : `http://${state.tailscale.ip}:${s.port}`}
                       </td>
                     </tr>
                   ))}

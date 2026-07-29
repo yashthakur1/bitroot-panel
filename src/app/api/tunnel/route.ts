@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { detectTailnet } from '@/lib/setup';
+import { ownedPorts, reachableOn } from '@/lib/ports';
 import { run, runCached } from '@/lib/runner';
 import { assertPort, ValidationError } from '@/lib/validate';
 import { recordResidue } from '@/lib/residue';
@@ -31,13 +32,6 @@ export async function GET() {
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
   ]);
 
-  // port -> service name, from the registry first then pm2 env
-  const portToService: Record<number, string> = {};
-  for (const line of ports.output.split('\n')) {
-    const m = line.match(/^([\w-]+)=(\d+)\s*$/);
-    if (m) portToService[Number(m[2])] = m[1];
-  }
-
   let apps: any[] = [];
   try {
     const start = pm2.output.indexOf('[');
@@ -45,10 +39,10 @@ export async function GET() {
   } catch {
     // ignore
   }
-  for (const a of apps) {
-    const p = Number(a.pm2_env?.env?.PORT);
-    if (p && !portToService[p]) portToService[p] = a.name;
-  }
+  // Shared with the services list, so the two pages cannot disagree about which
+  // process owns which port - and so a port stated in a process's arguments,
+  // like PocketBase's, is seen at all.
+  const { byPort: portToService } = ownedPorts(apps, ports.output);
 
   const routes: Array<{
     hostname: string;
@@ -103,9 +97,18 @@ export async function GET() {
     // leave unknown
   }
 
-  // Everything reachable privately over the tailnet, no route required.
+  // Everything on the tailnet, and whether it actually answers there. A service
+  // bound to loopback is listed but marked, rather than given a link that
+  // cannot open - PocketBase binds to 127.0.0.1 by design.
+  const net = await detectTailnet();
+  const allPorts = Object.keys(portToService).map(Number);
+  const reachable = await reachableOn(net.address ?? TS_IP, allPorts);
   const services = Object.entries(portToService)
-    .map(([port, name]) => ({ name, port: Number(port) }))
+    .map(([port, name]) => ({
+      name,
+      port: Number(port),
+      reachable: reachable.has(Number(port)),
+    }))
     .sort((a, b) => a.port - b.port);
 
   return NextResponse.json({
@@ -116,10 +119,7 @@ export async function GET() {
       // Resolved live rather than read from variables that may never have been
       // set: the page showed "localhost.ts.net" on a machine whose tailnet name
       // the panel already knew how to find.
-      tailscale: await (async () => {
-        const net = await detectTailnet();
-        return { host: net.host || TS_HOST || null, ip: net.address || TS_IP || null };
-      })(),
+      tailscale: { host: net.host || TS_HOST || null, ip: net.address || TS_IP || null },
   });
 }
 
