@@ -76,6 +76,11 @@ export default function PipelinesPage() {
             registers the webhook with GitHub for you; deliveries are signed and land on the deploy
             service, never on the panel itself.
           </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-pretty">
+            Registering that webhook needs more than read access: a fine-grained token wants{' '}
+            <strong>Webhooks: Read and write</strong> on the repository, a classic one wants{' '}
+            <code className="font-mono">admin:repo_hook</code>. Reading code is not enough.
+          </p>
         </div>
 
         {error && (

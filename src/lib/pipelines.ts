@@ -103,14 +103,24 @@ async function gh(token: string, path: string, init: RequestInit = {}) {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    // GitHub's message is specific and worth surfacing verbatim - "Not Found"
-    // here almost always means the token cannot administer that repo, which is
-    // a different problem from the repo not existing.
-    throw new ValidationError(
-      `GitHub: ${data?.message ?? res.status}${
-        res.status === 404 ? ' (the token may lack admin rights on that repository)' : ''
-      }`,
-    );
+    // GitHub's own message is specific, but it stops one step short of what to
+    // do about it. Creating a webhook needs a permission most tokens are not
+    // issued with, and both failure modes read like the repository is missing
+    // or broken rather than like a scope is absent.
+    const message = String(data?.message ?? res.status);
+    let hint = '';
+    if (res.status === 403 || /not accessible by/i.test(message)) {
+      hint =
+        ' — the token can read this repository but not manage its webhooks. ' +
+        'Fine-grained token: add Repository permissions → Webhooks: Read and write, ' +
+        'and make sure this repository is one of the ones it covers. ' +
+        'Classic token: add the admin:repo_hook scope. Then re-add the connection.';
+    } else if (res.status === 404) {
+      hint =
+        ' — either the repository does not exist under that name, or the token cannot see it. ' +
+        'A fine-grained token only covers the repositories you selected when creating it.';
+    }
+    throw new ValidationError(`GitHub: ${message}${hint}`);
   }
   return data;
 }
