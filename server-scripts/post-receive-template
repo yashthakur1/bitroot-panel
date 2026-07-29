@@ -42,7 +42,10 @@ if [ "$NAME" = "bitroot-panel" ] && [ -d server-scripts ]; then
   for f in server-scripts/*; do
     [ -f "$f" ] || continue
     base=$(basename "$f")
-    case "$base" in *.conf|*-template) continue ;; esac
+    # Ask the file whether it is a script rather than guessing from its name.
+    # An extension blocklist let pocketbase-index.html into ~/bin, chmod +x and
+    # all - which is harmless only by luck.
+    head -c 2 "$f" | grep -q '^#!' || continue
     if ! cmp -s "$f" "$HOME/bin/$base"; then
       cp "$f" "$HOME/bin/$base" && chmod +x "$HOME/bin/$base"
       changed="$changed $base"
