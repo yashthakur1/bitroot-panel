@@ -113,7 +113,13 @@ export async function GET() {
     routes,
     services,
     domain: DOMAIN_SUFFIX,
-    tailscale: { host: TS_HOST, ip: TS_IP },
+      // Resolved live rather than read from variables that may never have been
+      // set: the page showed "localhost.ts.net" on a machine whose tailnet name
+      // the panel already knew how to find.
+      tailscale: await (async () => {
+        const net = await detectTailnet();
+        return { host: net.host || TS_HOST || null, ip: net.address || TS_IP || null };
+      })(),
   });
 }
 

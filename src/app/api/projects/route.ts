@@ -49,8 +49,24 @@ const DAEMON_RUNTIME: Record<string, string> = {
 };
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+function portFromArgs(a: any): number | null {
+  const args: string[] = Array.isArray(a?.pm2_env?.args) ? a.pm2_env.args : [];
+  const joined = args.join(' ');
+  // --http=127.0.0.1:8090, --port 8080, -p 3000, --addr :9000
+  const m =
+    /--(?:http|addr|listen)[= ]\S*?:(\d{2,5})/.exec(joined) ??
+    /--port[= ](\d{2,5})/.exec(joined) ??
+    /(?:^|\s)-p\s+(\d{2,5})/.exec(joined);
+  const port = m ? Number(m[1]) : NaN;
+  return Number.isFinite(port) && port > 0 && port < 65536 ? port : null;
+}
+
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 function runtimeOf(a: any): string {
-  const interp = a?.pm2_env?.exec_interpreter;
+  // pm2 stores the interpreter's full path, so /usr/bin/node has to be reduced
+  // to a name before it means anything to a reader.
+  const interp = String(a?.pm2_env?.exec_interpreter ?? '').split('/').pop();
   if (interp && interp !== 'none') return interp === 'node' ? 'Node' : interp;
   return DAEMON_RUNTIME[a?.name] ?? 'Binary';
 }
@@ -144,6 +160,22 @@ export async function GET() {
     const envPort = Number(portStr);
     portsInUse[envPort] ??= `pm2 app "${names[0]}"`;
     pm2Port[names[0]] = envPort;
+  }
+  // A port written into the process's own arguments is stated, not inherited,
+  // so it outranks anything read from the environment.
+  for (const a of apps) {
+    const argPort = portFromArgs(a);
+    if (argPort) {
+      pm2Port[a.name] = argPort;
+      portsInUse[argPort] ??= `pm2 app "${a.name}"`;
+    }
+  }
+  // The panel is the process answering this request, so its own port is the one
+  // thing here that needs no inference at all.
+  const selfPort = Number(process.env.PORT);
+  if (Number.isFinite(selfPort) && selfPort > 0) {
+    const self = apps.find((a: { name?: string }) => a?.name === 'bitroot-panel');
+    if (self) pm2Port['bitroot-panel'] = selfPort;
   }
 
   for (const p of Object.values(pm2Port)) candidatePorts.add(p);
