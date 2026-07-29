@@ -5,80 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>BitPanel — a deploy panel for a machine you own</title>
     <meta name="description" content="Self-hosted deploy panel: Node apps, static sites, S3-compatible storage, Cloudflare routes. Runs on Debian, Ubuntu, and an Android phone." />
-    <style>
-      :root {
-        color-scheme: light dark;
-        --bg: #ffffff; --fg: #111827; --muted: #6b7280;
-        --card: #ffffff; --border: #e5e7eb; --soft: #f9fafb;
-        --accent: #0e70ff;
-        --code-bg: #0b1220; --code-fg: #e5e7eb;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #030712; --fg: #f3f4f6; --muted: #9ca3af;
-          --card: #0b1220; --border: #1f2937; --soft: #0b1220;
-        }
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0; background: var(--bg); color: var(--fg);
-        font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        -webkit-font-smoothing: antialiased;
-      }
-      .wrap { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
-      header { margin-bottom: 3rem; }
-      .brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 2rem; }
-      .brand svg { width: 24px; height: 24px; fill: currentColor; }
-      .brand b { font-weight: 600; letter-spacing: -.01em; }
-      .tag {
-        font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
-        color: var(--muted); border: 1px solid var(--border); border-radius: 5px;
-        padding: 2px 6px; background: var(--soft);
-      }
-      h1 { font-size: 2.4rem; line-height: 1.15; letter-spacing: -.03em; margin: 0 0 1rem; text-wrap: balance; }
-      .lede { font-size: 1.1rem; color: var(--muted); margin: 0 0 2rem; text-wrap: pretty; }
-      h2 { font-size: 1.05rem; letter-spacing: -.01em; margin: 3rem 0 .75rem; }
-      p { text-wrap: pretty; }
-
-      pre {
-        background: var(--code-bg); color: var(--code-fg);
-        border-radius: .75rem; padding: 1rem 1.1rem; overflow-x: auto;
-        font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0;
-      }
-      .cmd { position: relative; }
-      .cmd button {
-        position: absolute; top: .5rem; right: .5rem;
-        background: rgba(255,255,255,.1); color: #e5e7eb; border: 0;
-        border-radius: .4rem; padding: .3rem .55rem; font-size: 11px; cursor: pointer;
-        transition: background .15s ease;
-      }
-      .cmd button:hover { background: rgba(255,255,255,.2); }
-      .note { font-size: .85rem; color: var(--muted); margin-top: .6rem; }
-      #curl { white-space: pre-wrap; word-break: break-all; }
-      .alt { margin-top: 1.25rem; }
-      .alt summary {
-        cursor: pointer; font-size: .875rem; color: var(--muted);
-        padding: .35rem 0; list-style-position: inside;
-      }
-      .alt summary:hover { color: var(--fg); }
-      .alt > div, .alt > p { margin-top: .75rem; }
-
-      .grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
-      .card {
-        border: 1px solid var(--border); border-radius: .75rem; padding: 1rem;
-        background: var(--card);
-      }
-      .card h3 { margin: 0 0 .3rem; font-size: .95rem; }
-      .card p { margin: 0; font-size: .875rem; color: var(--muted); }
-
-      table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-      td { padding: .5rem .6rem; border-top: 1px solid var(--border); vertical-align: top; }
-      td:first-child { white-space: nowrap; color: var(--muted); font-family: ui-monospace, monospace; font-size: .85em; }
-
-      a { color: var(--accent); }
-      footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); font-size: .85rem; color: var(--muted); }
-      .honest { border-left: 2px solid var(--border); padding-left: 1rem; color: var(--muted); font-size: .9rem; }
-    </style>
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <div class="wrap">
@@ -168,11 +95,11 @@
       <table>
         <tr>
           <td>Debian / Ubuntu</td>
-          <td>One command. <a href="ubuntu.md">Guide →</a></td>
+          <td>One command. <a href="ubuntu.html">Guide →</a></td>
         </tr>
         <tr>
           <td>Android / Termux</td>
-          <td>What it was built on. A few steps a Debian installer cannot take. <a href="termux.md">Guide →</a></td>
+          <td>What it was built on. A few steps a Debian installer cannot take. <a href="termux.html">Guide →</a></td>
         </tr>
       </table>
 
@@ -198,8 +125,8 @@
       <footer>
         <a href="https://github.com/yashthakur1/bitroot-panel">Source on GitHub</a> ·
         <a href="https://www.npmjs.com/package/bitpanel">npm</a> ·
-        <a href="ubuntu.md">Ubuntu guide</a> ·
-        <a href="termux.md">Termux guide</a>
+        <a href="ubuntu.html">Ubuntu guide</a> ·
+        <a href="termux.html">Termux guide</a>
       </footer>
     </div>
 

@@ -1,63 +1,44 @@
 # BitPanel on Android / Termux
 
-Termux works, and it is what the panel was built on — but `install.sh` targets
-Debian and will refuse to run here. Android has no service manager, `apt` is
-Termux's own, and several dependencies have no Android build at all.
+**The full guide, formatted:** https://yashthakur1.github.io/bitroot-panel/termux.html
 
-## Prerequisites
+`npx bitpanel install` refuses to run here on purpose — it is apt- and
+systemd-shaped, and Android has neither. The equivalent:
 
 ```bash
 pkg install nodejs git nginx openssh netcat-openbsd garage rclone
 npm install -g pm2
-```
 
-Termux packages are compiled for bionic, which is why Garage installs from
-`pkg` here rather than from the upstream release — the official binary is
-glibc-linked and will not start.
+git clone --depth 1 --branch v0.1.7 \
+  https://github.com/yashthakur1/bitroot-panel.git ~/apps/bitroot-panel
+cd ~/apps/bitroot-panel && npm install --include=dev && npm run build
 
-Also install **Termux:Boot** so pm2 comes back after a reboot, and
-**termux-exec**, which the helper scripts rely on to resolve `#!/usr/bin/env`
-shebangs (Termux has no `/usr/bin`).
+mkdir -p ~/bin
+for f in server-scripts/*; do
+  head -c 2 "$f" | grep -q '^#!' && install -m 755 "$f" ~/bin/
+done
 
-## Setup
+printf 'PORT=3210\nSESSION_SECRET=%s\nDASHBOARD_PASSWORD=%s\n' \
+  "$(openssl rand -hex 32)" \
+  "$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9' | cut -c1-20)" \
+  > .env && chmod 600 .env
 
-```bash
-git clone <repo> ~/apps/bitroot-panel
-cd ~/apps/bitroot-panel
-npm install && npm run build
-install -m 755 server-scripts/* ~/bin/     # skip the .html
-```
-
-Write `~/apps/bitroot-panel/.env` by hand — see the table in the main README —
-then:
-
-```bash
-pm2 start npm --name bitroot-panel --cwd ~/apps/bitroot-panel -- start
+PORT=3210 pm2 start npm --name bitroot-panel --cwd ~/apps/bitroot-panel -- start
 pm2 start garage --name garage -- server
 pm2 save
 ```
 
-`pm2 save` matters more here than on Linux: with no systemd, Termux:Boot
-replays the saved dump and nothing else will.
+Then open `http://localhost:3210` and the wizard takes over.
 
-## Android-specific things that will bite you
+Also install **Termux:Boot** (nothing restarts after a reboot without it — there
+is no systemd) and **termux-exec** (the helper scripts use `#!/usr/bin/env`
+shebangs, and Termux has no `/usr/bin`).
 
-- **`/dev/tcp` does not work** under `sh`, which is dash. Anything probing a
-  port must use `nc -z`.
-- **`ss` and `netstat` return nothing** — Android denies netlink to apps. You
-  cannot enumerate listening sockets; connect to them instead.
-- **Native Node modules** need `GYP_DEFINES="android_ndk_path="` or node-gyp
-  will not configure. `bit-cli-update` sets this only on Android.
-- **No Docker.** The `docker` package exists but ships no daemon.
-- **Ports below 1024 are unavailable** to a non-root process.
-- **Some binaries simply will not run.** Anything linked against glibc fails
-  with `cannot execute: required file not found`, which means the ELF
-  interpreter is missing, not the file. Bun, turbo and Claude Code past 2.1.112
-  are all in this category.
+Clone at a tag, not a branch: that is how the panel knows which release it is
+running and can update itself later.
 
-## Keeping it alive
+`PORT` must be in the environment, not only in `.env` — `next start` reads it
+from the process environment, and a dotenv line alone leaves the panel on 3000.
 
-Android is aggressive about background processes. Acquire a wakelock
-(`termux-wake-lock`) and exclude Termux from battery optimisation, or the
-device will drop off the network while it sleeps — the services stay running,
-but nothing can reach them.
+The constraints that will bite you — dash instead of bash, no netlink, no
+glibc binaries, no Tailscale CLI — are listed on the page above.

@@ -95,7 +95,7 @@ if (platform() === 'android') {
 BitPanel does run here — it was built on a phone — but the steps differ enough
 that they are written out separately:
 
-  ${DOCS}termux.md
+  ${DOCS}termux.html
 
 In short: pkg install the dependencies, clone the repo, npm install, and start
 things under pm2 by hand, because Android has no service manager to register
