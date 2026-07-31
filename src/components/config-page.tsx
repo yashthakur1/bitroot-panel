@@ -50,6 +50,12 @@ const UPGRADE_TARGETS: Array<{
   desc: string;
 }> = [
   {
+    target: 'panel',
+    label: 'BitPanel',
+    versionKey: 'panel',
+    desc: 'pulls the tagged release from npm, rebuilds, and restarts the panel',
+  },
+  {
     target: 'pocketbase',
     label: 'PocketBase',
     versionKey: 'pocketbase',
