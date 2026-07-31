@@ -42,11 +42,15 @@ function newer(a: string, b: string): boolean {
 let cached: { at: number; latest: string | null } | null = null;
 
 async function latestPublished(force = false): Promise<string | null> {
-  // Cached for an hour, because this is checked on every visit to the setup
-  // page. But an explicit re-scan has to bypass it: otherwise a release
-  // published minutes ago stays invisible for an hour, and pressing the button
-  // meant for exactly that question changes nothing.
-  if (!force && cached && Date.now() - cached.at < 60 * 60 * 1000) return cached.latest;
+  // Cached for a minute, not an hour. The hour was chosen to avoid hitting npm
+  // on every visit to the setup page, but it meant a plain page load could
+  // answer "up to date" from a check made fifty minutes earlier - stating a
+  // stale cache as a fact, and leaving the real answer behind a button nobody
+  // knows they have to press. One request to npm per minute is not a load
+  // problem; silently reporting the wrong version is a correctness one.
+  //
+  // An explicit re-scan still bypasses it entirely.
+  if (!force && cached && Date.now() - cached.at < 60 * 1000) return cached.latest;
   try {
     const res = await fetch('https://registry.npmjs.org/bitpanel/latest', {
       cache: 'no-store',

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
+import { versionInfo } from '@/lib/version';
 
 // Availability check for the one-click upgrade targets. Best-effort: any
 // source that fails is reported as "unknown" rather than blocking the page.
@@ -9,6 +10,11 @@ function normalize(v: string): string {
 }
 
 export async function GET() {
+  // Forced: this endpoint only runs when someone presses "check for updates",
+  // and answering that from an hour-old cache is how a release published
+  // minutes ago stays invisible.
+  const panel = await versionInfo(true).catch(() => null);
+
   const [pbCurrent, pmCurrent, aptList] = await Promise.all([
     run('cat "$HOME/apps/pocketbase/VERSION" 2>/dev/null || true'),
     run('pm2 --version 2>/dev/null || true'),
@@ -36,6 +42,11 @@ export async function GET() {
   const pendingPackages = Number(aptList.output.trim()) || 0;
 
   return NextResponse.json({
+    panel: {
+      current: normalize(panel?.installed ?? ''),
+      latest: normalize(panel?.latest ?? ''),
+      updateAvailable: !!panel?.updateAvailable,
+    },
     pocketbase: {
       current: normalize(pbCurrent.output),
       latest: normalize(pbLatest),

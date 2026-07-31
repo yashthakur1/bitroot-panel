@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runStream } from '@/lib/runner';
+import { startUpdate, versionInfo } from '@/lib/version';
 
 // One-click upgrades. Strict allowlist — the target picks a fixed command,
 // nothing from the request is interpolated. Output streams live to the UI.
@@ -43,6 +44,24 @@ const TARGETS: Record<string, { cmd: string; timeoutMs: number }> = {
 
 export async function POST(req: NextRequest) {
   const { target } = await req.json().catch(() => ({}));
+
+  // The panel cannot stream its own upgrade: the process writing the response
+  // is the one being restarted, so the connection dies partway and the UI is
+  // left holding a truncated log with no verdict. It runs detached instead and
+  // reports through the update log, which survives the restart.
+  if (target === 'panel') {
+    const v = await versionInfo(true);
+    if (!v.latest || !v.updateAvailable) {
+      return NextResponse.json({ error: 'already on the latest release' }, { status: 400 });
+    }
+    try {
+      await startUpdate(v.latest);
+      return NextResponse.json({ detached: true, target: v.latest }, { status: 202 });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
+
   const t = TARGETS[target];
   if (!t) {
     return NextResponse.json({ error: 'unknown upgrade target' }, { status: 400 });
