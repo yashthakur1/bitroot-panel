@@ -82,6 +82,9 @@ function Upgrades({
   onDone: () => void;
 }) {
   const [running, setRunning] = useState('');
+  // Which row the log belongs to. Kept separate from `running` so the output
+  // stays attached to its own row after the upgrade finishes.
+  const [logFor, setLogFor] = useState('');
   const [log, setLog] = useState('');
   const [result, setResult] = useState<'ok' | 'fail' | ''>('');
   const [checks, setChecks] = useState<Record<string, CheckEntry> | null>(null);
@@ -105,6 +108,7 @@ function Upgrades({
 
   async function upgrade(target: string) {
     setRunning(target);
+    setLogFor(target);
     setResult('');
     setLog(`Starting ${target} upgrade…\n`);
     try {
@@ -166,7 +170,8 @@ function Upgrades({
         {UPGRADE_TARGETS.map((t) => {
           const c = checks?.[t.target];
           return (
-            <div key={t.target} className="px-4 py-3 flex items-center gap-4">
+            <div key={t.target}>
+            <div className="px-4 py-3 flex items-center gap-4">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2 flex-wrap">
                   {t.label}
@@ -203,28 +208,34 @@ function Upgrades({
                 )}
               </Button>
             </div>
+
+            {logFor === t.target && log && (
+              <div className="px-4 pb-4 space-y-2">
+                {result && (
+                  <p
+                    className={`fade-in-up flex items-center gap-1.5 text-sm ${
+                      result === 'ok'
+                        ? 'text-green-700 dark:text-green-400'
+                        : 'text-red-600 dark:text-red-400'
+                    }`}
+                  >
+                    {result === 'ok' ? (
+                      <Check size={14} className="pop-in" />
+                    ) : (
+                      <AlertTriangle size={14} className="pop-in" />
+                    )}
+                    {result === 'ok' ? 'Upgrade completed.' : 'Upgrade failed — see log.'}
+                  </p>
+                )}
+                <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-3 overflow-auto max-h-72 whitespace-pre-wrap">
+                  {log}
+                </pre>
+              </div>
+            )}
+            </div>
           );
         })}
       </div>
-      {log && (
-        <div className="mt-3 space-y-2">
-          {result && (
-            <p
-              className={`fade-in-up flex items-center gap-1.5 text-sm ${
-                result === 'ok'
-                  ? 'text-green-700 dark:text-green-400'
-                  : 'text-red-600 dark:text-red-400'
-              }`}
-            >
-              {result === 'ok' ? <Check size={14} className="pop-in" /> : <AlertTriangle size={14} className="pop-in" />}
-              {result === 'ok' ? 'Upgrade completed.' : 'Upgrade failed — see log.'}
-            </p>
-          )}
-          <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-72 whitespace-pre-wrap">
-            {log}
-          </pre>
-        </div>
-      )}
     </div>
   );
 }
