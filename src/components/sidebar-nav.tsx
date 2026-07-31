@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Box, Cloud, Database, Github, HardDrive, PanelsTopLeft, Plus, Recycle, Server, Settings, ShieldCheck, GitBranch } from 'lucide-react';
+import { Box, Cloud, Database, Github, HardDrive, Laptop, PanelsTopLeft, Plus, Recycle, Server, Settings, ShieldCheck, GitBranch } from 'lucide-react';
 
 interface Item {
   name: string;
@@ -97,6 +97,12 @@ const GROUPS: Array<{ title: string; items: Item[] }> = [
   {
     title: 'System',
     items: [
+      {
+        name: 'Devices',
+        href: '/dashboard/devices',
+        icon: <Laptop size={18} />,
+        match: (p) => p.startsWith('/dashboard/devices'),
+      },
       {
         name: 'Residue',
         href: '/dashboard/residue',
