@@ -42,6 +42,7 @@ function ago(iso: string): string {
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [configured, setConfigured] = useState(true);
+  const [state, setState] = useState<'loaded' | 'stale' | 'absent'>('absent');
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +52,7 @@ export default function DevicesPage() {
       const res = await fetch('/api/devices', { cache: 'no-store' });
       const d = await res.json();
       setConfigured(d.configured !== false);
+      if (d.state) setState(d.state);
       setDevices(d.devices ?? []);
       setErr(d.error ?? '');
     } catch (e) {
@@ -92,7 +94,26 @@ export default function DevicesPage() {
         )}
       </div>
 
-      {!configured && (
+      {/* The key being on disk but not in this process is its own state, and the
+          only one where the fix is a restart rather than a key. */}
+      {!configured && state === 'stale' && (
+        <div className="border border-accent-200 dark:border-accent-800 rounded-lg p-5 space-y-3 bg-accent-50/50 dark:bg-accent-950/20">
+          <p className="text-sm text-gray-800 dark:text-gray-200 text-pretty">
+            <strong>TS_API_KEY is in .env, but this panel was started without it.</strong>{' '}
+            pm2 replays the environment it captured when the process was first created and
+            never re-reads <code>.env</code>, so the key is on disk and invisible at the
+            same time.
+          </p>
+          <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-3 overflow-x-auto">panel-restart</pre>
+          <p className="text-xs text-gray-600 dark:text-gray-400 text-pretty">
+            <code>panel-restart</code>, not <code>pm2 restart</code> — it reads{' '}
+            <code>.env</code> and passes the values in. Plain <code>pm2 restart</code> will
+            leave this page saying exactly the same thing.
+          </p>
+        </div>
+      )}
+
+      {!configured && state !== 'stale' && (
         <div className="border rounded-lg p-5 space-y-3 bg-gray-50 dark:bg-gray-900/40">
           <p className="text-sm text-gray-700 dark:text-gray-300 text-pretty">
             Device discovery needs a Tailscale API key. The <code>tailscale</code> CLI is
@@ -123,7 +144,9 @@ TS_TAILNET=-`}
               </span>
             </li>
             <li>
-              <code>pm2 restart bitroot-panel</code>
+              <code>panel-restart</code> — reads <code>.env</code> and passes the values
+              in. Plain <code>pm2 restart</code> replays a stale environment and the key
+              stays invisible.
             </li>
           </ol>
           <p className="text-xs text-gray-500 dark:text-gray-400">

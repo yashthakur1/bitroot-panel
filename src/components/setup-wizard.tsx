@@ -130,7 +130,7 @@ export default function SetupWizard() {
         )}
         <pre className="bg-gray-950 text-gray-200 rounded-lg p-3 text-xs font-mono overflow-x-auto">
 {`cd ~/apps/bitroot-panel
-npm run build && pm2 restart bitroot-panel`}
+npm run build && panel-restart`}
         </pre>
       </Shell>
     );
