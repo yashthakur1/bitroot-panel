@@ -16,6 +16,20 @@ export interface DnsRecord {
   content: string;
 }
 
+export interface ZoneRecord extends DnsRecord {
+  ttl: number;
+  proxied: boolean;
+  /** Points at the tunnel this machine runs, rather than someone else's. */
+  mine: boolean;
+}
+
+export interface ZoneView {
+  zone: string;
+  records: ZoneRecord[];
+  /** null when config.yml names no tunnel - then nothing can be called ours. */
+  tunnelId: string | null;
+}
+
 async function cf(path: string, init: RequestInit = {}) {
   if (!ZONE || !TOKEN) throw new Error('Cloudflare credentials not configured');
   const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE}${path}`, {
@@ -91,6 +105,44 @@ export async function listTunnelRecords(): Promise<DnsRecord[]> {
   return (all as DnsRecord[]).filter(
     (r) => r.type === 'CNAME' && r.content.toLowerCase() === target,
   );
+}
+
+/**
+ * Every record in the zone, with the ones belonging to this machine marked.
+ *
+ * A zone is shared by every device pointed at it, so a flat list from the
+ * Cloudflare dashboard cannot tell you which hostnames this box is actually
+ * answering for. That mapping is the only thing the panel knows that the
+ * dashboard does not, so it is the thing worth showing.
+ */
+export async function zoneView(): Promise<ZoneView> {
+  const [zone, tunnelId] = await Promise.all([
+    cf('') as Promise<{ name?: string }>,
+    localTunnelId(),
+  ]);
+
+  const target = tunnelId ? `${tunnelId}.cfargotunnel.com` : null;
+  const raw = (await cf('/dns_records?per_page=500')) as Array<{
+    id: string;
+    name: string;
+    type: string;
+    content: string;
+    ttl: number;
+    proxied?: boolean;
+  }>;
+
+  const records: ZoneRecord[] = raw.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    content: r.content,
+    ttl: r.ttl,
+    proxied: !!r.proxied,
+    mine: !!target && r.type === 'CNAME' && r.content.toLowerCase() === target,
+  }));
+
+  records.sort((a, b) => (a.mine === b.mine ? a.name.localeCompare(b.name) : a.mine ? -1 : 1));
+  return { zone: zone?.name ?? '', records, tunnelId };
 }
 
 export async function deleteDnsRecord(id: string): Promise<void> {

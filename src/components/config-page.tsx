@@ -246,11 +246,140 @@ function Upgrades({
   );
 }
 
-type Tab = 'setup' | 'runtime' | 'software' | 'device';
+interface ZoneRecord {
+  id: string;
+  name: string;
+  type: string;
+  content: string;
+  ttl: number;
+  proxied: boolean;
+  mine: boolean;
+}
+
+function DnsPanel() {
+  const [data, setData] = useState<{
+    zone: string;
+    records: ZoneRecord[];
+    tunnelId: string | null;
+  } | null>(null);
+  const [err, setErr] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/dns', { cache: 'no-store' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setData(d);
+      setErr('');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading && !data) return <TableSkeleton rows={6} cols={4} />;
+  if (err) return <p className="text-sm text-red-600 dark:text-red-400">{err}</p>;
+  if (!data) return null;
+
+  const mine = data.records.filter((r) => r.mine).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-display font-medium">{data.zone || 'DNS'}</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 text-pretty">
+            {data.tunnelId ? (
+              <>
+                {data.records.length} records in the zone, {mine} pointing at this
+                machine&apos;s tunnel. A zone is shared by every device on it — the rest
+                belong elsewhere and are shown read-only.
+              </>
+            ) : (
+              <>
+                {data.records.length} records. This machine&apos;s <code>config.yml</code>{' '}
+                names no tunnel, so none can be identified as its own.
+              </>
+            )}
+          </p>
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1.5 py-2 transition-colors"
+        >
+          {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+          {loading ? 'refreshing…' : 'refresh'}
+        </button>
+      </div>
+
+      <div className="border rounded-lg overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b dark:border-gray-800">
+            <tr>
+              <th className="px-4 py-2.5 font-medium">Name</th>
+              <th className="px-4 py-2.5 font-medium">Type</th>
+              <th className="px-4 py-2.5 font-medium">Value</th>
+              <th className="px-4 py-2.5 font-medium whitespace-nowrap">TTL</th>
+              <th className="px-4 py-2.5 font-medium">Proxy</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y dark:divide-gray-800">
+            {data.records.map((r) => (
+              <tr
+                key={r.id}
+                className={r.mine ? 'bg-accent-50/50 dark:bg-accent-950/20' : undefined}
+              >
+                <td className="px-4 py-2.5 font-mono text-xs">
+                  <span className="flex items-center gap-2">
+                    {r.name}
+                    {r.mine && (
+                      <span className="inline-flex items-center text-[10px] font-semibold uppercase text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 rounded-full px-1.5 py-0.5">
+                        this machine
+                      </span>
+                    )}
+                  </span>
+                </td>
+                <td className="px-4 py-2.5 font-mono text-xs text-gray-500 dark:text-gray-400">
+                  {r.type}
+                </td>
+                <td className="px-4 py-2.5 font-mono text-xs text-gray-600 dark:text-gray-400 break-all max-w-xs">
+                  {r.content}
+                </td>
+                <td className="px-4 py-2.5 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                  {r.ttl === 1 ? 'auto' : r.ttl}
+                </td>
+                <td className="px-4 py-2.5 text-xs">
+                  {r.proxied ? (
+                    <span className="text-accent-700 dark:text-accent-300">proxied</span>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">dns only</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+type Tab = 'setup' | 'runtime' | 'software' | 'dns' | 'device';
 
 export default function ConfigPage({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'software' || initialTab === 'device' || initialTab === 'runtime'
+    initialTab === 'software' ||
+    initialTab === 'device' ||
+    initialTab === 'runtime' ||
+    initialTab === 'dns'
       ? initialTab
       : 'setup',
   );
@@ -289,6 +418,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           { key: 'setup', label: 'Setup' },
           { key: 'runtime', label: 'Runtime' },
           { key: 'software', label: 'Software' },
+          { key: 'dns', label: 'DNS' },
           { key: 'device', label: 'Device' },
         ]}
         active={tab}
@@ -298,6 +428,10 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
       <div className={tab === 'setup' ? '' : 'hidden'}>
         <ReadinessTimeline />
       </div>
+
+      {/* Mounted only when open: it hits the Cloudflare API, which should not
+          happen on every visit to an unrelated tab. */}
+      {tab === 'dns' && <DnsPanel />}
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
