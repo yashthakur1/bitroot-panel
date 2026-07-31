@@ -409,7 +409,7 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
         <p className="text-gray-600 dark:text-gray-400 mt-2">
           The panel&apos;s own runtime configuration on the server. Read-only — to change
           values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
-          <code>pm2 restart bitroot-panel</code>.
+          <code>panel-restart</code>.
         </p>
       </div>
 

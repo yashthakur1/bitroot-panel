@@ -9,6 +9,8 @@
 // app; there is no `tailscale` binary in Termux, so `tailscale status` is not
 // an option on the phone. The API works from anywhere with a key.
 
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { run } from './runner';
 import { detectTailnet } from './setup';
 
@@ -19,6 +21,22 @@ const TAILNET = () => process.env.TS_TAILNET ?? '-';
 
 export function devicesConfigured(): boolean {
   return !!KEY();
+}
+
+/**
+ * absent  - no key anywhere
+ * stale   - the key is in .env, but this process was started without it
+ * loaded  - the running process has it
+ *
+ * The middle state is worth naming. pm2 replays the environment it captured
+ * when a process was first created and never re-reads .env, so a key added
+ * afterwards is on disk and invisible at the same time - and a page that only
+ * says "not configured" sends you to re-do the step you already did.
+ */
+export async function keyState(): Promise<'loaded' | 'stale' | 'absent'> {
+  if (KEY()) return 'loaded';
+  const txt = await readFile(join(process.cwd(), '.env'), 'utf8').catch(() => '');
+  return /^TS_API_KEY=\S/m.test(txt) ? 'stale' : 'absent';
 }
 
 /** A port worth knowing about, and what answering on it implies. */
