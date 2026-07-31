@@ -231,6 +231,48 @@ async function pm2Status(name: string): Promise<'online' | 'stopped' | 'absent'>
   return proc?.pm2_env?.status === 'online' ? 'online' : 'stopped';
 }
 
+/**
+ * Whether cloudflared is actually holding connections to Cloudflare's edge.
+ *
+ * pm2 reporting `online` only says the process exists. cloudflared retries a
+ * dead route indefinitely without exiting, so a machine that changed networks
+ * or woke from sleep keeps a healthy-looking process while every request gets
+ * a 1033. That is not a hypothetical: it took panel.bitroot.in down for twenty
+ * minutes while pm2 showed `online` with zero restarts.
+ *
+ * The log is the only place the distinction is visible. cloudflared writes
+ * "Registered tunnel connection" per edge connection it establishes, and
+ * "Unable to establish connection" / "network is unreachable" when it cannot.
+ * Whichever kind of line came last is the current state - the timestamps are
+ * ISO-8601 UTC, so comparing them as strings is ordering them.
+ */
+async function tunnelEdge(): Promise<'connected' | 'disconnected' | 'unknown'> {
+  const r = await run('pm2 logs cloudflared --lines 80 --nostream 2>/dev/null || true', 25_000);
+  const text = stripAnsi(r.output);
+
+  const lastStamp = (re: RegExp): string => {
+    let last = '';
+    for (const line of text.split('\n')) {
+      if (!re.test(line)) continue;
+      const m = line.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/);
+      if (m && m[0] > last) last = m[0];
+    }
+    return last;
+  };
+
+  const good = lastStamp(/Registered tunnel connection/);
+  const bad = lastStamp(
+    /Unable to establish connection|Serve tunnel error|network is unreachable|Connection terminated/,
+  );
+
+  // No evidence either way - a freshly rotated log, or a build that logs
+  // differently. Report unknown rather than inventing a verdict.
+  if (!good && !bad) return 'unknown';
+  if (!good) return 'disconnected';
+  if (!bad) return 'connected';
+  return bad > good ? 'disconnected' : 'connected';
+}
+
 async function tunnelStep(): Promise<Step> {
   const unlocks = ['Serving public URLs without opening a port'];
   if (!(await has('cloudflared'))) {
@@ -287,12 +329,33 @@ async function tunnelStep(): Promise<Step> {
       fix: created ? undefined : ['cloudflared tunnel create $(hostname)'],
     };
   }
+  // Only worth asking once the process is up; if it is stopped, the log tells
+  // us nothing we do not already know.
+  const edge = up ? await tunnelEdge() : 'unknown';
+
+  if (up && edge === 'disconnected') {
+    return {
+      id: 'tunnel',
+      title: 'Cloudflare Tunnel',
+      status: 'partial',
+      detail:
+        'cloudflared is running but is not connected to Cloudflare. Requests to ' +
+        'your hostnames return error 1033 until it reconnects. This usually ' +
+        'follows a network change or the machine waking from sleep - the ' +
+        'process survives, its route to the edge does not.',
+      unlocks,
+      actions: [{ id: 'start-tunnel', label: 'Restart cloudflared' }],
+    };
+  }
+
   return {
     id: 'tunnel',
     title: 'Cloudflare Tunnel',
     status: up ? 'ready' : 'partial',
     detail: up
-      ? 'Tunnel configured and running.'
+      ? edge === 'connected'
+        ? 'Tunnel configured, running, and connected to Cloudflare.'
+        : 'Tunnel configured and running.'
       : known
         ? 'Tunnel is configured but the cloudflared process is stopped.'
         : 'Tunnel is configured but nothing is running it.',
