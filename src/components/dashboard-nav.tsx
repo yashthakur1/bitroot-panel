@@ -18,6 +18,18 @@ function serverInfo() {
   return serverPromise;
 }
 
+// Same shape as serverInfo: the signed-in identity cannot change without the
+// process restarting, so it is fetched once rather than on every nav mount.
+let mePromise: Promise<{ email: string; name: string; configured: boolean }> | null = null;
+function me() {
+  if (!mePromise) {
+    mePromise = fetch('/api/me')
+      .then((r) => r.json())
+      .catch(() => ({ email: '', name: 'Administrator', configured: false }));
+  }
+  return mePromise;
+}
+
 // Replaces a hardcoded "Dev Server" badge whose tooltip named one specific
 // phone. Now it names the machine you are actually looking at, which is the
 // thing worth knowing when the same panel runs on more than one.
@@ -77,6 +89,24 @@ export default function DashboardNav() {
 }
 
 function ProfileMenu() {
+  const [who, setWho] = React.useState<{
+    email: string;
+    name: string;
+    configured: boolean;
+  } | null>(null);
+
+  React.useEffect(() => {
+    let live = true;
+    me().then((d) => live && setWho(d));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The avatar letter was hardcoded to "Y" — right on this machine by accident,
+  // wrong on anyone else's.
+  const initial = (who?.name?.trim()?.[0] ?? who?.email?.[0] ?? 'A').toUpperCase();
+
   async function signOut() {
     await fetch('/api/logout', { method: 'POST' }).catch(() => {});
     window.location.href = '/';
@@ -86,7 +116,7 @@ function ProfileMenu() {
     <div className="relative group">
       <button aria-label="Profile" className="w-10 h-10 flex items-center justify-center">
         <div className="w-8 h-8 bg-accent-600 rounded-full flex items-center justify-center transition-transform group-hover:scale-105">
-          <span className="text-white font-medium text-sm">Y</span>
+          <span className="text-white font-medium text-sm">{initial}</span>
         </div>
       </button>
 
@@ -95,17 +125,17 @@ function ProfileMenu() {
         <div className="bounce-in w-64 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-[0_8px_24px_rgba(0,0,0,0.10),0_2px_6px_rgba(0,0,0,0.06)] p-2">
           <div className="flex items-center gap-3 p-3">
             <div className="w-10 h-10 bg-accent-600 rounded-full flex items-center justify-center shrink-0">
-              <span className="text-white font-medium">Y</span>
+              <span className="text-white font-medium">{initial}</span>
             </div>
             <div className="min-w-0">
               <div className="font-medium text-gray-900 dark:text-gray-100 text-sm">
-                {process.env.NEXT_PUBLIC_ADMIN_NAME ?? 'Administrator'}
+                {who?.name ?? 'Administrator'}
                 <span className="ml-2 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-600 dark:text-accent-400 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full align-middle">
                   admin
                 </span>
               </div>
               <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                {process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL ?? 'admin@example.com'}
+                {who?.email || (who ? 'No email identity set' : '\u00a0')}
               </div>
             </div>
           </div>
