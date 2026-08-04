@@ -48,3 +48,17 @@ export function shq(s: string): string {
 }
 
 export class ValidationError extends Error {}
+
+/**
+ * A hostname for a Pages custom domain. Rejects schemes, ports and paths:
+ * Cloudflare accepts only a bare host and its error for anything else names
+ * neither the field nor the problem.
+ */
+export function assertHostname(v: string): string {
+  const h = String(v).trim().toLowerCase();
+  if (!h) return '';
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(h)) {
+    throw new ValidationError(`"${v}" is not a hostname — use something like blog.bitroot.in`);
+  }
+  return h;
+}

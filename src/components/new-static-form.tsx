@@ -164,6 +164,17 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
   const [urlRepo, setUrlRepo] = useState('');
 
   const [name, setName] = useState('');
+  // Where the built output ends up. Asked before anything else, because it
+  // decides whether half the remaining fields mean anything.
+  const [destination, setDestination] = useState<'device' | 'pages'>('device');
+  const [domain, setDomain] = useState('');
+  // Set only on the Pages path: there is no build log, so the outcome has to be
+  // reported rather than watched.
+  const [pagesResult, setPagesResult] = useState<{
+    url: string;
+    domain?: string;
+    domainError?: string;
+  } | null>(null);
   const [port, setPort] = useState('');
   const [buildCmd, setBuildCmd] = useState('npm run build');
   const [outDir, setOutDir] = useState('dist');
@@ -277,8 +288,13 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     if (!name) e.name = 'Give the site a name';
     else if (!/^[a-zA-Z0-9_-]{1,40}$/.test(name)) e.name = 'Letters, digits, dashes only';
     else if (nameConflict) e.name = `"${name}" already exists`;
-    if (!port) e.port = 'A port is required — nginx serves each site on its own';
-    else if (!(portNum >= 1024 && portNum <= 65535)) e.port = 'Use 1024-65535';
+    // Only when this device serves it. On the Pages path the field is hidden,
+    // and validating a hidden input blocks the submit with an error nobody can
+    // see or fix.
+    if (destination === 'device') {
+      if (!port) e.port = 'A port is required — nginx serves each site on its own';
+      else if (!(portNum >= 1024 && portNum <= 65535)) e.port = 'Use 1024-65535';
+    }
     else if (portConflict) e.port = `Taken by ${portConflict}`;
     if (!outDir) e.outDir = 'Which folder the build writes to';
     return e;
@@ -312,10 +328,23 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           buildCmd,
           outDir,
           environment,
+          destination,
+          domain: destination === 'pages' ? domain.trim() : undefined,
         }),
       });
       if (res.headers.get('content-type')?.includes('json')) {
         const data = await res.json().catch(() => ({}));
+        // Pages answers with JSON on success too — Cloudflare does the build,
+        // so there is no log to stream and nothing to show a timeline for.
+        if (res.ok && data.ok) {
+          setPagesResult({
+            url: data.url,
+            domain: data.domain,
+            domainError: data.domainError,
+          });
+          setDone(true);
+          return;
+        }
         setOutput(data.error ?? `HTTP ${res.status}`);
         setFailed(true);
         return;
@@ -569,6 +598,51 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             </div>
           </div>
 
+          {/* Asked before the fields it governs: choosing Pages makes port and
+              visibility meaningless, and a form that shows dead inputs and then
+              ignores them is worse than one that hides them. */}
+          <div className="flex flex-col">
+            <Label>Where should this run?</Label>
+            <div className="grid sm:grid-cols-2 gap-2 mt-1.5">
+              {([
+                {
+                  key: 'device' as const,
+                  title: 'This device',
+                  blurb: 'Built and served here through nginx and the tunnel.',
+                },
+                {
+                  key: 'pages' as const,
+                  title: 'Cloudflare Pages',
+                  blurb: 'Built here, then served from Cloudflare’s edge.',
+                },
+              ]).map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setDestination(opt.key)}
+                  className={`text-left rounded-lg border p-3 transition-colors ${
+                    destination === opt.key
+                      ? 'border-accent-500 bg-accent-50/60 dark:bg-accent-950/25'
+                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                  }`}
+                >
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                    {opt.title}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 text-pretty">
+                    {opt.blurb}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {destination === 'pages' && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-pretty">
+                This device is only involved at deploy time — not on every request,
+                which is what makes it a better fit for hardware that sleeps.
+              </p>
+            )}
+          </div>
+
           <div className="flex gap-4 items-start">
             <div className="flex flex-col flex-1">
               <Label htmlFor="s-name">Site name</Label>
@@ -585,6 +659,20 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 </p>
               )}
             </div>
+            {destination === 'pages' ? (
+              <div className="flex flex-col w-64">
+                <Label htmlFor="s-domain">Custom domain (optional)</Label>
+                <Input
+                  id="s-domain"
+                  placeholder="blog.bitroot.in"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                  Leave empty to use the free <code>.pages.dev</code> address.
+                </p>
+              </div>
+            ) : (
             <div className="flex flex-col w-40">
               <div className="flex items-baseline justify-between">
                 <Label htmlFor="s-port">Port</Label>
@@ -618,8 +706,12 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 </p>
               ) : null}
             </div>
+            )}
           </div>
 
+          {/* Public vs private is a question about a local listener and a tunnel
+              route. A Pages site has neither — Cloudflare serves it either way. */}
+          {destination === 'device' && (
           <div className="flex flex-col">
             <Label>Environment</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
@@ -663,6 +755,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
               </button>
             </div>
           </div>
+          )}
         </fieldset>
 
         <div className="mt-5 flex items-center gap-3">
@@ -691,7 +784,10 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
         </div>
       </form>
 
-      {started && (
+      {/* The timeline narrates clone → build → nginx → tunnel. A Pages deploy
+          takes none of those steps on this device, so showing it would be
+          describing work that never happened. */}
+      {started && destination === 'device' && (
         <Timeline
           stage={stage}
           failed={failed}
@@ -699,6 +795,46 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           isPublic={environment === 'public'}
           name={name}
         />
+      )}
+
+      {pagesResult && (
+        <div className="fade-in-up border rounded-xl p-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200">
+            <CheckCircle2 size={16} className="text-green-600 pop-in" />
+            Project created on Cloudflare Pages
+          </div>
+          <p className="text-sm text-gray-600 dark:text-gray-400 text-pretty">
+            Cloudflare is building it now — the first deploy usually takes a minute
+            or two. Pushes to <code>{branch || 'main'}</code> rebuild it from then on;
+            this device isn&apos;t involved.
+          </p>
+          <div className="flex flex-col gap-1.5 text-sm">
+            <a
+              href={pagesResult.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1.5"
+            >
+              {pagesResult.url} <ArrowRight size={13} />
+            </a>
+            {pagesResult.domain && !pagesResult.domainError && (
+              <a
+                href={`https://${pagesResult.domain}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1.5"
+              >
+                https://{pagesResult.domain} <ArrowRight size={13} />
+              </a>
+            )}
+          </div>
+          {pagesResult.domainError && (
+            <p className="text-sm text-amber-700 dark:text-amber-400 text-pretty">
+              The site is live, but {pagesResult.domain} could not be attached:{' '}
+              {pagesResult.domainError}
+            </p>
+          )}
+        </div>
       )}
 
       {output && (
