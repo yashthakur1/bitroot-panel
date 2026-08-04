@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run, runStream } from '@/lib/runner';
-import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
+import { assertHostname, assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
 import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
 import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
+import { attachDomain, createPagesProject } from '@/lib/pages';
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 
@@ -80,7 +81,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const name = assertName(body.name);
-    const port = assertPort(body.port);
+    // A Pages site has no local listener, so demanding a port would reject
+    // a valid request and reserve a number nothing is listening on.
+    const port = body.destination === 'pages' ? 0 : assertPort(body.port);
     const branch = body.branch ? assertBranch(body.branch) : '';
     const buildCmd = assertBuildCmd(body.buildCmd);
     const outDir = assertOutDir(body.outDir ?? 'dist');
@@ -101,6 +104,43 @@ export async function POST(req: NextRequest) {
         : `https://github.com/${full}.git`;
     } else {
       repoUrl = assertRepo(body.repo);
+    }
+
+    // Cloudflare Pages: no shell, no build, no stream. Cloudflare clones and
+    // builds the repo itself, so this device does nothing beyond making the
+    // call — which is the whole reason to offer it on a phone.
+    if (body.destination === 'pages') {
+      if (body.source !== 'github') {
+        return NextResponse.json(
+          { error: 'Pages builds from a connected GitHub repository — pick one above.' },
+          { status: 400 },
+        );
+      }
+      const domain = body.domain ? assertHostname(String(body.domain)) : '';
+      const project = await createPagesProject({
+        name,
+        repo: assertRepoFullName(body.repo),
+        branch,
+        buildCmd,
+        outDir,
+      });
+      // A failed custom domain must not read as a failed deploy: the site is
+      // already live on pages.dev at this point.
+      let domainError = '';
+      if (domain) {
+        try {
+          await attachDomain(name, domain);
+        } catch (e) {
+          domainError = (e as Error).message;
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        destination: 'pages',
+        url: project.url,
+        domain: domain || undefined,
+        domainError: domainError || undefined,
+      });
     }
 
     const cmd =
