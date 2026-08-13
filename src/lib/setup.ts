@@ -10,6 +10,7 @@ import { readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import dns from 'dns/promises';
 import { run } from './runner';
+import { applyEnvEdits, parseEnv } from './env';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -25,12 +26,7 @@ export interface SetupState {
 async function readEnv(): Promise<Record<string, string>> {
   try {
     const raw = await readFile(ENV_PATH, 'utf8');
-    const out: Record<string, string> = {};
-    for (const line of raw.split('\n')) {
-      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-      if (m) out[m[1]] = m[2].trim();
-    }
-    return out;
+    return Object.fromEntries(parseEnv(raw).map((v) => [v.key, v.value]));
   } catch {
     return {};
   }
@@ -38,6 +34,12 @@ async function readEnv(): Promise<Record<string, string>> {
 
 // Rewrites in place: an existing key is replaced where it sits, so comments and
 // ordering survive and the file stays readable after the wizard has run.
+//
+// Values are quoted by lib/env rather than written raw. The raw version silently
+// corrupted anything the .env format treats as special, and the wizard writes
+// DASHBOARD_PASSWORD straight from user input: a password containing `#` was
+// truncated at the hash when read back, locking the operator out of the panel
+// they had just configured, with the file looking perfectly reasonable on disk.
 export async function writeEnv(updates: Record<string, string>): Promise<void> {
   let raw = '';
   try {
@@ -45,13 +47,11 @@ export async function writeEnv(updates: Record<string, string>): Promise<void> {
   } catch {
     /* first write */
   }
-  const lines = raw ? raw.split('\n') : [];
-  for (const [key, value] of Object.entries(updates)) {
-    const idx = lines.findIndex((l) => l.match(new RegExp(`^\\s*${key}\\s*=`)));
-    if (idx >= 0) lines[idx] = `${key}=${value}`;
-    else lines.push(`${key}=${value}`);
-  }
-  await writeFile(ENV_PATH, lines.join('\n').replace(/\n{3,}/g, '\n\n'), { mode: 0o600 });
+  const next = applyEnvEdits(
+    raw,
+    Object.entries(updates).map(([key, value]) => ({ key, value })),
+  );
+  await writeFile(ENV_PATH, next, { mode: 0o600 });
 }
 
 export interface TailnetInfo {

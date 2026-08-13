@@ -322,8 +322,11 @@ export async function POST(req: NextRequest) {
 
     // GIT_TERMINAL_PROMPT=0: fail fast on missing credentials instead of
     // hanging on a username prompt that can never be answered.
+    // BITPANEL_STEPS=1 turns on the [[STEP:…]] markers the client parses into a
+    // step rail (docs/streaming-progress.md). Without it `project clone` prints
+    // ordinary output, so running it by hand stays readable.
     const cmd =
-      `GIT_TERMINAL_PROMPT=0 project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
+      `BITPANEL_STEPS=1 GIT_TERMINAL_PROMPT=0 project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
       (internal ? ' --no-tunnel' : '');
     // Stream the server's output live so the UI can render a step timeline.
     return new Response(runStream(cmd, 600_000), {

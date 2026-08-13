@@ -5,6 +5,7 @@
 const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { applyChunk, completedCount, initialState } from '@/lib/steps';
 import Link from 'next/link';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -49,9 +50,18 @@ interface Detection {
 type Source = 'github' | 'url';
 type Errors = Partial<Record<'repo' | 'branch' | 'urlRepo' | 'name' | 'port', string>>;
 
-// Progress checkpoints matched against the server's live `project clone` output.
-// The number of matched checkpoints drives the step timeline.
+// How far the server has got.
+//
+// `project clone` announces its phases with [[STEP:…]] markers, so the timeline
+// reads the script's own account of what it is doing rather than inferring it.
+// The regex fallback below is what this used to do exclusively: six patterns
+// matched against log prose, where rewording a single `echo` on the device
+// silently froze the progress display, and a failure could never explain itself.
+// It is kept only for a device whose `project` script predates the markers.
 function computeStage(text: string, isPublic: boolean): number {
+  const parsed = applyChunk(initialState(), text);
+  if (parsed.steps.length > 0) return completedCount(parsed);
+
   const checkpoints: RegExp[] = [
     /=== cloning/,
     /cloned to |already exists — skipping clone/,
@@ -68,6 +78,11 @@ function computeStage(text: string, isPublic: boolean): number {
     else break;
   }
   return stage;
+}
+
+/** The script's own reason for a failure, when it gave one. */
+function failureReason(text: string): string {
+  return applyChunk(initialState(), text).steps.find((s) => s.state === 'failed')?.error ?? '';
 }
 
 type StepState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
@@ -225,6 +240,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   const [done, setDone] = useState(false);
   const [stage, setStage] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [failReason, setFailReason] = useState('');
   const [started, setStarted] = useState(false);
   const [lostConnection, setLostConnection] = useState(false);
   const outputRef = useRef<HTMLPreElement>(null);
@@ -378,6 +394,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
     setBusy(true);
     setDone(false);
     setFailed(false);
+    setFailReason('');
     setStage(0);
     setStarted(true);
     setOutput('');
@@ -425,6 +442,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       const ok = /\[\[EXIT:0\]\]/.test(full);
       setDone(ok);
       setFailed(!ok);
+      if (!ok) setFailReason(failureReason(full));
       if (ok) setStage(6);
     } catch (err) {
       // Stream broke mid-flight. The server keeps running the deploy —
@@ -840,6 +858,17 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             </Link>
             : if <code>{name}</code> appears there as online, it succeeded.
           </div>
+        </div>
+      )}
+
+      {failed && failReason && (
+        <div className="fade-in-up rounded-xl bg-red-50 dark:bg-red-950/40 px-4 py-3">
+          {/* The script's own account of what went wrong. Deliberately not
+              truncated: it is the most useful sentence on the page, and it
+              replaces the old "failed — see log below". */}
+          <p className="text-sm text-red-700 dark:text-red-300 break-words [text-wrap:pretty]">
+            {failReason}
+          </p>
         </div>
       )}
 

@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { stripAnsi } from '@/lib/ansi';
+import { looksSecret, parseEnv } from '@/lib/env';
 import pkg from '../../../../package.json';
 
 // Panel configuration overview: runtime facts, the panel's own .env
 // (values sent to the authenticated admin; UI masks secrets by default),
 // deployed commit, and device health via the existing device-info script.
-
-const SECRET_HINT = /(password|secret|token|key)/i;
 
 export async function GET() {
   const [envFile, commit, device, versions] = await Promise.all([
@@ -26,15 +25,12 @@ export async function GET() {
     if (m && m[2]) versionMap[m[1]] = m[2].trim();
   }
 
-  const env = envFile.output
-    .split('\n')
-    .map((line) => line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/))
-    .filter((m): m is RegExpMatchArray => m !== null)
-    .map((m) => ({
-      key: m[1],
-      value: m[2],
-      secret: SECRET_HINT.test(m[1]),
-    }));
+  // Shared parser: the local regex this replaced returned `"a b"` — quotes and
+  // all — for a quoted value, and could not represent a multi-line one.
+  const env = parseEnv(envFile.output).map((v) => ({
+    ...v,
+    secret: looksSecret(v.key),
+  }));
 
   return NextResponse.json({
     panel: {

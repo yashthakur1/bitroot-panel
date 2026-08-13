@@ -60,6 +60,51 @@ export function run(command: string, timeoutMs = 30_000): Promise<RunResult> {
   });
 }
 
+// Runs a command with `input` on its stdin. Use this for anything carrying a
+// credential.
+//
+// `project env NAME KEY=value` put every value into an argument vector, which is
+// world-readable through `ps` on the device — and under EXEC_MODE=ssh the same
+// string landed in ssh's argv on this host too. A value that never leaves stdin
+// cannot be read that way. The command string itself stays argv-visible, so it
+// must continue to carry only verbs and validated names.
+export function runWithInput(
+  command: string,
+  input: string,
+  timeoutMs = 30_000,
+): Promise<RunResult> {
+  const wrapped = `export PATH="$HOME/bin:$PATH"; ${command}`;
+  const argv = buildArgv(wrapped);
+
+  return new Promise((resolve) => {
+    const child = spawn(argv[0], argv.slice(1), { env: childEnv() });
+    let out = '';
+    let settled = false;
+
+    const finish = (ok: boolean, extra = '') => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(killer);
+      resolve({ ok, output: (out + extra).trim() });
+    };
+
+    const killer = setTimeout(() => {
+      child.kill();
+      finish(false, '\ntimed out');
+    }, timeoutMs);
+
+    child.stdout?.on('data', (d: Buffer) => (out += d.toString()));
+    child.stderr?.on('data', (d: Buffer) => (out += d.toString()));
+    child.on('error', (e) => finish(false, `\n${e.message}`));
+    child.on('close', (code) => finish(code === 0));
+
+    // The child may exit before draining stdin; that arrives as EPIPE here and as
+    // a non-zero close code above, which is where the failure should be reported.
+    child.stdin?.on('error', () => {});
+    child.stdin?.end(input);
+  });
+}
+
 // Short-lived cache for read-only commands that several pages ask for at once
 // (`pm2 jlist` above all). Spawning the pm2 CLI is the most expensive thing the
 // panel does routinely, so collapsing concurrent callers matters on modest hardware.

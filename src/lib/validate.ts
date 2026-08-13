@@ -35,9 +35,22 @@ export function assertEnvKey(key: unknown): string {
   return key;
 }
 
+// Newlines are allowed. A TLS certificate, an SSH private key and a
+// service-account JSON are all ordinary things to keep in a .env, and rejecting
+// them meant they could not be stored at all. They are safe now because values
+// travel on stdin instead of a command line (runner.runWithInput) and are quoted
+// and escaped on write (lib/env).
+//
+// The ceiling fits a certificate chain while staying small enough that a
+// mis-pasted binary cannot fill the device.
 export function assertEnvValue(value: unknown): string {
-  if (typeof value !== 'string' || value.includes('\n') || value.length > 4096) {
-    throw new ValidationError('invalid env value (no newlines, max 4096 chars)');
+  if (typeof value !== 'string' || value.length > 32_768) {
+    throw new ValidationError('invalid env value (max 32768 chars)');
+  }
+  // A NUL byte cannot survive a process environment, so its presence means the
+  // input was binary rather than text.
+  if (value.includes('\0')) {
+    throw new ValidationError('invalid env value (contains a null byte)');
   }
   return value;
 }
