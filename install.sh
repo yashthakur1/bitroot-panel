@@ -424,7 +424,12 @@ for f in "$APP_DIR"/server-scripts/*; do
 	install -m 755 "$f" "$BIN_DIR/$(basename "$f")"
 done
 [ -f "$HOME/bin/ports.conf" ] || printf '# name=port, one per line. A leading underscore reserves a port\n# without listing it as a service.\n' > "$HOME/bin/ports.conf"
-case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "export PATH=\"\$HOME/bin:\$PATH\"" >> "$HOME/.bashrc" ;; esac
+# Test the file, not the running PATH. Those are different questions, and asking
+# the wrong one loses the line: uninstall strips it from .bashrc, then a
+# reinstall from that same shell still sees ~/bin on PATH, concludes there is
+# nothing to do, and every future shell is left without the commands.
+PATH_LINE='export PATH="$HOME/bin:$PATH"'
+grep -qxF "$PATH_LINE" "$HOME/.bashrc" 2>/dev/null || echo "$PATH_LINE" >> "$HOME/.bashrc"
 step_ok
 
 # ─── 8. build and run ────────────────────────────────────────────
@@ -646,6 +651,14 @@ cat <<EOF
   Open one of those addresses and sign up: pick an email and a password, and
   the panel takes it from there — domain, Cloudflare, storage. You do not need
   to edit any files by hand.
+
+  This also installed $(ls -1 "$BIN_DIR" 2>/dev/null | grep -vc '\.html$') commands into $BIN_DIR — project,
+  static-site, panel-restart, tunnel-add and the rest.
+
+$(case ":$PATH:" in
+	*":$BIN_DIR:"*) printf '  They are on your PATH already.\n' ;;
+	*) printf '  %sYour current shell cannot see them yet. Run this, or open a new shell:%s\n\n    source ~/.bashrc\n' "$C_B" "$C_0" ;;
+esac)
 
   Config -> Setup then shows what this machine can and cannot do yet, and takes
   each credential right there. What it will ask for:
