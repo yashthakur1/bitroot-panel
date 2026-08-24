@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { StepProgress, useStepStream } from '@/components/step-progress';
 import { useLivePoll } from '@/lib/use-poll';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -44,6 +45,26 @@ export default function ProjectDetail({
     load();
   }, [load]);
   useLivePoll(load);
+
+  // Deploy streams; every other action still answers with JSON.
+  const deployStream = useStepStream();
+
+  async function deploy() {
+    setBusyAction('deploy');
+    setActionOutput('');
+    try {
+      await deployStream.start(`/api/projects/${name}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deploy' }),
+      });
+    } catch (e) {
+      setActionOutput(`failed: ${(e as Error).message}`);
+    } finally {
+      setBusyAction('');
+      load();
+    }
+  }
 
   async function removeWith(opts: RemoveOptions) {
     setBusyAction('remove');
@@ -146,7 +167,7 @@ export default function ProjectDetail({
           <Button
             className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
             disabled={!!busyAction}
-            onClick={() => runAction('deploy')}
+            onClick={deploy}
             title="Pull the latest commit on this branch, reinstall, rebuild if needed, then restart"
           >
             {busyAction === 'deploy' ? 'Deploying…' : 'Deploy'}
@@ -191,6 +212,21 @@ export default function ProjectDetail({
           </button>
         ))}
       </div>
+
+      {deployStream.state && (
+        <div className="mb-6">
+          <StepProgress
+            state={deployStream.state}
+            title="Deploy output"
+            details={[
+              { label: 'Project', value: name },
+              ...(project?.port ? [{ label: 'Port', value: String(project.port) }] : []),
+            ]}
+            onRetry={deploy}
+            retryLabel="Deploy again"
+          />
+        </div>
+      )}
 
       {tab === 'overview' && <Overview project={project} actionOutput={actionOutput} />}
       {tab === 'logs' && <Logs name={name} />}

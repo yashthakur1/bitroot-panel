@@ -25,9 +25,133 @@ PANEL_PORT="${BITPANEL_PORT:-3210}"
 DEFAULT_BRANCH="${BITPANEL_BRANCH:-main}"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 
-say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
-warn() { printf '\033[33m !!\033[0m %s\n' "$*"; }
-die()  { printf '\033[31m !!\033[0m %s\n' "$*" >&2; exit 1; }
+# ─── progress ────────────────────────────────────────────────────────────────
+# An installer that prints nothing for four minutes looks broken, and the honest
+# fix is not a fake progress bar — it is saying which of a known number of steps
+# is running, how long each took, and what failed.
+#
+# Everything noisy goes to a log file. It is printed only when a step fails,
+# because that is the only time anyone wants apt's opinion.
+
+LOG_FILE="${BITPANEL_LOG:-/tmp/bitpanel-install-$$.log}"
+: > "$LOG_FILE"
+
+# A pipe is not a terminal: `curl … | bash` with output redirected, or CI, gets
+# plain lines with no spinner and no escape codes. NO_COLOR is honoured too.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then TTY=1; else TTY=0; fi
+if [ "$TTY" = 1 ]; then
+  C_DIM=$'\033[2m'; C_B=$'\033[1m'; C_G=$'\033[32m'; C_R=$'\033[31m'
+  C_Y=$'\033[33m'; C_C=$'\033[36m'; C_0=$'\033[0m'
+else
+  C_DIM=''; C_B=''; C_G=''; C_R=''; C_Y=''; C_C=''; C_0=''
+fi
+
+STEP_TOTAL=11
+STEP_N=0
+STEP_LABEL=''
+STEP_START=0
+RUN_START=$(date +%s)
+SPIN_PID=''
+
+_elapsed() { local s=$(( $(date +%s) - $1 )); printf '%dm%02ds' $((s/60)) $((s%60)); }
+
+_spin() {
+  local frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
+  while :; do
+    i=$(( (i+1) % 10 ))
+    printf '\r  %s%s%s %s' "$C_C" "${frames:$i:1}" "$C_0" "$STEP_LABEL"
+    sleep 0.1
+  done
+}
+
+_spin_stop() {
+  [ -n "$SPIN_PID" ] || return 0
+  kill "$SPIN_PID" 2>/dev/null || true
+  wait "$SPIN_PID" 2>/dev/null || true
+  SPIN_PID=''
+  printf '\r\033[2K'
+}
+
+# step "Installing Node.js"
+step() {
+  _spin_stop
+  STEP_N=$((STEP_N + 1))
+  STEP_START=$(date +%s)
+  local pct=$(( STEP_N * 100 / STEP_TOTAL ))
+  STEP_LABEL="$(printf '%s[%2d/%d]%s %s%3d%%%s  %s' \
+    "$C_DIM" "$STEP_N" "$STEP_TOTAL" "$C_0" "$C_B" "$pct" "$C_0" "$1")"
+  echo "── step $STEP_N: $1 ──" >> "$LOG_FILE"
+  if [ "$TTY" = 1 ]; then
+    _spin & SPIN_PID=$!
+  else
+    printf '  [%2d/%d] %s\n' "$STEP_N" "$STEP_TOTAL" "$1"
+  fi
+}
+
+# step_ok ["it was already there"]
+step_ok() {
+  _spin_stop
+  local note=''
+  [ $# -gt 0 ] && [ -n "$1" ] && note=" $1"
+  if [ "$TTY" = 1 ]; then
+    # The spinner erased its own line, so this reprints the label with a tick.
+    printf '  %s✓%s %s%s%s%s  %s%s%s\n' \
+      "$C_G" "$C_0" "$STEP_LABEL" "$C_DIM" "$note" "$C_0" \
+      "$C_DIM" "$(_elapsed "$STEP_START")" "$C_0"
+  else
+    # The label was already printed when the step opened; repeating it turns a
+    # log into two lines of the same thing.
+    printf '         done in %s%s\n' "$(_elapsed "$STEP_START")" "$note"
+  fi
+}
+
+# step_fail "the reason, in words a person can act on"
+step_fail() {
+  _spin_stop
+  printf '  %s✗%s %s\n\n' "$C_R" "$C_0" "$STEP_LABEL"
+  printf '  %s%s%s\n\n' "$C_R" "$1" "$C_0"
+  printf '  %slast 20 lines of %s%s\n' "$C_DIM" "$LOG_FILE" "$C_0"
+  tail -n 20 "$LOG_FILE" 2>/dev/null | sed 's/^/    /'
+  printf '\n  %sthe whole log is at %s%s\n' "$C_DIM" "$LOG_FILE" "$C_0"
+  exit 1
+}
+
+# run_quiet "what failed, in plain words" -- command args...
+# Sends stdout and stderr to the log. On failure, says why and shows the tail.
+run_quiet() {
+  local why="$1"; shift
+  [ "${1:-}" = "--" ] && shift
+  if ! "$@" >>"$LOG_FILE" 2>&1; then
+    step_fail "$why"
+  fi
+}
+
+say()  { if [ "$TTY" = 1 ]; then :; else printf '     %s\n' "$*"; fi; echo "$*" >> "$LOG_FILE"; }
+warn() { _spin_stop; printf '  %s!%s %s\n' "$C_Y" "$C_0" "$*"; echo "WARN: $*" >> "$LOG_FILE"; }
+die()  { _spin_stop; printf '  %s✗%s %s\n' "$C_R" "$C_0" "$*" >&2; echo "DIE: $*" >> "$LOG_FILE"; exit 1; }
+
+# A spinner left running after Ctrl-C keeps redrawing over the shell prompt.
+trap '_spin_stop' EXIT INT TERM
+
+# apt's own noise, and the reason this installer looked frozen: needrestart
+# scans every running process and every kernel image after each install, prints
+# "Scanning processes..." with no progress, and on some hosts stops to ask a
+# question that nobody can answer through a pipe.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
+banner() {
+  [ "$TTY" = 1 ] || return 0
+  printf '\n'
+  printf '  %s┌──────────────────────────────────────────┐%s\n' "$C_C" "$C_0"
+  printf '  %s│%s  %sBitPanel%s — a deploy panel for a machine  %s│%s\n' "$C_C" "$C_0" "$C_B" "$C_0" "$C_C" "$C_0"
+  printf '  %s│%s              you actually own            %s│%s\n' "$C_C" "$C_0" "$C_C" "$C_0"
+  printf '  %s└──────────────────────────────────────────┘%s\n\n' "$C_C" "$C_0"
+  printf '  %s%d steps. Around four minutes, most of it apt and the build.%s\n' "$C_DIM" "$STEP_TOTAL" "$C_0"
+  printf '  %sFull log: %s%s\n\n' "$C_DIM" "$LOG_FILE" "$C_0"
+}
+banner
 have() { command -v "$1" >/dev/null 2>&1; }
 
 [ "$(id -u)" -ne 0 ] || die "run this as your normal user, not root — it installs into \$HOME and uses sudo only where needed"
@@ -43,42 +167,52 @@ case "$ARCH" in
 esac
 
 # ─── 1. system packages ──────────────────────────────────────────
-say "installing system packages"
-sudo apt-get update -qq
-sudo apt-get install -y -qq git curl ca-certificates nginx netcat-openbsd jq unzip openssl >/dev/null
+step "System packages"
+run_quiet "apt could not refresh its package lists — check the network and /etc/apt/sources.list" \
+	-- sudo apt-get update -qq
+run_quiet "apt could not install the base packages — the failing package is named in the log" \
+	-- sudo apt-get install -y -qq git curl ca-certificates nginx netcat-openbsd jq unzip openssl
+step_ok
 # netcat matters: the panel probes reachability with `nc -z` because /dev/tcp is
 # a bash feature and commands run under sh, which is dash on Debian too.
 
 # ─── 2. node ─────────────────────────────────────────────────────
+step "Node.js $NODE_MAJOR and pm2"
 if have node && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge "$NODE_MAJOR" ]; then
-	say "node $(node -v) already present"
+	NODE_NOTE="node $(node -v) already there"
 else
-	say "installing Node.js $NODE_MAJOR"
-	curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | sudo -E bash - >/dev/null
-	sudo apt-get install -y -qq nodejs >/dev/null
+	NODE_NOTE=''
+	run_quiet "could not add the NodeSource repository — check outbound HTTPS to deb.nodesource.com" \
+		-- sh -c "curl -fsSL 'https://deb.nodesource.com/setup_${NODE_MAJOR}.x' | sudo -E bash -"
+	run_quiet "apt could not install nodejs — see the log" -- sudo apt-get install -y -qq nodejs
 fi
-have pm2 || { say "installing pm2"; sudo npm install -g pm2 >/dev/null; }
+have pm2 || run_quiet "npm could not install pm2 globally" -- sudo npm install -g pm2
+step_ok "$NODE_NOTE"
 
 # ─── 3. cloudflared ──────────────────────────────────────────────
+step "cloudflared"
 if have cloudflared; then
-	say "cloudflared already present"
+	step_ok "already there"
 else
-	say "installing cloudflared"
-	curl -fsSL -o /tmp/cloudflared.deb \
-		"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
-	sudo dpkg -i /tmp/cloudflared.deb >/dev/null && rm -f /tmp/cloudflared.deb
+	run_quiet "could not download cloudflared for ${ARCH} from GitHub" \
+		-- curl -fsSL -o /tmp/cloudflared.deb \
+			"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}.deb"
+	run_quiet "dpkg could not install cloudflared" -- sudo dpkg -i /tmp/cloudflared.deb
+	rm -f /tmp/cloudflared.deb
+	step_ok
 fi
 
 # ─── 4. garage ───────────────────────────────────────────────────
+step "Garage object storage"
 if have garage; then
-	say "garage already present ($(garage --version 2>/dev/null | head -1))"
+	step_ok "already there"
 else
-	say "installing Garage"
 	GARAGE_VER="${GARAGE_VERSION:-v2.1.0}"
 	curl -fsSL -o /tmp/garage \
 		"https://garagehq.deuxfleurs.fr/_releases/${GARAGE_VER}/${GARAGE_ARCH}/garage" \
 		|| die "could not download Garage ${GARAGE_VER} for ${GARAGE_ARCH}"
 	chmod +x /tmp/garage && sudo mv /tmp/garage /usr/local/bin/garage
+	step_ok
 fi
 
 if [ ! -f /etc/garage.toml ]; then
@@ -175,8 +309,9 @@ record_version() {
 	} > "$APP_DIR/.bitpanel-version"
 }
 
+step "Panel source"
+_spin_stop     # git writes its own progress; a spinner under it corrupts the line
 if [ -d "$APP_DIR/.git" ]; then
-	say "updating the panel"
 	git -C "$APP_DIR" remote set-url origin "$(clone_url)"
 	if [ -n "$WANT_TAG" ] && git -C "$APP_DIR" fetch --depth 1 origin "refs/tags/$WANT_TAG:refs/tags/$WANT_TAG" 2>/dev/null; then
 		git -C "$APP_DIR" checkout -q --detach "$WANT_TAG"
@@ -190,7 +325,6 @@ if [ -d "$APP_DIR/.git" ]; then
 	git -C "$APP_DIR" remote set-url origin "$REPO"
 	record_version
 else
-	say "cloning the panel"
 	mkdir -p "$(dirname "$APP_DIR")"
 	if [ -n "$WANT_TAG" ] && git clone --depth 1 --branch "$WANT_TAG" "$(clone_url)" "$APP_DIR" 2>/dev/null; then
 		say "cloned at $WANT_TAG"
@@ -208,11 +342,12 @@ else
 		record_version
 	fi
 fi
+step_ok
 
 # ─── 6. environment ──────────────────────────────────────────────
 ENV_FILE="$APP_DIR/.env"
+step "Configuration"
 if [ ! -f "$ENV_FILE" ]; then
-	say "writing $ENV_FILE"
 	cat > "$ENV_FILE" <<-EOF
 		PORT=$PANEL_PORT
 		SESSION_SECRET=$(openssl rand -hex 32)
@@ -228,14 +363,16 @@ if [ ! -f "$ENV_FILE" ]; then
 	EOF
 	chmod 600 "$ENV_FILE"
 	NEW_ENV=1
+	step_ok
 else
-	say ".env already exists — left alone"
+	step_ok "kept the existing .env"
 fi
 
 # ─── 6b. the directories every script assumes ────────────────────
-say "creating the directory layout"
+step "Directory layout"
 mkdir -p "$HOME/apps" "$HOME/apps/static" "$HOME/repos" \
 	"$HOME/etc/nginx/sites" "$HOME/.config/bitpanel" "$HOME/.cloudflared"
+step_ok
 
 # nginx serves the static sites from one config that includes a file per site.
 if [ ! -f "$HOME/etc/nginx/nginx.conf" ]; then
@@ -280,7 +417,7 @@ fi
 [ -f "$HOME/ecosystem.config.js" ] || echo 'module.exports = { apps: [] };' > "$HOME/ecosystem.config.js"
 
 # ─── 7. scripts and port registry ────────────────────────────────
-say "installing helper scripts into $BIN_DIR"
+step "Helper scripts"
 mkdir -p "$BIN_DIR"
 for f in "$APP_DIR"/server-scripts/*; do
 	case "$(basename "$f")" in *.html) continue ;; esac
@@ -288,9 +425,12 @@ for f in "$APP_DIR"/server-scripts/*; do
 done
 [ -f "$HOME/bin/ports.conf" ] || printf '# name=port, one per line. A leading underscore reserves a port\n# without listing it as a service.\n' > "$HOME/bin/ports.conf"
 case ":$PATH:" in *":$BIN_DIR:"*) ;; *) echo "export PATH=\"\$HOME/bin:\$PATH\"" >> "$HOME/.bashrc" ;; esac
+step_ok
 
 # ─── 8. build and run ────────────────────────────────────────────
-say "building the panel (this takes a minute)"
+step "Building the panel"
+_spin_stop                    # this step prints its own output; see the note below
+printf '  %s…this is the slow one, roughly two minutes%s\n' "$C_DIM" "$C_0"
 cd "$APP_DIR"
 # Dev dependencies are required: the build is a compile step, and without
 # typescript Next cannot read the @/* path aliases out of tsconfig.json - every
@@ -315,10 +455,11 @@ if [ ! -d node_modules/typescript ]; then
 fi
 
 npm run build
+step_ok
 
 # ─── 8b. optional pieces the panel can manage ────────────────────
 if [ ! -x "$HOME/apps/pocketbase/pocketbase" ]; then
-	say "installing PocketBase"
+	step "PocketBase"
 	PB_VER="${POCKETBASE_VERSION:-0.30.0}"
 	mkdir -p "$HOME/apps/pocketbase"
 	if curl -fsSL -o /tmp/pb.zip \
@@ -328,6 +469,7 @@ if [ ! -x "$HOME/apps/pocketbase/pocketbase" ]; then
 	else
 		warn "could not download PocketBase ${PB_VER} — the PocketBase page will be empty until it is installed"
 	fi
+	step_ok
 fi
 
 # PocketBase starts with no account at all, so the panel's Databases and Backups
@@ -352,7 +494,8 @@ if [ -x "$HOME/apps/pocketbase/pocketbase" ] && [ ! -f "$PB_CRED" ]; then
 	pm2 start pocketbase >/dev/null 2>&1 || true
 fi
 
-say "starting services under pm2"
+step "Starting services"
+_spin_stop     # pm2 prints a table
 
 # `pm2 start X --name N` does NOT fail when a process called N already exists.
 # For most services pm2 notices the same script path and errors, so the `||
@@ -470,6 +613,9 @@ echo
 # and leaves people guessing what to substitute for "this machine".
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 TS_NAME=$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName":"\([^"]*\)".*/\1/p' | head -1 | sed 's/\.$//')
+
+step_ok
+printf '\n  %s✓ done in %s%s\n\n' "$C_G" "$(_elapsed "$RUN_START")" "$C_0"
 
 say "BitPanel is running"
 echo "    on this machine:  http://127.0.0.1:$PANEL_PORT"

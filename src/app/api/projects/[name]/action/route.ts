@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { run } from '@/lib/runner';
+import { run, runStream } from '@/lib/runner';
 import { assertName, ValidationError } from '@/lib/validate';
 import { recordResidue } from '@/lib/residue';
 import { deleteRecordsForHosts } from '@/lib/cloudflare';
@@ -24,6 +24,24 @@ export async function POST(
     const timeout = ACTIONS[action];
     if (!timeout) {
       return NextResponse.json({ error: 'unknown action' }, { status: 400 });
+    }
+
+    // Deploy is the only long action here — it pulls, installs, builds and
+    // restarts, and used to return one buffered blob minutes later with no sign
+    // of life in between. It streams so the client can draw the step rail from
+    // the markers `project deploy` emits (docs/streaming-progress.md).
+    //
+    // The others stay buffered on purpose: start/stop/restart finish in seconds,
+    // and `remove` does bookkeeping AFTER the command — DNS records and residue —
+    // which a stream would have to interleave with output for no benefit.
+    if (action === 'deploy') {
+      return new Response(runStream(`BITPANEL_STEPS=1 project deploy ${name}`, timeout), {
+        headers: {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache',
+          'X-Accel-Buffering': 'no',
+        },
+      });
     }
 
     // Resolve routes before removal: afterwards the ingress rule is gone and
