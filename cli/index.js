@@ -84,11 +84,6 @@ if (cmd === 'docs') {
   process.exit(0);
 }
 
-if (cmd !== 'install') {
-  console.error(`unknown command: ${cmd}\nTry: bitpanel --help`);
-  process.exit(1);
-}
-
 // Removal runs the same way as installation: fetch the script for this exact
 // version and hand over. The extra arguments (--purge, --yes) are passed
 // through unchanged, and the script does the asking — it is the only side that
@@ -102,6 +97,11 @@ if (cmd === 'uninstall') {
   });
   child.on('exit', (code) => process.exit(code ?? 1));
 } else {
+
+if (cmd !== 'install') {
+  console.error(`unknown command: ${cmd}\nTry: bitpanel --help`);
+  process.exit(1);
+}
 
 // Node reports "android" under Termux. That is a machine BitPanel runs on very
 // well - it is what it was built for - but this installer is apt/systemd/sudo
@@ -149,4 +149,5 @@ const child = spawn('bash', ['-c', `curl -fsSL ${url} | BITPANEL_VERSION=${versi
   stdio: 'inherit',
 });
 child.on('exit', (code) => process.exit(code ?? 1));
+
 }
