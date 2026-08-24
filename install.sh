@@ -612,15 +612,30 @@ echo
 # loopback one is useless from the laptop you are almost certainly sitting at,
 # and leaves people guessing what to substitute for "this machine".
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-TS_NAME=$(tailscale status --json 2>/dev/null | sed -n 's/.*"DNSName":"\([^"]*\)".*/\1/p' | head -1 | sed 's/\.$//')
+
+# jq, not sed. Two bugs lived in the sed version:
+#   * it matched `"DNSName":"` while Tailscale prints `"DNSName": "` — with a
+#     space after the colon — so it never matched, and a machine sitting on a
+#     tailnet was told to use an address the firewall blocks.
+#   * `head -1` took the first DNSName in the file, which is a peer on any host
+#     whose own entry is not printed first.
+# jq is installed above, so it is always available by this point.
+TS_NAME=$(tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' 2>/dev/null | sed 's/\.$//')
 
 step_ok
 printf '\n  %s✓ done in %s%s\n\n' "$C_G" "$(_elapsed "$RUN_START")" "$C_0"
 
 say "BitPanel is running"
+if [ -n "$TS_NAME" ]; then
+	echo "    over Tailscale:   http://$TS_NAME:$PANEL_PORT"
+	echo "                      (private, and nothing is exposed to the internet)"
+fi
 echo "    on this machine:  http://127.0.0.1:$PANEL_PORT"
-[ -n "$LAN_IP" ] && echo "    on your network:  http://$LAN_IP:$PANEL_PORT"
-[ -n "$TS_NAME" ] && echo "    over Tailscale:   http://$TS_NAME:$PANEL_PORT"
+if [ -n "$LAN_IP" ]; then
+	echo "    on this address:  http://$LAN_IP:$PANEL_PORT"
+	echo "                      (only if your firewall allows port $PANEL_PORT — on a"
+	echo "                       cloud server this is the public IP and usually blocked)"
+fi
 if [ "${NEW_ENV:-0}" = "1" ]; then
 	echo ""
 	echo "    password:         $(grep '^DASHBOARD_PASSWORD=' "$ENV_FILE" | cut -d= -f2)"
