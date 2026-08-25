@@ -1,5 +1,6 @@
 import { run } from './runner';
 import { shq, ValidationError } from './validate';
+import { zoneFor } from './routes';
 
 // Cloudflare Access: who may pass the email-OTP gate on the public hostnames.
 //
@@ -56,9 +57,40 @@ export function assertUuid(id: unknown): string {
   return id;
 }
 
+/**
+ * The zone holding *this machine's* applications.
+ *
+ * Not CF_ZONE_ID. On neev-stag that variable names bitroot.in while the machine
+ * serves neevpanel.bitroot.club, so IAM listed the OnePlus's applications and
+ * reported that nothing matched a hostname this machine serves — both true, and
+ * both useless. The zone is worked out from the hostnames the machine actually
+ * publishes, which is the only thing that identifies it.
+ */
+let zoneCache: { at: number; id: string } | null = null;
+
+async function zoneId(): Promise<string> {
+  if (zoneCache && Date.now() - zoneCache.at < 5 * 60_000) return zoneCache.id;
+
+  const cfg = await run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true', 15_000);
+  const hosts = [...cfg.output.matchAll(/^\s*-?\s*hostname:\s*(\S+)/gm)].map((m) => m[1]);
+  for (const host of hosts) {
+    const zone = await zoneFor(host, TOKEN);
+    if (zone) {
+      zoneCache = { at: Date.now(), id: zone.id };
+      return zone.id;
+    }
+  }
+  // A machine with no public hostname yet has nothing to work from, so the
+  // configured zone is the only answer available.
+  if (!ZONE) throw new Error('no Cloudflare zone found for this machine');
+  zoneCache = { at: Date.now(), id: ZONE };
+  return ZONE;
+}
+
 async function cf(path: string, init: RequestInit = {}) {
-  if (!ZONE || !TOKEN) throw new Error('Cloudflare credentials not configured');
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE}${path}`, {
+  if (!TOKEN) throw new Error('Cloudflare credentials not configured');
+  const zone = await zoneId();
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${TOKEN}`,
@@ -112,7 +144,7 @@ export async function canWritePolicies(): Promise<boolean> {
     const app = apps.find((a) => a.policies.length > 0);
     if (app) {
       const res = await fetch(
-        `https://api.cloudflare.com/client/v4/zones/${ZONE}/access/apps/${app.id}/policies/00000000-0000-0000-0000-000000000000`,
+        `https://api.cloudflare.com/client/v4/zones/${await zoneId()}/access/apps/${app.id}/policies/00000000-0000-0000-0000-000000000000`,
         {
           method: 'PUT',
           headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },

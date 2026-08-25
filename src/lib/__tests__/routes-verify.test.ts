@@ -13,7 +13,10 @@ const SRC = readFileSync(path.join(process.cwd(), 'src/lib/routes.ts'), 'utf8');
  * make. Assert against code alone or a test fails on its own explanation.
  */
 function code(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  // Only comments that START a line: stripping every '//' also truncated any
+  // line holding an https:// URL, so a string search could pass by finding
+  // nothing rather than by the code being right.
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
 test('unpublish never uses cloudflared to delete a DNS record', () => {
