@@ -1,25 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { run, runCached, runStream } from '@/lib/runner';
-import { assertName, assertPort, assertRepo, shq, ValidationError } from '@/lib/validate';
-import { assertBranch, assertRepoFullName, getGithubToken } from '@/lib/github';
-import { assertConnectionId, cloneUrlFor } from '@/lib/git-connections';
-import { ownedPorts } from '@/lib/ports';
+import { NextRequest, NextResponse } from "next/server";
+import { parseIngress, portOf } from "@/lib/routes";
+import { run, runCached, runStream } from "@/lib/runner";
+import {
+  assertName,
+  assertPort,
+  assertRepo,
+  shq,
+  ValidationError,
+} from "@/lib/validate";
+import { assertBranch, assertRepoFullName, getGithubToken } from "@/lib/github";
+import { assertConnectionId, cloneUrlFor } from "@/lib/git-connections";
+import { ownedPorts } from "@/lib/ports";
 
 // Daemons the panel installs and drives, as opposed to things you deployed.
 // garage belongs here and was missing, so it appeared as a deploy target when
 // creating a pipeline — and `project deploy garage` would have tried to git
 // pull and build object storage that came from a package.
 const SYSTEM_APPS = new Set([
-  'cloudflared',
-  'deploy-webhook',
-  'bitroot-panel',
-  'nginx',
-  'pocketbase',
-  'garage',
+  "cloudflared",
+  "deploy-webhook",
+  "bitroot-panel",
+  "nginx",
+  "pocketbase",
+  "garage",
 ]);
-const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
-const TAILNET_HOST = process.env.TAILNET_HOST ?? 'localhost';
-const TAILNET_IP = process.env.TAILNET_IP ?? '127.0.0.1';
+const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? "example.com";
+const TAILNET_HOST = process.env.TAILNET_HOST ?? "localhost";
+const TAILNET_IP = process.env.TAILNET_IP ?? "127.0.0.1";
 
 // Installed CLI apps and packages are not processes and are reported by
 // /api/system instead; this endpoint stays about things pm2 and nginx run.
@@ -38,7 +45,7 @@ export interface Project {
   // loopback only, so the panel never offers a link that cannot open.
   privateUrl: string | null;
   system: boolean;
-  type?: 'node' | 'static';
+  type?: "node" | "static";
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -48,17 +55,17 @@ export interface Project {
 // calling it Go because it sat in a list beside three Go programs is the kind
 // of detail that quietly teaches people the panel is guessing.
 const DAEMON_RUNTIME: Record<string, string> = {
-  nginx: 'C',
-  garage: 'Go',
-  cloudflared: 'Go',
-  pocketbase: 'Go',
+  nginx: "C",
+  garage: "Go",
+  cloudflared: "Go",
+  pocketbase: "Go",
 };
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
 function portFromArgs(a: any): number | null {
   const args: string[] = Array.isArray(a?.pm2_env?.args) ? a.pm2_env.args : [];
-  const joined = args.join(' ');
+  const joined = args.join(" ");
   // --http=127.0.0.1:8090, --port 8080, -p 3000, --addr :9000
   const m =
     /--(?:http|addr|listen)[= ]\S*?:(\d{2,5})/.exec(joined) ??
@@ -72,33 +79,35 @@ function portFromArgs(a: any): number | null {
 function runtimeOf(a: any): string {
   // pm2 stores the interpreter's full path, so /usr/bin/node has to be reduced
   // to a name before it means anything to a reader.
-  const interp = String(a?.pm2_env?.exec_interpreter ?? '').split('/').pop();
-  if (interp && interp !== 'none') return interp === 'node' ? 'Node' : interp;
-  return DAEMON_RUNTIME[a?.name] ?? 'Binary';
+  const interp = String(a?.pm2_env?.exec_interpreter ?? "")
+    .split("/")
+    .pop();
+  if (interp && interp !== "none") return interp === "node" ? "Node" : interp;
+  return DAEMON_RUNTIME[a?.name] ?? "Binary";
 }
 
 export async function GET() {
   const [pm2, ports, tunnel, statics] = await Promise.all([
-    runCached('pm2 jlist'),
+    runCached("pm2 jlist"),
     run('cat "$HOME/bin/ports.conf" 2>/dev/null || true'),
     run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true'),
-    run('static-site list 2>/dev/null || true'),
+    run("static-site list 2>/dev/null || true"),
   ]);
 
   // Static sites are served by the shared nginx, so they have no pm2 entry.
   const staticSites = statics.output
-    .split('\n')
-    .map((l) => l.split('|'))
+    .split("\n")
+    .map((l) => l.split("|"))
     .filter((p) => p.length === 5 && p[0])
     .map(([name, port, , state]) => ({
       name,
       port: Number(port),
-      served: state === 'served',
+      served: state === "served",
     }));
   const staticNames = new Set(staticSites.map((s) => s.name));
 
   const portMap: Record<string, number> = {};
-  for (const line of ports.output.split('\n')) {
+  for (const line of ports.output.split("\n")) {
     const m = line.match(/^([\w-]+)=(\d+)\s*$/);
     if (m) portMap[m[1]] = Number(m[2]);
   }
@@ -118,23 +127,15 @@ export async function GET() {
   for (const [pname, pport] of Object.entries(portMap)) {
     portsInUse[pport] = `project "${pname}"`;
   }
-  let pendingHost: string | null = null;
-  for (const raw of tunnel.output.split('\n')) {
-    const line = raw.trim();
-    const h = line.match(/^-\s*hostname:\s*(\S+)/);
-    if (h) {
-      pendingHost = h[1];
-      continue;
-    }
-    const s = line.match(/^(?:-\s*)?service:\s*\w+:\/\/localhost:(\d+)/);
-    if (s) {
-      const p = Number(s[1]);
-      if (pendingHost) {
-        portsInUse[p] ??= `tunnel route ${pendingHost}`;
-        hostForPort[p] ??= pendingHost;
-      }
-      pendingHost = null;
-    }
+  // parseIngress, not another copy of this format. The regex here matched only
+  // `://localhost:`, so a route pointing at 127.0.0.1 was invisible — its port
+  // read as free, and the next project could be handed a port already in use.
+  for (const e of parseIngress(tunnel.output)) {
+    if (!e.hostname) continue;
+    const p = portOf(e.service);
+    if (p === null) continue;
+    portsInUse[p] ??= `tunnel route ${e.hostname}`;
+    hostForPort[p] ??= e.hostname;
   }
 
   for (const p of Object.values(portMap)) candidatePorts.add(p);
@@ -145,7 +146,7 @@ export async function GET() {
   let apps: any[] = [];
   try {
     // pm2 can print daemon-startup noise before the JSON array
-    const start = pm2.output.indexOf('[');
+    const start = pm2.output.indexOf("[");
     if (start >= 0) apps = JSON.parse(pm2.output.slice(start));
   } catch {
     // fall through with empty list
@@ -180,8 +181,10 @@ export async function GET() {
   // thing here that needs no inference at all.
   const selfPort = Number(process.env.PORT);
   if (Number.isFinite(selfPort) && selfPort > 0) {
-    const self = apps.find((a: { name?: string }) => a?.name === 'bitroot-panel');
-    if (self) pm2Port['bitroot-panel'] = selfPort;
+    const self = apps.find(
+      (a: { name?: string }) => a?.name === "bitroot-panel",
+    );
+    if (self) pm2Port["bitroot-panel"] = selfPort;
   }
 
   for (const p of Object.values(pm2Port)) candidatePorts.add(p);
@@ -192,17 +195,18 @@ export async function GET() {
             // nc, not /dev/tcp: commands run under sh, which on Termux is dash,
             // and /dev/tcp is a bash-ism. Under dash every probe fails silently
             // and every service looks unreachable.
-            (p) => `nc -z -w 2 ${TAILNET_IP} ${p} >/dev/null 2>&1 && echo ${p}:up || echo ${p}:down`,
+            (p) =>
+              `nc -z -w 2 ${TAILNET_IP} ${p} >/dev/null 2>&1 && echo ${p}:up || echo ${p}:down`,
           )
-          .join('; '),
+          .join("; "),
         20_000,
       )
-    : { ok: true, output: '' };
+    : { ok: true, output: "" };
   const reachable = new Set(
     probe.output
-      .split('\n')
-      .filter((l) => l.trim().endsWith(':up'))
-      .map((l) => Number(l.trim().split(':')[0])),
+      .split("\n")
+      .filter((l) => l.trim().endsWith(":up"))
+      .map((l) => Number(l.trim().split(":")[0])),
   );
   const privateUrlFor = (port: number | null) =>
     port && reachable.has(port) ? `http://${TAILNET_HOST}:${port}` : null;
@@ -214,11 +218,11 @@ export async function GET() {
 
   const projects: Project[] = apps.map((a: any) => ({
     name: a.name,
-    status: a.pm2_env?.status ?? 'unknown',
+    status: a.pm2_env?.status ?? "unknown",
     cpu: a.monit?.cpu ?? 0,
     memoryMb: Math.round((a.monit?.memory ?? 0) / 1024 / 1024),
     uptimeMs:
-      a.pm2_env?.status === 'online' && a.pm2_env?.pm_uptime
+      a.pm2_env?.status === "online" && a.pm2_env?.pm_uptime
         ? Date.now() - a.pm2_env.pm_uptime
         : 0,
     restarts: a.pm2_env?.restart_time ?? 0,
@@ -235,21 +239,23 @@ export async function GET() {
     privateUrl:
       privateUrlFor(portMap[a.name] ?? null) ??
       privateUrlFor(
-        Object.entries(portMap).find(([n]) => n.startsWith(`_${a.name}-`))?.[1] ?? null,
+        Object.entries(portMap).find(([n]) =>
+          n.startsWith(`_${a.name}-`),
+        )?.[1] ?? null,
       ) ??
       privateUrlFor(pm2Port[a.name] ?? null),
     system: SYSTEM_APPS.has(a.name),
     runtime: runtimeOf(a),
-    type: 'node' as const,
+    type: "node" as const,
   }));
 
   const nginxOnline = apps.some(
-    (a: any) => a.name === 'nginx' && a.pm2_env?.status === 'online',
+    (a: any) => a.name === "nginx" && a.pm2_env?.status === "online",
   );
   for (const s of staticSites) {
     projects.push({
       name: s.name,
-      status: s.served && nginxOnline ? 'online' : 'stopped',
+      status: s.served && nginxOnline ? "online" : "stopped",
       cpu: 0,
       memoryMb: 0,
       uptimeMs: 0,
@@ -258,7 +264,7 @@ export async function GET() {
       url: hostForPort[s.port] ? `https://${hostForPort[s.port]}` : null,
       privateUrl: privateUrlFor(s.port),
       system: false,
-      type: 'static',
+      type: "static",
     });
   }
 
@@ -267,11 +273,11 @@ export async function GET() {
   // entry - a second port for the same app - so it holds the port without
   // appearing as a project of its own.
   for (const [name, port] of Object.entries(portMap)) {
-    if (staticNames.has(name) || name.startsWith('_')) continue;
+    if (staticNames.has(name) || name.startsWith("_")) continue;
     if (!projects.some((p) => p.name === name)) {
       projects.push({
         name,
-        status: 'stopped',
+        status: "stopped",
         cpu: 0,
         memoryMb: 0,
         uptimeMs: 0,
@@ -280,7 +286,7 @@ export async function GET() {
         url: hostForPort[port] ? `https://${hostForPort[port]}` : null,
         privateUrl: privateUrlFor(port),
         system: false,
-        type: 'node',
+        type: "node",
       });
     }
   }
@@ -300,14 +306,17 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const name = assertName(body.name);
     const port = assertPort(body.port);
-    const branch = body.branch ? assertBranch(body.branch) : '';
-    const internal = body.environment === 'private';
+    const branch = body.branch ? assertBranch(body.branch) : "";
+    const internal = body.environment === "private";
 
     let repoUrl: string;
-    if (body.source === 'github') {
+    if (body.source === "github") {
       const full = assertRepoFullName(body.repo);
       if (!(await getGithubToken())) {
-        return NextResponse.json({ error: 'GitHub not connected' }, { status: 400 });
+        return NextResponse.json(
+          { error: "GitHub not connected" },
+          { status: 400 },
+        );
       }
       // Pin the connection so git picks that account's stored credential.
       const connectionId = body.connectionId
@@ -327,13 +336,13 @@ export async function POST(req: NextRequest) {
     // ordinary output, so running it by hand stays readable.
     const cmd =
       `BITPANEL_STEPS=1 GIT_TERMINAL_PROMPT=0 project clone ${name} ${shq(repoUrl)} ${port} ${shq(branch)}` +
-      (internal ? ' --no-tunnel' : '');
+      (internal ? " --no-tunnel" : "");
     // Stream the server's output live so the UI can render a step timeline.
     return new Response(runStream(cmd, 600_000), {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no',
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (e) {
