@@ -1,15 +1,20 @@
 "use client";
 
 // Zone comes from the environment so a checkout is not tied to one person's
-// infrastructure. NEXT_PUBLIC_ because this renders in the browser.
-const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+// infrastructure.
+// The suffix is measured at runtime via useFacts, not compiled in: a
+// NEXT_PUBLIC_ value is inlined when the panel is BUILT, so changing the domain
+// and restarting left these previews showing the previous one.
+// These are previews of a name that does not exist yet, so they deliberately do
+// not check whether it is routed — they must read as a future state.
+import { useFacts } from "@/lib/use-facts";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyChunk, completedCount, initialState } from '@/lib/steps';
-import Link from 'next/link';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { applyChunk, completedCount, initialState } from "@/lib/steps";
+import Link from "next/link";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import {
   Github,
   Link2,
@@ -21,9 +26,9 @@ import {
   Check,
   Sparkles,
   ArrowRight,
-} from 'lucide-react';
-import { Shimmer } from './skeletons';
-import RepoPicker from './repo-picker';
+} from "lucide-react";
+import { Shimmer } from "./skeletons";
+import RepoPicker from "./repo-picker";
 
 interface Repo {
   fullName: string;
@@ -47,8 +52,10 @@ interface Detection {
   packageManager: string;
 }
 
-type Source = 'github' | 'url';
-type Errors = Partial<Record<'repo' | 'branch' | 'urlRepo' | 'name' | 'port', string>>;
+type Source = "github" | "url";
+type Errors = Partial<
+  Record<"repo" | "branch" | "urlRepo" | "name" | "port", string>
+>;
 
 // How far the server has got.
 //
@@ -82,19 +89,33 @@ function computeStage(text: string, isPublic: boolean): number {
 
 /** The script's own reason for a failure, when it gave one. */
 function failureReason(text: string): string {
-  return applyChunk(initialState(), text).steps.find((s) => s.state === 'failed')?.error ?? '';
+  return (
+    applyChunk(initialState(), text).steps.find((s) => s.state === "failed")
+      ?.error ?? ""
+  );
 }
 
-type StepState = 'pending' | 'active' | 'done' | 'failed' | 'skipped';
+type StepState = "pending" | "active" | "done" | "failed" | "skipped";
 
 function StepIcon({ state }: { state: StepState }) {
-  if (state === 'done') return <CheckCircle2 size={18} className="text-green-600 pop-in" />;
-  if (state === 'failed') return <AlertCircle size={18} className="text-red-500 pop-in" />;
-  if (state === 'active')
-    return <Loader2 size={18} className="animate-spin text-accent-600 dark:text-accent-400" />;
-  if (state === 'skipped')
-    return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 dark:border-gray-800 border-dashed" />;
-  return <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />;
+  if (state === "done")
+    return <CheckCircle2 size={18} className="text-green-600 pop-in" />;
+  if (state === "failed")
+    return <AlertCircle size={18} className="text-red-500 pop-in" />;
+  if (state === "active")
+    return (
+      <Loader2
+        size={18}
+        className="animate-spin text-accent-600 dark:text-accent-400"
+      />
+    );
+  if (state === "skipped")
+    return (
+      <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-200 dark:border-gray-800 border-dashed" />
+    );
+  return (
+    <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />
+  );
 }
 
 function Timeline({
@@ -103,39 +124,50 @@ function Timeline({
   failed,
   finished,
   name,
+  suffix,
 }: {
   stage: number;
   isPublic: boolean;
   failed: boolean;
   finished: boolean;
   name: string;
+  /** Measured, and null until /api/facts answers or when no domain is set. */
+  suffix: string | null;
 }) {
-  const steps: Array<{ label: string; a: number; d: number; detail?: React.ReactNode; skip?: boolean }> = [
-    { label: 'Clone repository', a: 1, d: 2 },
-    { label: 'Install dependencies', a: 2, d: 3 },
-    { label: 'Start under pm2', a: 3, d: 4 },
+  const steps: Array<{
+    label: string;
+    a: number;
+    d: number;
+    detail?: React.ReactNode;
+    skip?: boolean;
+  }> = [
+    { label: "Clone repository", a: 1, d: 2 },
+    { label: "Install dependencies", a: 2, d: 3 },
+    { label: "Start under pm2", a: 3, d: 4 },
     isPublic
       ? {
-          label: 'Publish tunnel route',
+          label: "Publish tunnel route",
           a: 4,
           d: 5,
           detail: (
-            <code className="text-xs text-gray-500 dark:text-gray-400">{name || '<name>'}.{DOMAIN_SUFFIX}</code>
+            <code className="text-xs text-gray-500 dark:text-gray-400">
+              {name || "<name>"}.{suffix ?? "<your-domain>"}
+            </code>
           ),
         }
-      : { label: 'Tunnel route', a: 4, d: 5, skip: true },
-    { label: 'Live', a: 5, d: 6 },
+      : { label: "Tunnel route", a: 4, d: 5, skip: true },
+    { label: "Live", a: 5, d: 6 },
   ];
 
   return (
     <div className="fade-in-up border rounded-xl p-5">
       {steps.map((s, i) => {
         let state: StepState;
-        if (s.skip) state = 'skipped';
-        else if (finished && !failed) state = 'done';
-        else if (stage >= s.d) state = 'done';
-        else if (stage >= s.a) state = failed ? 'failed' : 'active';
-        else state = 'pending';
+        if (s.skip) state = "skipped";
+        else if (finished && !failed) state = "done";
+        else if (stage >= s.d) state = "done";
+        else if (stage >= s.a) state = failed ? "failed" : "active";
+        else state = "pending";
         const last = i === steps.length - 1;
         return (
           <div key={s.label} className="flex gap-3">
@@ -144,32 +176,36 @@ function Timeline({
               {!last && (
                 <div
                   className={`w-px flex-1 my-1 transition-colors ${
-                    state === 'done' ? 'bg-green-300' : 'bg-gray-200 dark:bg-gray-700'
+                    state === "done"
+                      ? "bg-green-300"
+                      : "bg-gray-200 dark:bg-gray-700"
                   }`}
                 />
               )}
             </div>
-            <div className={`text-sm ${last ? '' : 'pb-5'}`}>
+            <div className={`text-sm ${last ? "" : "pb-5"}`}>
               <span
                 className={
-                  state === 'done'
-                    ? 'text-gray-800 dark:text-gray-200'
-                    : state === 'active'
-                      ? 'text-gray-900 dark:text-gray-100 font-medium'
-                      : state === 'failed'
-                        ? 'text-red-600 dark:text-red-400 font-medium'
-                        : 'text-gray-400'
+                  state === "done"
+                    ? "text-gray-800 dark:text-gray-200"
+                    : state === "active"
+                      ? "text-gray-900 dark:text-gray-100 font-medium"
+                      : state === "failed"
+                        ? "text-red-600 dark:text-red-400 font-medium"
+                        : "text-gray-400"
                 }
               >
                 {s.label}
-                {state === 'skipped' && (
-                  <span className="text-xs text-gray-400 ml-2">skipped — private</span>
+                {state === "skipped" && (
+                  <span className="text-xs text-gray-400 ml-2">
+                    skipped — private
+                  </span>
                 )}
-                {state === 'failed' && (
+                {state === "failed" && (
                   <span className="text-xs ml-2">failed — see log below</span>
                 )}
               </span>
-              {s.detail && state !== 'pending' && <div>{s.detail}</div>}
+              {s.detail && state !== "pending" && <div>{s.detail}</div>}
             </div>
           </div>
         );
@@ -197,37 +233,46 @@ function FieldOk({ msg }: { msg: string }) {
   );
 }
 
-export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) {
-  const [source, setSource] = useState<Source>('github');
+export default function NewProjectForm({
+  initialEnv,
+}: {
+  initialEnv?: string;
+}) {
+  const facts = useFacts();
+  const suffix = facts?.domainSuffix ?? null;
+  const [source, setSource] = useState<Source>("github");
 
   // GitHub connection
   const [ghLogin, setGhLogin] = useState<string | null>(null);
   const [ghAvatar, setGhAvatar] = useState<string | null>(null);
-  const [ghProfile, setGhProfile] = useState<string>('');
+  const [ghProfile, setGhProfile] = useState<string>("");
   const [ghChecked, setGhChecked] = useState(false);
-  const [pat, setPat] = useState('');
+  const [pat, setPat] = useState("");
   const [ghBusy, setGhBusy] = useState(false);
-  const [ghError, setGhError] = useState('');
+  const [ghError, setGhError] = useState("");
 
   // GitHub selection
   const [repos, setRepos] = useState<Repo[] | null>(null);
-  const [repo, setRepo] = useState('');
+  const [repo, setRepo] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
-  const [connectionId, setConnectionId] = useState('');
+  const [connectionId, setConnectionId] = useState("");
   const [detection, setDetection] = useState<Detection | null>(null);
   const [detecting, setDetecting] = useState(false);
-  const [branch, setBranch] = useState('');
+  const [branch, setBranch] = useState("");
 
   // Common fields
-  const [name, setName] = useState('');
-  const [urlRepo, setUrlRepo] = useState('');
-  const [port, setPort] = useState('');
-  const [environment, setEnvironment] = useState<'public' | 'private'>(
-    initialEnv === 'private' ? 'private' : 'public',
+  const [name, setName] = useState("");
+  const [urlRepo, setUrlRepo] = useState("");
+  const [port, setPort] = useState("");
+  const [environment, setEnvironment] = useState<"public" | "private">(
+    initialEnv === "private" ? "private" : "public",
   );
 
   // Existing projects, for live conflict checks
-  const [taken, setTaken] = useState<{ names: string[]; ports: Record<number, string> }>({
+  const [taken, setTaken] = useState<{
+    names: string[];
+    ports: Record<number, string>;
+  }>({
     names: [],
     ports: {},
   });
@@ -236,24 +281,24 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [output, setOutput] = useState('');
+  const [output, setOutput] = useState("");
   const [done, setDone] = useState(false);
   const [stage, setStage] = useState(0);
   const [failed, setFailed] = useState(false);
-  const [failReason, setFailReason] = useState('');
+  const [failReason, setFailReason] = useState("");
   const [started, setStarted] = useState(false);
   const [lostConnection, setLostConnection] = useState(false);
   const outputRef = useRef<HTMLPreElement>(null);
 
   const checkGithub = useCallback(async () => {
-    const res = await fetch('/api/github');
+    const res = await fetch("/api/github");
     const data = await res.json().catch(() => ({}));
     setGhLogin(data.connected ? data.login : null);
     setGhAvatar(data.connected ? (data.avatarUrl ?? null) : null);
-    setGhProfile(data.profileUrl ?? '');
+    setGhProfile(data.profileUrl ?? "");
     setGhChecked(true);
     if (data.connected) {
-      const rr = await fetch('/api/github/repos');
+      const rr = await fetch("/api/github/repos");
       const rd = await rr.json().catch(() => ({}));
       if (rr.ok) setRepos(rd.repos);
     }
@@ -263,10 +308,12 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
     checkGithub();
     // load existing names + every occupied port (registry, tunnel routes,
     // pm2 apps, listening sockets) for live validation
-    fetch('/api/projects')
+    fetch("/api/projects")
       .then((r) => r.json())
       .then((d) => {
-        const names: string[] = (d.projects ?? []).map((p: { name: string }) => p.name);
+        const names: string[] = (d.projects ?? []).map(
+          (p: { name: string }) => p.name,
+        );
         const ports: Record<number, string> = d.portsInUse ?? {};
         setTaken({ names, ports });
       })
@@ -291,7 +338,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
   const portNum = Number(port);
   const portConflict = port && taken.ports[portNum];
-  const portValid = port && portNum >= 1024 && portNum <= 65535 && !portConflict;
+  const portValid =
+    port && portNum >= 1024 && portNum <= 65535 && !portConflict;
   const nameConflict = name && taken.names.includes(name);
   const nameValid = name && /^[a-zA-Z0-9_-]{1,40}$/.test(name) && !nameConflict;
 
@@ -303,35 +351,37 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
   function validate(): Errors {
     const errs: Errors = {};
-    if (source === 'github') {
-      if (!repo) errs.repo = 'Pick a repository to deploy';
-      else if (!branch) errs.branch = 'Pick a branch';
+    if (source === "github") {
+      if (!repo) errs.repo = "Pick a repository to deploy";
+      else if (!branch) errs.branch = "Pick a branch";
     } else if (!urlRepo) {
-      errs.urlRepo = 'A git repository URL is required';
+      errs.urlRepo = "A git repository URL is required";
     }
-    if (!name) errs.name = 'Give the project a name';
+    if (!name) errs.name = "Give the project a name";
     else if (!/^[a-zA-Z0-9_-]{1,40}$/.test(name))
-      errs.name = 'Only letters, digits, dashes and underscores';
+      errs.name = "Only letters, digits, dashes and underscores";
     else if (nameConflict) errs.name = `"${name}" already exists on the server`;
-    if (!port) errs.port = 'A port is required — every app gets its own';
-    else if (!(portNum >= 1024 && portNum <= 65535)) errs.port = 'Use a port between 1024 and 65535';
-    else if (portConflict) errs.port = `Port ${port} is taken by ${portConflict}`;
+    if (!port) errs.port = "A port is required — every app gets its own";
+    else if (!(portNum >= 1024 && portNum <= 65535))
+      errs.port = "Use a port between 1024 and 65535";
+    else if (portConflict)
+      errs.port = `Port ${port} is taken by ${portConflict}`;
     return errs;
   }
 
   async function connectGithub(e: React.FormEvent) {
     e.preventDefault();
     setGhBusy(true);
-    setGhError('');
+    setGhError("");
     try {
-      const res = await fetch('/api/github', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/github", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: pat }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setPat('');
+      setPat("");
       checkGithub();
     } catch (err) {
       setGhError((err as Error).message);
@@ -343,25 +393,30 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   async function selectRepo(full: string) {
     setRepo(full);
     setBranches([]);
-    setBranch('');
-    clearError('repo');
+    setBranch("");
+    clearError("repo");
     if (!full) return;
     const r = repos?.find((x) => x.fullName === full);
     if (!name && r) {
-      setName(r.fullName.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-      clearError('name');
+      setName(
+        r.fullName
+          .split("/")[1]
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-"),
+      );
+      clearError("name");
     }
-    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? '';
+    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? "";
     setConnectionId(conn);
     const res = await fetch(
       `/api/github/branches?repo=${encodeURIComponent(full)}` +
-        (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+        (conn ? `&connection=${encodeURIComponent(conn)}` : ""),
     );
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
       setBranches(data.branches);
       setBranch(data.defaultBranch);
-      clearError('branch');
+      clearError("branch");
       detect(full, data.defaultBranch, conn);
     }
   }
@@ -374,7 +429,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
     try {
       const res = await fetch(
         `/api/github/detect?repo=${encodeURIComponent(full)}&branch=${encodeURIComponent(br)}` +
-          (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+          (conn ? `&connection=${encodeURIComponent(conn)}` : ""),
       );
       const d = await res.json().catch(() => null);
       if (res.ok && d) setDetection(d);
@@ -394,28 +449,28 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
     setBusy(true);
     setDone(false);
     setFailed(false);
-    setFailReason('');
+    setFailReason("");
     setStage(0);
     setStarted(true);
-    setOutput('');
-    const isPublic = environment === 'public';
+    setOutput("");
+    const isPublic = environment === "public";
     try {
-      const res = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source,
           name,
-          repo: source === 'github' ? repo : urlRepo,
-          connectionId: source === 'github' ? connectionId : undefined,
-          branch: source === 'github' ? branch : undefined,
+          repo: source === "github" ? repo : urlRepo,
+          connectionId: source === "github" ? connectionId : undefined,
+          branch: source === "github" ? branch : undefined,
           port: portNum,
           environment,
         }),
       });
 
       // Validation errors come back as JSON; success streams plain text.
-      if (res.headers.get('content-type')?.includes('json')) {
+      if (res.headers.get("content-type")?.includes("json")) {
         const data = await res.json().catch(() => ({}));
         setOutput(data.error ?? `HTTP ${res.status}`);
         setFailed(true);
@@ -424,14 +479,14 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let full = '';
+      let full = "";
       const display = (raw: string) =>
         raw
-          .replaceAll('[[HB]]', '') // server heartbeats, not real output
-          .replace(/\n?\[\[EXIT:\d+\]\]/, '')
-          .split('\n')
-          .map((l) => l.split('\r').pop() ?? '') // keep last progress frame per line
-          .join('\n');
+          .replaceAll("[[HB]]", "") // server heartbeats, not real output
+          .replace(/\n?\[\[EXIT:\d+\]\]/, "")
+          .split("\n")
+          .map((l) => l.split("\r").pop() ?? "") // keep last progress frame per line
+          .join("\n");
       for (;;) {
         const { done: eof, value } = await reader.read();
         if (eof) break;
@@ -457,12 +512,15 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-3xl font-display font-light tracking-tight" style={{ textWrap: 'balance' }}>
+        <h1
+          className="text-3xl font-display font-light tracking-tight"
+          style={{ textWrap: "balance" }}
+        >
           New project
         </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          Clone, install, run under pm2 — and optionally publish at{' '}
-          <code>&lt;name&gt;.{DOMAIN_SUFFIX}</code>.
+          Clone, install, run under pm2 — and optionally publish at{" "}
+          <code>&lt;name&gt;.{suffix ?? "<your-domain>"}</code>.
         </p>
       </div>
 
@@ -470,8 +528,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       <div className="border-b">
         {(
           [
-            ['github', 'GitHub', <Github key="g" size={14} />],
-            ['url', 'Git URL', <Link2 key="u" size={14} />],
+            ["github", "GitHub", <Github key="g" size={14} />],
+            ["url", "Git URL", <Link2 key="u" size={14} />],
           ] as Array<[Source, string, React.ReactNode]>
         ).map(([s, label, icon]) => (
           <button
@@ -479,8 +537,8 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             onClick={() => !busy && setSource(s)}
             className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
-                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                ? "text-accent-600 dark:text-accent-400 border-b-2 border-accent-600"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
             }`}
           >
             {icon}
@@ -489,19 +547,28 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
         ))}
       </div>
 
-      {source === 'github' && !ghChecked && <Shimmer className="h-24 w-full" />}
+      {source === "github" && !ghChecked && <Shimmer className="h-24 w-full" />}
 
-      {source === 'github' && ghChecked && !ghLogin && (
-        <form onSubmit={connectGithub} className="fade-in-up border rounded-xl p-5 space-y-3 bg-gray-50 dark:bg-gray-800/60">
+      {source === "github" && ghChecked && !ghLogin && (
+        <form
+          onSubmit={connectGithub}
+          className="fade-in-up border rounded-xl p-5 space-y-3 bg-gray-50 dark:bg-gray-800/60"
+        >
           <div className="font-medium flex items-center gap-2">
             <Github size={16} /> Connect GitHub
           </div>
-          <p className="text-sm text-gray-600 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
-            Manage accounts on the{' '}
-            <Link href="/dashboard/git" className="text-accent-600 dark:text-accent-400 hover:underline">
+          <p
+            className="text-sm text-gray-600 dark:text-gray-400"
+            style={{ textWrap: "pretty" }}
+          >
+            Manage accounts on the{" "}
+            <Link
+              href="/dashboard/git"
+              className="text-accent-600 dark:text-accent-400 hover:underline"
+            >
               Git connections
-            </Link>{' '}
-            page, or paste one here. Create a{' '}
+            </Link>{" "}
+            page, or paste one here. Create a{" "}
             <a
               href="https://github.com/settings/personal-access-tokens/new"
               target="_blank"
@@ -509,10 +576,11 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
               className="text-accent-600 dark:text-accent-400 hover:underline"
             >
               fine-grained personal access token
-            </a>{' '}
-            with <strong>Contents: Read</strong> + <strong>Metadata: Read</strong> on the
-            repos you want to deploy (or a classic token with <code>repo</code> scope).
-            It is stored only on the server.
+            </a>{" "}
+            with <strong>Contents: Read</strong> +{" "}
+            <strong>Metadata: Read</strong> on the repos you want to deploy (or
+            a classic token with <code>repo</code> scope). It is stored only on
+            the server.
           </p>
           <div className="flex gap-2">
             <Input
@@ -525,10 +593,11 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             <Button type="submit" disabled={ghBusy || !pat}>
               {ghBusy ? (
                 <>
-                  <Loader2 size={14} className="animate-spin mr-1.5" /> Connecting…
+                  <Loader2 size={14} className="animate-spin mr-1.5" />{" "}
+                  Connecting…
                 </>
               ) : (
-                'Connect'
+                "Connect"
               )}
             </Button>
           </div>
@@ -537,12 +606,18 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       )}
 
       <form onSubmit={handleSubmit} noValidate>
-        <fieldset disabled={busy} className="space-y-4 disabled:opacity-70 transition-opacity">
-          {source === 'github' && ghLogin && (
+        <fieldset
+          disabled={busy}
+          className="space-y-4 disabled:opacity-70 transition-opacity"
+        >
+          {source === "github" && ghLogin && (
             <>
               <div className="fade-in-up flex items-center justify-between text-sm border rounded-lg px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60">
                 <span className="flex items-center gap-2.5 text-gray-700 dark:text-gray-300">
-                  <Github size={16} className="text-gray-800 dark:text-gray-200 shrink-0" />
+                  <Github
+                    size={16}
+                    className="text-gray-800 dark:text-gray-200 shrink-0"
+                  />
                   {ghAvatar && (
                     /* eslint-disable-next-line @next/next/no-img-element */
                     <img
@@ -554,7 +629,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                     />
                   )}
                   <span>
-                    Connected as{' '}
+                    Connected as{" "}
                     <a
                       href={ghProfile || `https://github.com/${ghLogin}`}
                       target="_blank"
@@ -564,13 +639,16 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                       {ghLogin}
                     </a>
                   </span>
-                  <CheckCircle2 size={14} className="text-green-600 dark:text-green-500 shrink-0" />
+                  <CheckCircle2
+                    size={14}
+                    className="text-green-600 dark:text-green-500 shrink-0"
+                  />
                 </span>
                 <button
                   type="button"
                   className="text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors py-2 px-2 -mr-2"
                   onClick={async () => {
-                    await fetch('/api/github', { method: 'DELETE' });
+                    await fetch("/api/github", { method: "DELETE" });
                     setGhLogin(null);
                     setGhAvatar(null);
                     setRepos(null);
@@ -602,7 +680,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                       value={branch}
                       onChange={(e) => {
                         setBranch(e.target.value);
-                        clearError('branch');
+                        clearError("branch");
                       }}
                       className="border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 w-64"
                     >
@@ -614,20 +692,26 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                     </select>
                   )}
                   <span className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    future <code>project deploy</code> pulls the latest of this branch
+                    future <code>project deploy</code> pulls the latest of this
+                    branch
                   </span>
                   {(detecting || detection) && (
                     <div className="fade-in-up mt-3 border rounded-xl p-4 space-y-2">
                       {detecting ? (
                         <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                          <Loader2 size={14} className="animate-spin" /> Inspecting the
-                          repository…
+                          <Loader2 size={14} className="animate-spin" />{" "}
+                          Inspecting the repository…
                         </div>
                       ) : detection ? (
                         <>
                           <div className="flex items-center gap-2 text-sm flex-wrap">
-                            <Sparkles size={14} className="text-accent-600 dark:text-accent-400" />
-                            <span className="text-gray-700 dark:text-gray-300">Detected</span>
+                            <Sparkles
+                              size={14}
+                              className="text-accent-600 dark:text-accent-400"
+                            />
+                            <span className="text-gray-700 dark:text-gray-300">
+                              Detected
+                            </span>
                             <span className="font-medium text-gray-900 dark:text-gray-100">
                               {detection.framework}
                             </span>
@@ -635,22 +719,33 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                               · {detection.packageManager}
                               {detection.buildCmd
                                 ? ` · builds with ${detection.buildCmd}`
-                                : ' · no build step'}
+                                : " · no build step"}
                             </span>
                           </div>
                           {!detection.hasStart && (
-                            <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
-                              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                            <p
+                              className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300"
+                              style={{ textWrap: "pretty" }}
+                            >
+                              <AlertCircle
+                                size={14}
+                                className="shrink-0 mt-0.5"
+                              />
                               <span>
-                                No <code>start</code> script, so pm2 has nothing to run.
+                                No <code>start</code> script, so pm2 has nothing
+                                to run.
                                 {detection.static && (
                                   <>
-                                    {' '}
-                                    This looks like a static site —{' '}
-                                    <Link href="/dashboard/new-static" className="underline">
+                                    {" "}
+                                    This looks like a static site —{" "}
+                                    <Link
+                                      href="/dashboard/new-static"
+                                      className="underline"
+                                    >
                                       create it as a static site
-                                    </Link>{' '}
-                                    to serve it through nginx with no Node process.
+                                    </Link>{" "}
+                                    to serve it through nginx with no Node
+                                    process.
                                   </>
                                 )}
                               </span>
@@ -659,23 +754,36 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                           {detection.incompatible?.length > 0 && (
                             <div className="fade-in-up border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-lg p-3 space-y-1.5">
                               <p className="flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-300">
-                                <AlertCircle size={14} /> Will not build on this device
+                                <AlertCircle size={14} /> Will not build on this
+                                device
                               </p>
                               {detection.incompatible.map((c) => (
-                                <p key={c.dep} className="text-xs text-amber-800 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                                <p
+                                  key={c.dep}
+                                  className="text-xs text-amber-800 dark:text-amber-300"
+                                  style={{ textWrap: "pretty" }}
+                                >
                                   <code>{c.dep}</code> — {c.why}. Fix: {c.fix}.
                                 </p>
                               ))}
-                              <p className="text-xs text-amber-700 dark:text-amber-400/80" style={{ textWrap: 'pretty' }}>
-                                Android uses a different C library than desktop Linux, so these
-                                packages have no binary that runs here. Alternatively build it
-                                elsewhere and deploy the output.
+                              <p
+                                className="text-xs text-amber-700 dark:text-amber-400/80"
+                                style={{ textWrap: "pretty" }}
+                              >
+                                Android uses a different C library than desktop
+                                Linux, so these packages have no binary that
+                                runs here. Alternatively build it elsewhere and
+                                deploy the output.
                               </p>
                             </div>
                           )}
                           {detection.hasStart &&
                             detection.notes.map((n) => (
-                              <p key={n} className="text-xs text-gray-500 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
+                              <p
+                                key={n}
+                                className="text-xs text-gray-500 dark:text-gray-400"
+                                style={{ textWrap: "pretty" }}
+                              >
                                 {n}
                               </p>
                             ))}
@@ -689,7 +797,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             </>
           )}
 
-          {source === 'url' && (
+          {source === "url" && (
             <div className="flex flex-col">
               <Label htmlFor="urlrepo">Git repository URL</Label>
               <Input
@@ -698,9 +806,11 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 value={urlRepo}
                 onChange={(e) => {
                   setUrlRepo(e.target.value);
-                  clearError('urlRepo');
+                  clearError("urlRepo");
                 }}
-                className={errors.urlRepo ? 'border-red-400 dark:border-red-700' : ''}
+                className={
+                  errors.urlRepo ? "border-red-400 dark:border-red-700" : ""
+                }
               />
               <FieldError msg={errors.urlRepo} />
             </div>
@@ -715,16 +825,24 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 value={name}
                 onChange={(e) => {
                   setName(e.target.value);
-                  clearError('name');
+                  clearError("name");
                 }}
-                className={errors.name ? 'border-red-400 dark:border-red-700' : ''}
+                className={
+                  errors.name ? "border-red-400 dark:border-red-700" : ""
+                }
               />
               {errors.name ? (
                 <FieldError msg={errors.name} />
               ) : nameConflict ? (
                 <FieldError msg={`"${name}" already exists on the server`} />
               ) : nameValid ? (
-                <FieldOk msg={environment === 'public' ? `${name}.${DOMAIN_SUFFIX}` : 'name is free'} />
+                <FieldOk
+                  msg={
+                    environment === "public"
+                      ? `${name}.${suffix ?? "<your-domain>"}`
+                      : "name is free"
+                  }
+                />
               ) : null}
             </div>
             <div className="flex flex-col w-40">
@@ -735,7 +853,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                   className="text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 dark:hover:text-accent-300 transition-colors inline-flex items-center gap-0.5 py-1"
                   onClick={() => {
                     setPort(String(nextFreePort()));
-                    clearError('port');
+                    clearError("port");
                   }}
                 >
                   <Sparkles size={11} /> suggest
@@ -748,11 +866,11 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 value={port}
                 onChange={(e) => {
                   setPort(e.target.value);
-                  clearError('port');
+                  clearError("port");
                 }}
                 min={1024}
                 max={65535}
-                className={`tabular-nums ${errors.port || portConflict ? 'border-red-400 dark:border-red-700' : ''}`}
+                className={`tabular-nums ${errors.port || portConflict ? "border-red-400 dark:border-red-700" : ""}`}
               />
               {errors.port ? (
                 <FieldError msg={errors.port} />
@@ -769,37 +887,46 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
               <button
                 type="button"
-                onClick={() => setEnvironment('public')}
+                onClick={() => setEnvironment("public")}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
-                  environment === 'public'
-                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
-                    : 'hover:border-gray-300 dark:hover:border-gray-600'
+                  environment === "public"
+                    ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40"
+                    : "hover:border-gray-300 dark:hover:border-gray-600"
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Globe size={15} /> Public
-                  {environment === 'public' && (
-                    <Check size={14} className="text-accent-600 dark:text-accent-400 ml-auto pop-in" />
+                  {environment === "public" && (
+                    <Check
+                      size={14}
+                      className="text-accent-600 dark:text-accent-400 ml-auto pop-in"
+                    />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  Internet-facing at <code>{name || '<name>'}.{DOMAIN_SUFFIX}</code> via Cloudflare
-                  Tunnel
+                  Internet-facing at{" "}
+                  <code>
+                    {name || "<name>"}.{suffix ?? "<your-domain>"}
+                  </code>{" "}
+                  via Cloudflare Tunnel
                 </div>
               </button>
               <button
                 type="button"
-                onClick={() => setEnvironment('private')}
+                onClick={() => setEnvironment("private")}
                 className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
-                  environment === 'private'
-                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
-                    : 'hover:border-gray-300 dark:hover:border-gray-600'
+                  environment === "private"
+                    ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40"
+                    : "hover:border-gray-300 dark:hover:border-gray-600"
                 }`}
               >
                 <div className="font-medium flex items-center gap-2 text-sm">
                   <Lock size={15} /> Private
-                  {environment === 'private' && (
-                    <Check size={14} className="text-accent-600 dark:text-accent-400 ml-auto pop-in" />
+                  {environment === "private" && (
+                    <Check
+                      size={14}
+                      className="text-accent-600 dark:text-accent-400 ml-auto pop-in"
+                    />
                   )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -822,7 +949,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
                 <Check size={14} className="mr-1.5 pop-in" /> Created
               </>
             ) : (
-              'Create project'
+              "Create project"
             )}
           </Button>
           {done && (
@@ -838,8 +965,9 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
 
       {started && (
         <Timeline
+          suffix={suffix}
           stage={stage}
-          isPublic={environment === 'public'}
+          isPublic={environment === "public"}
           failed={failed}
           finished={done}
           name={name}
@@ -849,10 +977,12 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       {lostConnection && (
         <div className="fade-in-up border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
-          <div style={{ textWrap: 'pretty' }}>
-            <strong>Connection to the panel dropped — the deployment is still running on
-            the server.</strong>{' '}
-            Give it a few minutes, then check the{' '}
+          <div style={{ textWrap: "pretty" }}>
+            <strong>
+              Connection to the panel dropped — the deployment is still running
+              on the server.
+            </strong>{" "}
+            Give it a few minutes, then check the{" "}
             <Link href="/dashboard" className="underline">
               projects list
             </Link>
@@ -875,7 +1005,7 @@ export default function NewProjectForm({ initialEnv }: { initialEnv?: string }) 
       {output && (
         <details className="fade-in-up" open={failed}>
           <summary className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer select-none transition-colors py-1">
-            {failed ? 'error log' : 'view live log'}
+            {failed ? "error log" : "view live log"}
           </summary>
           <pre
             ref={outputRef}

@@ -12,27 +12,40 @@
 // default. A caller that gets null must say so rather than print a URL that
 // cannot work.
 
-import { run, runCached } from './runner';
+import { run, runCached } from "./runner";
 
 export interface Facts {
   /** MagicDNS name, without the trailing dot. Null when Tailscale is absent. */
   tailnetHost: string | null;
-  /** Hostnames the Cloudflare tunnel actually serves right now. */
+  /**
+   * What the tunnel actually serves, hostname and target together.
+   *
+   * The target matters as much as the name. The Config page used to print
+   * `panel.<suffix>` as the panel's own address on the assumption that it is
+   * always called "panel" — on a host where the route is `neevpanel` that link
+   * was simply wrong. With the target here, a caller can ask which hostname
+   * reaches a given port instead of guessing what it is called.
+   */
+  routes: Array<{ hostname: string; service: string }>;
+  /** Just the names, for the common "is this published" check. */
   routedHosts: string[];
   /** Suffix used to build public names for new services. */
   domainSuffix: string | null;
   /** 'android' under Termux, otherwise 'linux'. Decides which probes make sense. */
-  platform: 'android' | 'linux';
+  platform: "android" | "linux";
   /** True when a tunnel is configured AND connected. */
   tunnelUp: boolean;
 }
 
 /** Is this Termux on Android, or an ordinary Linux box? */
-async function detectPlatform(): Promise<Facts['platform']> {
+async function detectPlatform(): Promise<Facts["platform"]> {
   // getprop exists only on Android. device-info assumed it always did, which is
   // why the Device tab was a column of empty fields on a Linux server.
-  const r = await runCached('command -v getprop >/dev/null 2>&1 && echo android || echo linux', 30_000);
-  return r.output.trim() === 'android' ? 'android' : 'linux';
+  const r = await runCached(
+    "command -v getprop >/dev/null 2>&1 && echo android || echo linux",
+    30_000,
+  );
+  return r.output.trim() === "android" ? "android" : "linux";
 }
 
 /**
@@ -47,17 +60,32 @@ async function detectTailnetHost(): Promise<string | null> {
     `tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' 2>/dev/null`,
     30_000,
   );
-  const host = r.output.trim().replace(/\.$/, '');
+  const host = r.output.trim().replace(/\.$/, "");
   return host || null;
 }
 
-/** Hostnames the tunnel serves, read from the config it is actually running. */
-async function detectRoutedHosts(): Promise<string[]> {
+/**
+ * Hostname and target, read from the config the tunnel is actually running.
+ *
+ * Parsed in awk rather than by grepping for hostname lines alone: an ingress
+ * entry is two lines, and the pairing is the useful part. The catch-all entry
+ * has a service and no hostname, and is skipped.
+ */
+async function detectRoutes(): Promise<Facts["routes"]> {
   const r = await runCached(
-    `grep -E '^\\s*-?\\s*hostname:' "$HOME/.cloudflared/config.yml" 2>/dev/null | sed -E 's/.*hostname:\\s*//' || true`,
+    `awk '/hostname:/{h=$0; sub(/.*hostname:[[:space:]]*/,"",h)} ` +
+      `/service:/{s=$0; sub(/.*service:[[:space:]]*/,"",s); if(h!=""){print h"\\t"s; h=""}}' ` +
+      `"$HOME/.cloudflared/config.yml" 2>/dev/null || true`,
     30_000,
   );
-  return r.output.split('\n').map((l) => l.trim()).filter(Boolean);
+  return r.output
+    .split("\n")
+    .map((l) => l.split("\t"))
+    .filter((p) => p.length === 2 && p[0] && p[1])
+    .map(([hostname, service]) => ({
+      hostname: hostname.trim(),
+      service: service.trim(),
+    }));
 }
 
 /** Connected, not merely configured. A tunnel with no edge connection serves nothing. */
@@ -70,22 +98,23 @@ async function detectTunnelUp(): Promise<boolean> {
       `catch(e){console.log("down")}})'`,
     20_000,
   );
-  return r.output.trim() === 'up';
+  return r.output.trim() === "up";
 }
 
 export async function getFacts(): Promise<Facts> {
-  const [tailnetHost, routedHosts, platform, tunnelUp] = await Promise.all([
+  const [tailnetHost, routes, platform, tunnelUp] = await Promise.all([
     detectTailnetHost(),
-    detectRoutedHosts(),
+    detectRoutes(),
     detectPlatform(),
     detectTunnelUp(),
   ]);
   const suffix = process.env.DOMAIN_SUFFIX;
   return {
     tailnetHost,
-    routedHosts,
+    routes,
+    routedHosts: routes.map((r) => r.hostname),
     // 'example.com' is the installer's placeholder, not a configured domain.
-    domainSuffix: suffix && suffix !== 'example.com' ? suffix : null,
+    domainSuffix: suffix && suffix !== "example.com" ? suffix : null,
     platform,
     tunnelUp,
   };
@@ -108,4 +137,17 @@ export function publicUrlFor(name: string, facts: Facts): string | null {
 /** The tailnet URL for a local port, or null when there is no tailnet. */
 export function tailnetUrlFor(port: number, facts: Facts): string | null {
   return facts.tailnetHost ? `http://${facts.tailnetHost}:${port}` : null;
+}
+
+/**
+ * Which hostname reaches this local port, if any.
+ *
+ * Answers "what is this service's public address" by looking it up rather than
+ * assuming it is named after the service.
+ */
+export function hostForPort(port: number, facts: Facts): string | null {
+  const hit = facts.routes.find((r) =>
+    new RegExp(`:${port}(/|$)`).test(r.service),
+  );
+  return hit ? hit.hostname : null;
 }

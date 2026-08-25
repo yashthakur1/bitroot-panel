@@ -1,11 +1,10 @@
 "use client";
 
 // Same zone the API routes use; NEXT_PUBLIC so the browser bundle can see it.
-const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
-const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
+import { useFacts } from "@/lib/use-facts";
 
-import ReadinessTimeline from './readiness-timeline';
-import { useCallback, useEffect, useState } from 'react';
+import ReadinessTimeline from "./readiness-timeline";
+import { useCallback, useEffect, useState } from "react";
 import {
   Eye,
   EyeOff,
@@ -17,11 +16,11 @@ import {
   Loader2,
   Check,
   AlertTriangle,
-} from 'lucide-react';
-import { Button } from './ui/button';
-import { StatCardsSkeleton, TableSkeleton } from './skeletons';
-import { Tabs } from './ui/tabs';
-import { humanUptime } from './project-list';
+} from "lucide-react";
+import { Button } from "./ui/button";
+import { StatCardsSkeleton, TableSkeleton } from "./skeletons";
+import { Tabs } from "./ui/tabs";
+import { humanUptime } from "./project-list";
 
 interface EnvVar {
   key: string;
@@ -50,27 +49,27 @@ const UPGRADE_TARGETS: Array<{
   desc: string;
 }> = [
   {
-    target: 'panel',
-    label: 'BitPanel',
-    versionKey: 'panel',
-    desc: 'pulls the tagged release from npm, rebuilds, and restarts the panel',
+    target: "panel",
+    label: "BitPanel",
+    versionKey: "panel",
+    desc: "pulls the tagged release from npm, rebuilds, and restarts the panel",
   },
   {
-    target: 'pocketbase',
-    label: 'PocketBase',
-    versionKey: 'pocketbase',
-    desc: 'rebuilds the latest release with Termux Go, health-checks, auto-rolls back on failure',
+    target: "pocketbase",
+    label: "PocketBase",
+    versionKey: "pocketbase",
+    desc: "rebuilds the latest release with Termux Go, health-checks, auto-rolls back on failure",
   },
   {
-    target: 'pm2',
-    label: 'pm2',
-    versionKey: 'pm2',
-    desc: 'npm install -g pm2@latest + in-place daemon update (apps keep running)',
+    target: "pm2",
+    label: "pm2",
+    versionKey: "pm2",
+    desc: "npm install -g pm2@latest + in-place daemon update (apps keep running)",
   },
   {
-    target: 'termux',
-    label: 'Termux packages',
-    desc: 'pkg update + upgrade — refreshes node, go, git, openssh and friends',
+    target: "termux",
+    label: "Termux packages",
+    desc: "pkg update + upgrade — refreshes node, go, git, openssh and friends",
   },
 ];
 
@@ -87,19 +86,19 @@ function Upgrades({
   versions: Record<string, string>;
   onDone: () => void;
 }) {
-  const [running, setRunning] = useState('');
+  const [running, setRunning] = useState("");
   // Which row the log belongs to. Kept separate from `running` so the output
   // stays attached to its own row after the upgrade finishes.
-  const [logFor, setLogFor] = useState('');
-  const [log, setLog] = useState('');
-  const [result, setResult] = useState<'ok' | 'fail' | ''>('');
+  const [logFor, setLogFor] = useState("");
+  const [log, setLog] = useState("");
+  const [result, setResult] = useState<"ok" | "fail" | "">("");
   const [checks, setChecks] = useState<Record<string, CheckEntry> | null>(null);
   const [checking, setChecking] = useState(false);
 
   const check = useCallback(async () => {
     setChecking(true);
     try {
-      const res = await fetch('/api/upgrades/check');
+      const res = await fetch("/api/upgrades/check");
       if (res.ok) setChecks(await res.json());
     } catch {
       // offline; chips stay hidden
@@ -115,44 +114,47 @@ function Upgrades({
   async function upgrade(target: string) {
     setRunning(target);
     setLogFor(target);
-    setResult('');
+    setResult("");
     setLog(`Starting ${target} upgrade…\n`);
     try {
-      const res = await fetch('/api/upgrades', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/upgrades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target }),
       });
-      if (res.headers.get('content-type')?.includes('json')) {
+      if (res.headers.get("content-type")?.includes("json")) {
         const data = await res.json().catch(() => ({}));
         setLog(data.error ?? `HTTP ${res.status}`);
-        setResult('fail');
+        setResult("fail");
         return;
       }
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let full = '';
+      let full = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         full += decoder.decode(value, { stream: true });
         setLog(
           full
-            .replaceAll('[[HB]]', '')
-            .replace(/\n?\[\[EXIT:\d+\]\]/, '')
-            .split('\n')
-            .map((l) => l.split('\r').pop() ?? '')
-            .join('\n'),
+            .replaceAll("[[HB]]", "")
+            .replace(/\n?\[\[EXIT:\d+\]\]/, "")
+            .split("\n")
+            .map((l) => l.split("\r").pop() ?? "")
+            .join("\n"),
         );
       }
-      setResult(/\[\[EXIT:0\]\]/.test(full) ? 'ok' : 'fail');
+      setResult(/\[\[EXIT:0\]\]/.test(full) ? "ok" : "fail");
       onDone();
       check();
     } catch (e) {
-      setLog((l) => `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the server)`);
-      setResult('fail');
+      setLog(
+        (l) =>
+          `${l}\n(connection lost: ${(e as Error).message} — the upgrade continues on the server)`,
+      );
+      setResult("fail");
     } finally {
-      setRunning('');
+      setRunning("");
     }
   }
 
@@ -160,7 +162,10 @@ function Upgrades({
     <div>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-display font-medium flex items-center gap-2">
-          <ArrowUpCircle size={18} className="text-gray-500 dark:text-gray-400" />
+          <ArrowUpCircle
+            size={18}
+            className="text-gray-500 dark:text-gray-400"
+          />
           Software &amp; upgrades
         </h2>
         <button
@@ -169,7 +174,7 @@ function Upgrades({
           className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1.5 py-2 transition-colors"
         >
           {checking ? <Loader2 size={12} className="animate-spin" /> : null}
-          {checking ? 'checking…' : 'check for updates'}
+          {checking ? "checking…" : "check for updates"}
         </button>
       </div>
       <div className="border rounded-lg divide-y dark:divide-gray-800">
@@ -177,67 +182,72 @@ function Upgrades({
           const c = checks?.[t.target];
           return (
             <div key={t.target}>
-            <div className="px-4 py-3 flex items-center gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2 flex-wrap">
-                  {t.label}
-                  {t.versionKey && versions[t.versionKey] && (
-                    <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
-                      {versions[t.versionKey]}
-                    </span>
-                  )}
-                  {c?.updateAvailable ? (
-                    <span className="pop-in inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full">
-                      <ArrowUpCircle size={10} />
-                      {c.latest ? `update → ${c.latest}` : c.current}
-                    </span>
-                  ) : c ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase text-green-700 dark:text-green-400">
-                      <Check size={10} /> up to date
-                    </span>
-                  ) : null}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{t.desc}</div>
-              </div>
-              <Button
-                variant={c?.updateAvailable ? 'default' : 'outline'}
-                size="sm"
-                disabled={!!running}
-                onClick={() => upgrade(t.target)}
-              >
-                {running === t.target ? (
-                  <>
-                    <Loader2 size={13} className="animate-spin mr-1.5" /> Upgrading…
-                  </>
-                ) : (
-                  'Upgrade'
-                )}
-              </Button>
-            </div>
-
-            {logFor === t.target && log && (
-              <div className="px-4 pb-4 space-y-2">
-                {result && (
-                  <p
-                    className={`fade-in-up flex items-center gap-1.5 text-sm ${
-                      result === 'ok'
-                        ? 'text-green-700 dark:text-green-400'
-                        : 'text-red-600 dark:text-red-400'
-                    }`}
-                  >
-                    {result === 'ok' ? (
-                      <Check size={14} className="pop-in" />
-                    ) : (
-                      <AlertTriangle size={14} className="pop-in" />
+              <div className="px-4 py-3 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-2 flex-wrap">
+                    {t.label}
+                    {t.versionKey && versions[t.versionKey] && (
+                      <span className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {versions[t.versionKey]}
+                      </span>
                     )}
-                    {result === 'ok' ? 'Upgrade completed.' : 'Upgrade failed — see log.'}
-                  </p>
-                )}
-                <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-3 overflow-auto max-h-72 whitespace-pre-wrap">
-                  {log}
-                </pre>
+                    {c?.updateAvailable ? (
+                      <span className="pop-in inline-flex items-center gap-1 text-[10px] font-semibold uppercase bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300 border border-accent-200 dark:border-accent-800 px-1.5 py-0.5 rounded-full">
+                        <ArrowUpCircle size={10} />
+                        {c.latest ? `update → ${c.latest}` : c.current}
+                      </span>
+                    ) : c ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase text-green-700 dark:text-green-400">
+                        <Check size={10} /> up to date
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {t.desc}
+                  </div>
+                </div>
+                <Button
+                  variant={c?.updateAvailable ? "default" : "outline"}
+                  size="sm"
+                  disabled={!!running}
+                  onClick={() => upgrade(t.target)}
+                >
+                  {running === t.target ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin mr-1.5" />{" "}
+                      Upgrading…
+                    </>
+                  ) : (
+                    "Upgrade"
+                  )}
+                </Button>
               </div>
-            )}
+
+              {logFor === t.target && log && (
+                <div className="px-4 pb-4 space-y-2">
+                  {result && (
+                    <p
+                      className={`fade-in-up flex items-center gap-1.5 text-sm ${
+                        result === "ok"
+                          ? "text-green-700 dark:text-green-400"
+                          : "text-red-600 dark:text-red-400"
+                      }`}
+                    >
+                      {result === "ok" ? (
+                        <Check size={14} className="pop-in" />
+                      ) : (
+                        <AlertTriangle size={14} className="pop-in" />
+                      )}
+                      {result === "ok"
+                        ? "Upgrade completed."
+                        : "Upgrade failed — see log."}
+                    </p>
+                  )}
+                  <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-3 overflow-auto max-h-72 whitespace-pre-wrap">
+                    {log}
+                  </pre>
+                </div>
+              )}
             </div>
           );
         })}
@@ -262,17 +272,17 @@ function DnsPanel() {
     records: ZoneRecord[];
     tunnelId: string | null;
   } | null>(null);
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/dns', { cache: 'no-store' });
+      const res = await fetch("/api/dns", { cache: "no-store" });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       setData(d);
-      setErr('');
+      setErr("");
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -285,7 +295,8 @@ function DnsPanel() {
   }, [load]);
 
   if (loading && !data) return <TableSkeleton rows={6} cols={4} />;
-  if (err) return <p className="text-sm text-red-600 dark:text-red-400">{err}</p>;
+  if (err)
+    return <p className="text-sm text-red-600 dark:text-red-400">{err}</p>;
   if (!data) return null;
 
   const mine = data.records.filter((r) => r.mine).length;
@@ -294,18 +305,21 @@ function DnsPanel() {
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-display font-medium">{data.zone || 'DNS'}</h2>
+          <h2 className="text-xl font-display font-medium">
+            {data.zone || "DNS"}
+          </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 text-pretty">
             {data.tunnelId ? (
               <>
-                {data.records.length} records in the zone, {mine} pointing at this
-                machine&apos;s tunnel. A zone is shared by every device on it — the rest
-                belong elsewhere and are shown read-only.
+                {data.records.length} records in the zone, {mine} pointing at
+                this machine&apos;s tunnel. A zone is shared by every device on
+                it — the rest belong elsewhere and are shown read-only.
               </>
             ) : (
               <>
-                {data.records.length} records. This machine&apos;s <code>config.yml</code>{' '}
-                names no tunnel, so none can be identified as its own.
+                {data.records.length} records. This machine&apos;s{" "}
+                <code>config.yml</code> names no tunnel, so none can be
+                identified as its own.
               </>
             )}
           </p>
@@ -316,7 +330,7 @@ function DnsPanel() {
           className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1.5 py-2 transition-colors"
         >
           {loading ? <Loader2 size={12} className="animate-spin" /> : null}
-          {loading ? 'refreshing…' : 'refresh'}
+          {loading ? "refreshing…" : "refresh"}
         </button>
       </div>
 
@@ -335,7 +349,9 @@ function DnsPanel() {
             {data.records.map((r) => (
               <tr
                 key={r.id}
-                className={r.mine ? 'bg-accent-50/50 dark:bg-accent-950/20' : undefined}
+                className={
+                  r.mine ? "bg-accent-50/50 dark:bg-accent-950/20" : undefined
+                }
               >
                 <td className="px-4 py-2.5 font-mono text-xs">
                   <span className="flex items-center gap-2">
@@ -354,13 +370,17 @@ function DnsPanel() {
                   {r.content}
                 </td>
                 <td className="px-4 py-2.5 text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                  {r.ttl === 1 ? 'auto' : r.ttl}
+                  {r.ttl === 1 ? "auto" : r.ttl}
                 </td>
                 <td className="px-4 py-2.5 text-xs">
                   {r.proxied ? (
-                    <span className="text-accent-700 dark:text-accent-300">proxied</span>
+                    <span className="text-accent-700 dark:text-accent-300">
+                      proxied
+                    </span>
                   ) : (
-                    <span className="text-gray-400 dark:text-gray-500">dns only</span>
+                    <span className="text-gray-400 dark:text-gray-500">
+                      dns only
+                    </span>
                   )}
                 </td>
               </tr>
@@ -372,27 +392,28 @@ function DnsPanel() {
   );
 }
 
-type Tab = 'setup' | 'runtime' | 'software' | 'dns' | 'device';
+type Tab = "setup" | "runtime" | "software" | "dns" | "device";
 
 export default function ConfigPage({ initialTab }: { initialTab?: string }) {
+  const facts = useFacts();
   const [tab, setTab] = useState<Tab>(
-    initialTab === 'software' ||
-    initialTab === 'device' ||
-    initialTab === 'runtime' ||
-    initialTab === 'dns'
+    initialTab === "software" ||
+      initialTab === "device" ||
+      initialTab === "runtime" ||
+      initialTab === "dns"
       ? initialTab
-      : 'setup',
+      : "setup",
   );
   const [state, setState] = useState<ConfigState | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/config');
+      const res = await fetch("/api/config");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setState(await res.json());
-      setError('');
+      setError("");
     } catch (e) {
       setError(`could not load config: ${(e as Error).message}`);
     }
@@ -405,35 +426,39 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-display font-light tracking-tight">Config</h1>
+        <h1 className="text-3xl font-display font-light tracking-tight">
+          Config
+        </h1>
         <p className="text-gray-600 dark:text-gray-400 mt-2">
-          The panel&apos;s own runtime configuration on the server. Read-only — to change
-          values, edit <code>~/apps/bitroot-panel/.env</code> and run{' '}
+          The panel&apos;s own runtime configuration on the server. Read-only —
+          to change values, edit <code>~/apps/bitroot-panel/.env</code> and run{" "}
           <code>panel-restart</code>.
         </p>
       </div>
 
       <Tabs
         tabs={[
-          { key: 'setup', label: 'Setup' },
-          { key: 'runtime', label: 'Runtime' },
-          { key: 'software', label: 'Software' },
-          { key: 'dns', label: 'DNS' },
-          { key: 'device', label: 'Device' },
+          { key: "setup", label: "Setup" },
+          { key: "runtime", label: "Runtime" },
+          { key: "software", label: "Software" },
+          { key: "dns", label: "DNS" },
+          { key: "device", label: "Device" },
         ]}
         active={tab}
         onChange={setTab}
       />
 
-      <div className={tab === 'setup' ? '' : 'hidden'}>
+      <div className={tab === "setup" ? "" : "hidden"}>
         <ReadinessTimeline />
       </div>
 
       {/* Mounted only when open: it hits the Cloudflare API, which should not
           happen on every visit to an unrelated tab. */}
-      {tab === 'dns' && <DnsPanel />}
+      {tab === "dns" && <DnsPanel />}
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+      )}
 
       {!state && !error && (
         <>
@@ -447,35 +472,45 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           {/* Runtime */}
           <div
             className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 ${
-              tab === 'runtime' ? '' : 'hidden'
+              tab === "runtime" ? "" : "hidden"
             }`}
           >
             {(
               [
-                ['Version', `v${state.panel.version}`],
-                ['Exec mode', state.panel.execMode],
-                ['Node', state.panel.node],
-                ['Port', state.panel.port],
-                ['Uptime', humanUptime(state.panel.uptimeSec * 1000)],
-                ['Deployed', state.panel.commit.split(' ')[0]],
+                ["Version", `v${state.panel.version}`],
+                ["Exec mode", state.panel.execMode],
+                ["Node", state.panel.node],
+                ["Port", state.panel.port],
+                ["Uptime", humanUptime(state.panel.uptimeSec * 1000)],
+                ["Deployed", state.panel.commit.split(" ")[0]],
               ] as Array<[string, string]>
             ).map(([label, value]) => (
               <div key={label} className="border rounded-lg p-4">
-                <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">{label}</div>
-                <div className="text-lg font-medium mt-1 truncate" title={value}>
+                <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
+                  {label}
+                </div>
+                <div
+                  className="text-lg font-medium mt-1 truncate"
+                  title={value}
+                >
                   {value}
                 </div>
               </div>
             ))}
           </div>
-          <p className={`text-sm text-gray-500 dark:text-gray-400 -mt-4 ${tab === 'runtime' ? '' : 'hidden'}`}>
+          <p
+            className={`text-sm text-gray-500 dark:text-gray-400 -mt-4 ${tab === "runtime" ? "" : "hidden"}`}
+          >
             Last deploy: <span className="font-mono">{state.panel.commit}</span>
           </p>
 
           {/* .env */}
-          <div className={tab === 'runtime' ? '' : 'hidden'}>
+          <div className={tab === "runtime" ? "" : "hidden"}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
-              <FileCode2 size={18} className="text-gray-500 dark:text-gray-400" />
+              <FileCode2
+                size={18}
+                className="text-gray-500 dark:text-gray-400"
+              />
               Environment (.env)
             </h2>
             <div className="overflow-x-auto border rounded-lg">
@@ -491,20 +526,26 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
                   {state.env.map((v) => {
                     const shown = !v.secret || revealed[v.key];
                     return (
-                      <tr key={v.key} className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                      <tr
+                        key={v.key}
+                        className="border-t hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                      >
                         <td className="px-4 py-3 whitespace-nowrap font-mono text-sm font-medium text-gray-800 dark:text-gray-200">
                           {v.key}
                         </td>
                         <td className="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300 break-all">
-                          {shown ? v.value : '••••••••••••'}
+                          {shown ? v.value : "••••••••••••"}
                         </td>
                         <td className="px-4 py-3">
                           {v.secret && (
                             <button
                               className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                              title={shown ? 'hide' : 'reveal'}
+                              title={shown ? "hide" : "reveal"}
                               onClick={() =>
-                                setRevealed({ ...revealed, [v.key]: !revealed[v.key] })
+                                setRevealed({
+                                  ...revealed,
+                                  [v.key]: !revealed[v.key],
+                                })
                               }
                             >
                               {shown ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -520,54 +561,95 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           </div>
 
           {/* Endpoints */}
-          <div className={tab === 'runtime' ? '' : 'hidden'}>
+          <div className={tab === "runtime" ? "" : "hidden"}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Link2 size={18} className="text-gray-500 dark:text-gray-400" />
               Ways to reach this panel
             </h2>
             <div className="border rounded-lg divide-y text-sm">
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-                <span className="text-gray-700 dark:text-gray-300">Public (Cloudflare Access + password)</span>
-                <a href={`https://panel.${DOMAIN_SUFFIX}`} className="font-mono text-accent-600 dark:text-accent-400 hover:underline">
-                  {`panel.${DOMAIN_SUFFIX}`}
-                </a>
+                <span className="text-gray-700 dark:text-gray-300">
+                  Public (Cloudflare Access + password)
+                </span>
+                {(() => {
+                  // Look up which hostname reaches the panel's port. This used to
+                  // print `panel.<suffix>` on the assumption the route is always
+                  // called "panel"; on a host where it is "neevpanel" the link
+                  // went nowhere.
+                  const host = facts?.routes.find((r) =>
+                    new RegExp(`:${state.panel.port}(/|$)`).test(r.service),
+                  )?.hostname;
+                  return host ? (
+                    <a
+                      href={`https://${host}`}
+                      className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
+                    >
+                      {host}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Not published — publish it from Routes
+                    </span>
+                  );
+                })()}
               </div>
               <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-                <span className="text-gray-700 dark:text-gray-300">Tailscale (private, password only)</span>
-                <span className="font-mono text-gray-800 dark:text-gray-200">{TAILNET_IP}:{state.panel.port}</span>
+                <span className="text-gray-700 dark:text-gray-300">
+                  Tailscale (private, password only)
+                </span>
+                {facts?.tailnetHost ? (
+                  <span className="font-mono text-gray-800 dark:text-gray-200">
+                    {facts.tailnetHost}:{state.panel.port}
+                  </span>
+                ) : (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    Tailscale is not on this machine
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
           {/* Software & upgrades */}
-          <div className={tab === 'software' ? '' : 'hidden'}>
-          <div className="mb-4 rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/[0.06] p-3">
-            <p className="text-sm text-amber-800 dark:text-amber-400 text-pretty">
-              <strong>Upgrading pm2 restarts every service on this machine</strong>, including this
-              panel — the page will drop while it happens. The process list is saved first and
-              restored if the daemon comes back empty, but do it when a few minutes of downtime is
-              acceptable.
-            </p>
-          </div>
+          <div className={tab === "software" ? "" : "hidden"}>
+            <div className="mb-4 rounded-lg border border-amber-300/60 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/[0.06] p-3">
+              <p className="text-sm text-amber-800 dark:text-amber-400 text-pretty">
+                <strong>
+                  Upgrading pm2 restarts every service on this machine
+                </strong>
+                , including this panel — the page will drop while it happens.
+                The process list is saved first and restored if the daemon comes
+                back empty, but do it when a few minutes of downtime is
+                acceptable.
+              </p>
+            </div>
             <Upgrades versions={state.versions ?? {}} onDone={load} />
           </div>
 
           {/* Shortcuts */}
-          <div className={tab === 'device' ? '' : 'hidden'}>
+          <div className={tab === "device" ? "" : "hidden"}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
-              <Keyboard size={18} className="text-gray-500 dark:text-gray-400" />
+              <Keyboard
+                size={18}
+                className="text-gray-500 dark:text-gray-400"
+              />
               Keyboard shortcuts
             </h2>
             <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm max-w-md">
               {(
                 [
-                  ['l', 'Open panel logs'],
-                  ['h', 'Projects list'],
-                  ['n', 'New project'],
+                  ["l", "Open panel logs"],
+                  ["h", "Projects list"],
+                  ["n", "New project"],
                 ] as Array<[string, string]>
               ).map(([key, action]) => (
-                <div key={key} className="px-4 py-2.5 flex items-center justify-between">
-                  <span className="text-gray-700 dark:text-gray-300">{action}</span>
+                <div
+                  key={key}
+                  className="px-4 py-2.5 flex items-center justify-between"
+                >
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {action}
+                  </span>
                   <span className="text-gray-500 dark:text-gray-400">
                     <kbd className="border rounded px-1.5 py-0.5 text-xs font-mono bg-gray-50 dark:bg-gray-800/60">
                       g
@@ -583,13 +665,13 @@ export default function ConfigPage({ initialTab }: { initialTab?: string }) {
           </div>
 
           {/* Device */}
-          <div className={tab === 'device' ? '' : 'hidden'}>
+          <div className={tab === "device" ? "" : "hidden"}>
             <h2 className="text-xl font-display font-medium mb-3 flex items-center gap-2">
               <Server size={18} className="text-gray-500 dark:text-gray-400" />
               Device
             </h2>
             <pre className="bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
-              {state.device || 'no device info'}
+              {state.device || "no device info"}
             </pre>
           </div>
         </>

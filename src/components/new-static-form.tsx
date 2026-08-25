@@ -1,14 +1,19 @@
 "use client";
 
 // Zone comes from the environment so a checkout is not tied to one person's
-// infrastructure. NEXT_PUBLIC_ because this renders in the browser.
-const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
+// infrastructure.
+// The suffix is measured at runtime via useFacts, not compiled in: a
+// NEXT_PUBLIC_ value is inlined when the panel is BUILT, so changing the domain
+// and restarting left these previews showing the previous one.
+// These are previews of a name that does not exist yet, so they deliberately do
+// not check whether it is routed — they must read as a future state.
+import { useFacts } from "@/lib/use-facts";
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Label } from './ui/label';
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
 import {
   Github,
   Link2,
@@ -21,9 +26,9 @@ import {
   Sparkles,
   ArrowRight,
   PanelsTopLeft,
-} from 'lucide-react';
-import { Shimmer } from './skeletons';
-import RepoPicker from './repo-picker';
+} from "lucide-react";
+import { Shimmer } from "./skeletons";
+import RepoPicker from "./repo-picker";
 
 interface Repo {
   fullName: string;
@@ -45,16 +50,18 @@ interface Detection {
   packageManager: string;
 }
 
-type Source = 'github' | 'url';
-type Errors = Partial<Record<'repo' | 'urlRepo' | 'name' | 'port' | 'outDir', string>>;
+type Source = "github" | "url";
+type Errors = Partial<
+  Record<"repo" | "urlRepo" | "name" | "port" | "outDir", string>
+>;
 
 // Framework presets — the two fields people always have to look up.
 const PRESETS: Array<{ label: string; build: string; out: string }> = [
-  { label: 'Vite', build: 'npm run build', out: 'dist' },
-  { label: 'Next.js (export)', build: 'npm run build', out: 'out' },
-  { label: 'Astro', build: 'npm run build', out: 'dist' },
-  { label: 'Create React App', build: 'npm run build', out: 'build' },
-  { label: 'Plain HTML', build: '', out: '.' },
+  { label: "Vite", build: "npm run build", out: "dist" },
+  { label: "Next.js (export)", build: "npm run build", out: "out" },
+  { label: "Astro", build: "npm run build", out: "dist" },
+  { label: "Create React App", build: "npm run build", out: "build" },
+  { label: "Plain HTML", build: "", out: "." },
 ];
 
 function computeStage(text: string): number {
@@ -74,7 +81,13 @@ function computeStage(text: string): number {
   return stage;
 }
 
-const STEPS = ['Clone repository', 'Install & build', 'Publish to nginx', 'Route', 'Live'];
+const STEPS = [
+  "Clone repository",
+  "Install & build",
+  "Publish to nginx",
+  "Route",
+  "Live",
+];
 
 function Timeline({
   stage,
@@ -82,64 +95,74 @@ function Timeline({
   done,
   isPublic,
   name,
+  suffix,
 }: {
   stage: number;
   failed: boolean;
   done: boolean;
   isPublic: boolean;
   name: string;
+  /** Measured, and null until /api/facts answers or when no domain is set. */
+  suffix: string | null;
 }) {
   return (
     <div className="fade-in-up border rounded-xl p-5">
       {STEPS.map((label, i) => {
         const activeAt = i + 1;
         const doneAt = i + 2;
-        let state: 'pending' | 'active' | 'done' | 'failed';
-        if (done && !failed) state = 'done';
-        else if (stage >= doneAt) state = 'done';
-        else if (stage >= activeAt) state = failed ? 'failed' : 'active';
-        else state = 'pending';
+        let state: "pending" | "active" | "done" | "failed";
+        if (done && !failed) state = "done";
+        else if (stage >= doneAt) state = "done";
+        else if (stage >= activeAt) state = failed ? "failed" : "active";
+        else state = "pending";
         const last = i === STEPS.length - 1;
         return (
           <div key={label} className="flex gap-3">
             <div className="flex flex-col items-center">
-              {state === 'done' ? (
+              {state === "done" ? (
                 <CheckCircle2 size={18} className="text-green-600 pop-in" />
-              ) : state === 'failed' ? (
+              ) : state === "failed" ? (
                 <AlertCircle size={18} className="text-red-500 pop-in" />
-              ) : state === 'active' ? (
-                <Loader2 size={18} className="animate-spin text-accent-600 dark:text-accent-400" />
+              ) : state === "active" ? (
+                <Loader2
+                  size={18}
+                  className="animate-spin text-accent-600 dark:text-accent-400"
+                />
               ) : (
                 <div className="w-[18px] h-[18px] rounded-full border-2 border-gray-300 dark:border-gray-700" />
               )}
               {!last && (
                 <div
                   className={`w-px flex-1 my-1 transition-colors ${
-                    state === 'done' ? 'bg-green-300' : 'bg-gray-200 dark:bg-gray-700'
+                    state === "done"
+                      ? "bg-green-300"
+                      : "bg-gray-200 dark:bg-gray-700"
                   }`}
                 />
               )}
             </div>
-            <div className={`text-sm ${last ? '' : 'pb-5'}`}>
+            <div className={`text-sm ${last ? "" : "pb-5"}`}>
               <span
                 className={
-                  state === 'done'
-                    ? 'text-gray-800 dark:text-gray-200'
-                    : state === 'active'
-                      ? 'text-gray-900 dark:text-gray-100 font-medium'
-                      : state === 'failed'
-                        ? 'text-red-600 dark:text-red-400 font-medium'
-                        : 'text-gray-400'
+                  state === "done"
+                    ? "text-gray-800 dark:text-gray-200"
+                    : state === "active"
+                      ? "text-gray-900 dark:text-gray-100 font-medium"
+                      : state === "failed"
+                        ? "text-red-600 dark:text-red-400 font-medium"
+                        : "text-gray-400"
                 }
               >
                 {label}
-                {state === 'failed' && (
+                {state === "failed" && (
                   <span className="text-xs ml-2">failed — see log below</span>
                 )}
               </span>
-              {label === 'Route' && state !== 'pending' && (
+              {label === "Route" && state !== "pending" && (
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isPublic ? `${name || '<name>'}.${DOMAIN_SUFFIX}` : 'private — Tailscale only'}
+                  {isPublic
+                    ? `${name || "<name>"}.${suffix ?? "<your-domain>"}`
+                    : "private — Tailscale only"}
                 </div>
               )}
             </div>
@@ -151,23 +174,25 @@ function Timeline({
 }
 
 export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
-  const [source, setSource] = useState<Source>('github');
+  const facts = useFacts();
+  const suffix = facts?.domainSuffix ?? null;
+  const [source, setSource] = useState<Source>("github");
   const [ghLogin, setGhLogin] = useState<string | null>(null);
   const [ghChecked, setGhChecked] = useState(false);
   const [repos, setRepos] = useState<Repo[] | null>(null);
-  const [repo, setRepo] = useState('');
-  const [branch, setBranch] = useState('');
+  const [repo, setRepo] = useState("");
+  const [branch, setBranch] = useState("");
   const [branches, setBranches] = useState<string[]>([]);
-  const [connectionId, setConnectionId] = useState('');
+  const [connectionId, setConnectionId] = useState("");
   const [detection, setDetection] = useState<Detection | null>(null);
   const [detecting, setDetecting] = useState(false);
-  const [urlRepo, setUrlRepo] = useState('');
+  const [urlRepo, setUrlRepo] = useState("");
 
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
   // Where the built output ends up. Asked before anything else, because it
   // decides whether half the remaining fields mean anything.
-  const [destination, setDestination] = useState<'device' | 'pages'>('device');
-  const [domain, setDomain] = useState('');
+  const [destination, setDestination] = useState<"device" | "pages">("device");
+  const [domain, setDomain] = useState("");
   // Set only on the Pages path: there is no build log, so the outcome has to be
   // reported rather than watched.
   const [pagesResult, setPagesResult] = useState<{
@@ -175,33 +200,36 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     domain?: string;
     domainError?: string;
   } | null>(null);
-  const [port, setPort] = useState('');
-  const [buildCmd, setBuildCmd] = useState('npm run build');
-  const [outDir, setOutDir] = useState('dist');
-  const [environment, setEnvironment] = useState<'public' | 'private'>(
-    initialEnv === 'private' ? 'private' : 'public',
+  const [port, setPort] = useState("");
+  const [buildCmd, setBuildCmd] = useState("npm run build");
+  const [outDir, setOutDir] = useState("dist");
+  const [environment, setEnvironment] = useState<"public" | "private">(
+    initialEnv === "private" ? "private" : "public",
   );
 
-  const [taken, setTaken] = useState<{ names: string[]; ports: Record<number, string> }>({
+  const [taken, setTaken] = useState<{
+    names: string[];
+    ports: Record<number, string>;
+  }>({
     names: [],
     ports: {},
   });
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [output, setOutput] = useState('');
+  const [output, setOutput] = useState("");
   const [stage, setStage] = useState(0);
   const [failed, setFailed] = useState(false);
   const [started, setStarted] = useState(false);
   const [done, setDone] = useState(false);
 
   const loadGithub = useCallback(async () => {
-    const res = await fetch('/api/github');
+    const res = await fetch("/api/github");
     const data = await res.json().catch(() => ({}));
     setGhLogin(data.connected ? data.login : null);
     setGhChecked(true);
     if (data.connected) {
-      const rr = await fetch('/api/github/repos');
+      const rr = await fetch("/api/github/repos");
       const rd = await rr.json().catch(() => ({}));
       if (rr.ok) setRepos(rd.repos);
     }
@@ -209,7 +237,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
 
   useEffect(() => {
     loadGithub();
-    fetch('/api/projects')
+    fetch("/api/projects")
       .then((r) => r.json())
       .then((d) =>
         setTaken({
@@ -230,15 +258,21 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
   async function selectRepo(full: string) {
     setRepo(full);
     setBranches([]);
-    setBranch('');
+    setBranch("");
     setErrors((e) => ({ ...e, repo: undefined }));
     if (!full) return;
-    if (!name) setName(full.split('/')[1].toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? '';
+    if (!name)
+      setName(
+        full
+          .split("/")[1]
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-"),
+      );
+    const conn = repos?.find((x) => x.fullName === full)?.connectionId ?? "";
     setConnectionId(conn);
     const res = await fetch(
       `/api/github/branches?repo=${encodeURIComponent(full)}` +
-        (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+        (conn ? `&connection=${encodeURIComponent(conn)}` : ""),
     );
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
@@ -256,7 +290,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     try {
       const res = await fetch(
         `/api/github/detect?repo=${encodeURIComponent(full)}&branch=${encodeURIComponent(br)}` +
-          (conn ? `&connection=${encodeURIComponent(conn)}` : ''),
+          (conn ? `&connection=${encodeURIComponent(conn)}` : ""),
       );
       const d = await res.json().catch(() => null);
       if (res.ok && d) {
@@ -281,22 +315,24 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
 
   function validate(): Errors {
     const e: Errors = {};
-    if (source === 'github' ? !repo : !urlRepo) {
-      if (source === 'github') e.repo = 'Pick a repository';
-      else e.urlRepo = 'A git repository URL is required';
+    if (source === "github" ? !repo : !urlRepo) {
+      if (source === "github") e.repo = "Pick a repository";
+      else e.urlRepo = "A git repository URL is required";
     }
-    if (!name) e.name = 'Give the site a name';
-    else if (!/^[a-zA-Z0-9_-]{1,40}$/.test(name)) e.name = 'Letters, digits, dashes only';
+    if (!name) e.name = "Give the site a name";
+    else if (!/^[a-zA-Z0-9_-]{1,40}$/.test(name))
+      e.name = "Letters, digits, dashes only";
     else if (nameConflict) e.name = `"${name}" already exists`;
     // Only when this device serves it. On the Pages path the field is hidden,
     // and validating a hidden input blocks the submit with an error nobody can
     // see or fix.
-    if (destination === 'device') {
-      if (!port) e.port = 'A port is required — nginx serves each site on its own';
-      else if (!(portNum >= 1024 && portNum <= 65535)) e.port = 'Use 1024-65535';
-    }
-    else if (portConflict) e.port = `Taken by ${portConflict}`;
-    if (!outDir) e.outDir = 'Which folder the build writes to';
+    if (destination === "device") {
+      if (!port)
+        e.port = "A port is required — nginx serves each site on its own";
+      else if (!(portNum >= 1024 && portNum <= 65535))
+        e.port = "Use 1024-65535";
+    } else if (portConflict) e.port = `Taken by ${portConflict}`;
+    if (!outDir) e.outDir = "Which folder the build writes to";
     return e;
   }
 
@@ -313,26 +349,26 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     setDone(false);
     setFailed(false);
     setStage(0);
-    setOutput('');
+    setOutput("");
     try {
-      const res = await fetch('/api/static', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/static", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source,
-          repo: source === 'github' ? repo : urlRepo,
-          connectionId: source === 'github' ? connectionId : undefined,
-          branch: source === 'github' ? branch : undefined,
+          repo: source === "github" ? repo : urlRepo,
+          connectionId: source === "github" ? connectionId : undefined,
+          branch: source === "github" ? branch : undefined,
           name,
           port: portNum,
           buildCmd,
           outDir,
           environment,
           destination,
-          domain: destination === 'pages' ? domain.trim() : undefined,
+          domain: destination === "pages" ? domain.trim() : undefined,
         }),
       });
-      if (res.headers.get('content-type')?.includes('json')) {
+      if (res.headers.get("content-type")?.includes("json")) {
         const data = await res.json().catch(() => ({}));
         // Pages answers with JSON on success too — Cloudflare does the build,
         // so there is no log to stream and nothing to show a timeline for.
@@ -351,18 +387,18 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       }
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let full = '';
+      let full = "";
       for (;;) {
         const { done: eof, value } = await reader.read();
         if (eof) break;
         full += decoder.decode(value, { stream: true });
         setOutput(
           full
-            .replaceAll('[[HB]]', '')
-            .replace(/\n?\[\[EXIT:\d+\]\]/, '')
-            .split('\n')
-            .map((l) => l.split('\r').pop() ?? '')
-            .join('\n'),
+            .replaceAll("[[HB]]", "")
+            .replace(/\n?\[\[EXIT:\d+\]\]/, "")
+            .split("\n")
+            .map((l) => l.split("\r").pop() ?? "")
+            .join("\n"),
         );
         setStage(computeStage(full));
       }
@@ -371,7 +407,10 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       setFailed(!ok);
       if (ok) setStage(6);
     } catch (err) {
-      setOutput((o) => `${o}\n(connection lost: ${(err as Error).message} — the build continues on the server)`);
+      setOutput(
+        (o) =>
+          `${o}\n(connection lost: ${(err as Error).message} — the build continues on the server)`,
+      );
       setFailed(true);
     } finally {
       setBusy(false);
@@ -382,20 +421,26 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
     <div className="max-w-2xl space-y-6">
       <div>
         <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
-          <PanelsTopLeft size={24} className="text-gray-500 dark:text-gray-400" />
+          <PanelsTopLeft
+            size={24}
+            className="text-gray-500 dark:text-gray-400"
+          />
           New static site
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2" style={{ textWrap: 'pretty' }}>
-          Builds your repo once and serves the output through nginx — no Node process, so it
-          costs almost nothing to keep running.
+        <p
+          className="text-gray-600 dark:text-gray-400 mt-2"
+          style={{ textWrap: "pretty" }}
+        >
+          Builds your repo once and serves the output through nginx — no Node
+          process, so it costs almost nothing to keep running.
         </p>
       </div>
 
       <div className="border-b dark:border-gray-800">
         {(
           [
-            ['github', 'GitHub', <Github key="g" size={14} />],
-            ['url', 'Git URL', <Link2 key="u" size={14} />],
+            ["github", "GitHub", <Github key="g" size={14} />],
+            ["url", "Git URL", <Link2 key="u" size={14} />],
           ] as Array<[Source, string, React.ReactNode]>
         ).map(([s, label, icon]) => (
           <button
@@ -403,8 +448,8 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             onClick={() => !busy && setSource(s)}
             className={`py-2 px-3 text-sm font-medium -mb-px inline-flex items-center gap-1.5 transition-colors ${
               source === s
-                ? 'text-accent-600 dark:text-accent-400 border-b-2 border-accent-600'
-                : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                ? "text-accent-600 dark:text-accent-400 border-b-2 border-accent-600"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
             }`}
           >
             {icon}
@@ -413,11 +458,14 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
         ))}
       </div>
 
-      {source === 'github' && !ghChecked && <Shimmer className="h-16 w-full" />}
-      {source === 'github' && ghChecked && !ghLogin && (
+      {source === "github" && !ghChecked && <Shimmer className="h-16 w-full" />}
+      {source === "github" && ghChecked && !ghLogin && (
         <p className="border rounded-lg p-4 text-sm text-gray-600 dark:text-gray-400">
-          GitHub isn&apos;t connected yet —{' '}
-          <Link href="/dashboard/new-service" className="text-accent-600 dark:text-accent-400 hover:underline">
+          GitHub isn&apos;t connected yet —{" "}
+          <Link
+            href="/dashboard/new-service"
+            className="text-accent-600 dark:text-accent-400 hover:underline"
+          >
             connect it on the New project page
           </Link>
           , or use the Git URL tab.
@@ -425,8 +473,11 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       )}
 
       <form onSubmit={submit} noValidate>
-        <fieldset disabled={busy} className="space-y-4 disabled:opacity-70 transition-opacity">
-          {source === 'github' && ghLogin && (
+        <fieldset
+          disabled={busy}
+          className="space-y-4 disabled:opacity-70 transition-opacity"
+        >
+          {source === "github" && ghLogin && (
             <>
               <div className="flex flex-col">
                 <Label htmlFor="s-repo">Repository</Label>
@@ -469,7 +520,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             </>
           )}
 
-          {source === 'url' && (
+          {source === "url" && (
             <div className="flex flex-col">
               <Label htmlFor="s-url">Git repository URL</Label>
               <Input
@@ -477,7 +528,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 placeholder="https://github.com/you/site.git"
                 value={urlRepo}
                 onChange={(e) => setUrlRepo(e.target.value)}
-                className={errors.urlRepo ? 'border-red-400' : ''}
+                className={errors.urlRepo ? "border-red-400" : ""}
               />
               {errors.urlRepo && (
                 <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 mt-1.5">
@@ -491,29 +542,43 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             <div className="fade-in-up border rounded-xl p-4 space-y-2">
               {detecting ? (
                 <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                  <Loader2 size={14} className="animate-spin" /> Inspecting the repository…
+                  <Loader2 size={14} className="animate-spin" /> Inspecting the
+                  repository…
                 </div>
               ) : detection ? (
                 <>
                   <div className="flex items-center gap-2 text-sm flex-wrap">
-                    <Sparkles size={14} className="text-accent-600 dark:text-accent-400" />
-                    <span className="text-gray-700 dark:text-gray-300">Detected</span>
+                    <Sparkles
+                      size={14}
+                      className="text-accent-600 dark:text-accent-400"
+                    />
+                    <span className="text-gray-700 dark:text-gray-300">
+                      Detected
+                    </span>
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       {detection.framework}
                     </span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
                       · {detection.packageManager}
-                      {detection.buildCmd ? ` · ${detection.buildCmd}` : ' · no build step'}
+                      {detection.buildCmd
+                        ? ` · ${detection.buildCmd}`
+                        : " · no build step"}
                       {` · output ${detection.outDir}`}
                     </span>
                   </div>
                   {detection.server && (
-                    <p className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                    <p
+                      className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-300"
+                      style={{ textWrap: "pretty" }}
+                    >
                       <AlertCircle size={14} className="shrink-0 mt-0.5" />
                       <span>
                         {detection.notes[0] ??
-                          'This project needs a running server, so a static site will not work.'}{' '}
-                        <Link href="/dashboard/new-service" className="underline">
+                          "This project needs a running server, so a static site will not work."}{" "}
+                        <Link
+                          href="/dashboard/new-service"
+                          className="underline"
+                        >
                           Create it as a project instead
                         </Link>
                         .
@@ -526,20 +591,31 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                         <AlertCircle size={14} /> Will not build on this device
                       </p>
                       {detection.incompatible.map((c) => (
-                        <p key={c.dep} className="text-xs text-amber-800 dark:text-amber-300" style={{ textWrap: 'pretty' }}>
+                        <p
+                          key={c.dep}
+                          className="text-xs text-amber-800 dark:text-amber-300"
+                          style={{ textWrap: "pretty" }}
+                        >
                           <code>{c.dep}</code> — {c.why}. Fix: {c.fix}.
                         </p>
                       ))}
-                      <p className="text-xs text-amber-700 dark:text-amber-400/80" style={{ textWrap: 'pretty' }}>
-                        Android uses a different C library than desktop Linux, so these
-                        packages have no binary that runs here. Alternatively build it
-                        elsewhere and deploy the output.
+                      <p
+                        className="text-xs text-amber-700 dark:text-amber-400/80"
+                        style={{ textWrap: "pretty" }}
+                      >
+                        Android uses a different C library than desktop Linux,
+                        so these packages have no binary that runs here.
+                        Alternatively build it elsewhere and deploy the output.
                       </p>
                     </div>
                   )}
                   {!detection.server &&
                     detection.notes.map((n) => (
-                      <p key={n} className="text-xs text-gray-500 dark:text-gray-400" style={{ textWrap: 'pretty' }}>
+                      <p
+                        key={n}
+                        className="text-xs text-gray-500 dark:text-gray-400"
+                        style={{ textWrap: "pretty" }}
+                      >
                         {n}
                       </p>
                     ))}
@@ -564,8 +640,8 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                     }}
                     className={`text-xs px-2.5 py-1.5 rounded-full border transition-[background-color,border-color,scale] active:scale-[0.96] ${
                       active
-                        ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                        ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40 text-accent-700 dark:text-accent-300"
+                        : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600"
                     }`}
                   >
                     {p.label}
@@ -593,7 +669,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 placeholder="dist"
                 value={outDir}
                 onChange={(e) => setOutDir(e.target.value)}
-                className={`font-mono text-sm ${errors.outDir ? 'border-red-400' : ''}`}
+                className={`font-mono text-sm ${errors.outDir ? "border-red-400" : ""}`}
               />
             </div>
           </div>
@@ -604,26 +680,26 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           <div className="flex flex-col">
             <Label>Where should this run?</Label>
             <div className="grid sm:grid-cols-2 gap-2 mt-1.5">
-              {([
+              {[
                 {
-                  key: 'device' as const,
-                  title: 'This device',
-                  blurb: 'Built and served here through nginx and the tunnel.',
+                  key: "device" as const,
+                  title: "This device",
+                  blurb: "Built and served here through nginx and the tunnel.",
                 },
                 {
-                  key: 'pages' as const,
-                  title: 'Cloudflare Pages',
-                  blurb: 'Built here, then served from Cloudflare’s edge.',
+                  key: "pages" as const,
+                  title: "Cloudflare Pages",
+                  blurb: "Built here, then served from Cloudflare’s edge.",
                 },
-              ]).map((opt) => (
+              ].map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
                   onClick={() => setDestination(opt.key)}
                   className={`text-left rounded-lg border p-3 transition-colors ${
                     destination === opt.key
-                      ? 'border-accent-500 bg-accent-50/60 dark:bg-accent-950/25'
-                      : 'border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700'
+                      ? "border-accent-500 bg-accent-50/60 dark:bg-accent-950/25"
+                      : "border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
                   }`}
                 >
                   <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
@@ -635,10 +711,11 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 </button>
               ))}
             </div>
-            {destination === 'pages' && (
+            {destination === "pages" && (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-pretty">
-                This device is only involved at deploy time — not on every request,
-                which is what makes it a better fit for hardware that sleeps.
+                This device is only involved at deploy time — not on every
+                request, which is what makes it a better fit for hardware that
+                sleeps.
               </p>
             )}
           </div>
@@ -651,7 +728,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 placeholder="my-site"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className={errors.name ? 'border-red-400' : ''}
+                className={errors.name ? "border-red-400" : ""}
               />
               {errors.name && (
                 <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 mt-1.5">
@@ -659,7 +736,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 </p>
               )}
             </div>
-            {destination === 'pages' ? (
+            {destination === "pages" ? (
               <div className="flex flex-col w-64">
                 <Label htmlFor="s-domain">Custom domain (optional)</Label>
                 <Input
@@ -673,88 +750,97 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 </p>
               </div>
             ) : (
-            <div className="flex flex-col w-40">
-              <div className="flex items-baseline justify-between">
-                <Label htmlFor="s-port">Port</Label>
-                <button
-                  type="button"
-                  className="text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 inline-flex items-center gap-0.5 py-1"
-                  onClick={() => setPort(String(nextFreePort()))}
-                >
-                  <Sparkles size={11} /> suggest
-                </button>
+              <div className="flex flex-col w-40">
+                <div className="flex items-baseline justify-between">
+                  <Label htmlFor="s-port">Port</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-accent-600 dark:text-accent-400 hover:text-accent-800 inline-flex items-center gap-0.5 py-1"
+                    onClick={() => setPort(String(nextFreePort()))}
+                  >
+                    <Sparkles size={11} /> suggest
+                  </button>
+                </div>
+                <Input
+                  id="s-port"
+                  type="number"
+                  placeholder="3400"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className={`tabular-nums ${errors.port || portConflict ? "border-red-400" : ""}`}
+                />
+                {errors.port ? (
+                  <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 mt-1.5">
+                    <AlertCircle size={13} /> {errors.port}
+                  </p>
+                ) : portConflict ? (
+                  <p className="fade-in-up text-sm text-red-600 dark:text-red-400 mt-1.5">
+                    taken by {portConflict}
+                  </p>
+                ) : port ? (
+                  <p className="fade-in-up flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 mt-1.5">
+                    <Check size={12} /> port is free
+                  </p>
+                ) : null}
               </div>
-              <Input
-                id="s-port"
-                type="number"
-                placeholder="3400"
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                className={`tabular-nums ${errors.port || portConflict ? 'border-red-400' : ''}`}
-              />
-              {errors.port ? (
-                <p className="fade-in-up flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400 mt-1.5">
-                  <AlertCircle size={13} /> {errors.port}
-                </p>
-              ) : portConflict ? (
-                <p className="fade-in-up text-sm text-red-600 dark:text-red-400 mt-1.5">
-                  taken by {portConflict}
-                </p>
-              ) : port ? (
-                <p className="fade-in-up flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400 mt-1.5">
-                  <Check size={12} /> port is free
-                </p>
-              ) : null}
-            </div>
             )}
           </div>
 
           {/* Public vs private is a question about a local listener and a tunnel
               route. A Pages site has neither — Cloudflare serves it either way. */}
-          {destination === 'device' && (
-          <div className="flex flex-col">
-            <Label>Environment</Label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
-              <button
-                type="button"
-                onClick={() => setEnvironment('public')}
-                className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
-                  environment === 'public'
-                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
-                    : 'hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <div className="font-medium flex items-center gap-2 text-sm">
-                  <Globe size={15} /> Public
-                  {environment === 'public' && (
-                    <Check size={14} className="text-accent-600 ml-auto pop-in" />
-                  )}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  <code>{name || '<name>'}.{DOMAIN_SUFFIX}</code> via Cloudflare Tunnel
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setEnvironment('private')}
-                className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
-                  environment === 'private'
-                    ? 'border-accent-500 bg-accent-50 dark:bg-accent-950/40'
-                    : 'hover:border-gray-300 dark:hover:border-gray-600'
-                }`}
-              >
-                <div className="font-medium flex items-center gap-2 text-sm">
-                  <Lock size={15} /> Private
-                  {environment === 'private' && (
-                    <Check size={14} className="text-accent-600 ml-auto pop-in" />
-                  )}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                  Tailscale/LAN only — no public route
-                </div>
-              </button>
+          {destination === "device" && (
+            <div className="flex flex-col">
+              <Label>Environment</Label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
+                <button
+                  type="button"
+                  onClick={() => setEnvironment("public")}
+                  className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
+                    environment === "public"
+                      ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40"
+                      : "hover:border-gray-300 dark:hover:border-gray-600"
+                  }`}
+                >
+                  <div className="font-medium flex items-center gap-2 text-sm">
+                    <Globe size={15} /> Public
+                    {environment === "public" && (
+                      <Check
+                        size={14}
+                        className="text-accent-600 ml-auto pop-in"
+                      />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    <code>
+                      {name || "<name>"}.{suffix ?? "<your-domain>"}
+                    </code>{" "}
+                    via Cloudflare Tunnel
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEnvironment("private")}
+                  className={`border rounded-xl p-4 text-left transition-[border-color,background-color,scale] active:scale-[0.98] ${
+                    environment === "private"
+                      ? "border-accent-500 bg-accent-50 dark:bg-accent-950/40"
+                      : "hover:border-gray-300 dark:hover:border-gray-600"
+                  }`}
+                >
+                  <div className="font-medium flex items-center gap-2 text-sm">
+                    <Lock size={15} /> Private
+                    {environment === "private" && (
+                      <Check
+                        size={14}
+                        className="text-accent-600 ml-auto pop-in"
+                      />
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Tailscale/LAN only — no public route
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
           )}
         </fieldset>
 
@@ -770,7 +856,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
                 <Check size={14} className="mr-1.5 pop-in" /> Created
               </>
             ) : (
-              'Create static site'
+              "Create static site"
             )}
           </Button>
           {done && (
@@ -787,12 +873,13 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       {/* The timeline narrates clone → build → nginx → tunnel. A Pages deploy
           takes none of those steps on this device, so showing it would be
           describing work that never happened. */}
-      {started && destination === 'device' && (
+      {started && destination === "device" && (
         <Timeline
+          suffix={suffix}
           stage={stage}
           failed={failed}
           done={done}
-          isPublic={environment === 'public'}
+          isPublic={environment === "public"}
           name={name}
         />
       )}
@@ -804,9 +891,9 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
             Project created on Cloudflare Pages
           </div>
           <p className="text-sm text-gray-600 dark:text-gray-400 text-pretty">
-            Cloudflare is building it now — the first deploy usually takes a minute
-            or two. Pushes to <code>{branch || 'main'}</code> rebuild it from then on;
-            this device isn&apos;t involved.
+            Cloudflare is building it now — the first deploy usually takes a
+            minute or two. Pushes to <code>{branch || "main"}</code> rebuild it
+            from then on; this device isn&apos;t involved.
           </p>
           <div className="flex flex-col gap-1.5 text-sm">
             <a
@@ -830,7 +917,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
           </div>
           {pagesResult.domainError && (
             <p className="text-sm text-amber-700 dark:text-amber-400 text-pretty">
-              The site is live, but {pagesResult.domain} could not be attached:{' '}
+              The site is live, but {pagesResult.domain} could not be attached:{" "}
               {pagesResult.domainError}
             </p>
           )}
@@ -840,7 +927,7 @@ export default function NewStaticForm({ initialEnv }: { initialEnv?: string }) {
       {output && (
         <details className="fade-in-up" open={failed}>
           <summary className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer select-none py-1">
-            {failed ? 'error log' : 'view build log'}
+            {failed ? "error log" : "view build log"}
           </summary>
           <pre className="mt-2 bg-black text-gray-100 font-mono text-xs rounded-md p-4 overflow-auto max-h-96 whitespace-pre-wrap">
             {output}

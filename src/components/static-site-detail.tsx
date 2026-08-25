@@ -1,13 +1,13 @@
 "use client";
 
-const TAILNET_HOST = process.env.NEXT_PUBLIC_TAILNET_HOST ?? 'localhost';
+import { useFacts } from "@/lib/use-facts";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Button } from './ui/button';
-import { StatCardsSkeleton } from './skeletons';
-import RemoveDialog, { type RemoveOptions } from './remove-dialog';
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Button } from "./ui/button";
+import { StatCardsSkeleton } from "./skeletons";
+import RemoveDialog, { type RemoveOptions } from "./remove-dialog";
 import {
   PanelsTopLeft,
   ExternalLink,
@@ -15,7 +15,7 @@ import {
   Check,
   AlertCircle,
   RefreshCw,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface Site {
   name: string;
@@ -28,17 +28,18 @@ interface Site {
 }
 
 export default function StaticSiteDetail({ name }: { name: string }) {
+  const facts = useFacts();
   const router = useRouter();
   const [site, setSite] = useState<Site | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState('');
-  const [output, setOutput] = useState('');
-  const [result, setResult] = useState<'ok' | 'fail' | ''>('');
+  const [busy, setBusy] = useState("");
+  const [output, setOutput] = useState("");
+  const [result, setResult] = useState<"ok" | "fail" | "">("");
   const [confirmRemove, setConfirmRemove] = useState(false);
   const logRef = useRef<HTMLPreElement>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/static');
+    const res = await fetch("/api/static");
     const data = await res.json().catch(() => ({}));
     setSite((data.sites ?? []).find((s: Site) => s.name === name) ?? null);
     setLoaded(true);
@@ -53,58 +54,58 @@ export default function StaticSiteDetail({ name }: { name: string }) {
   }, [output]);
 
   async function deploy() {
-    setBusy('deploy');
-    setResult('');
-    setOutput('Pulling and rebuilding…\n');
+    setBusy("deploy");
+    setResult("");
+    setOutput("Pulling and rebuilding…\n");
     try {
       const res = await fetch(`/api/static/${name}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'deploy' }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deploy" }),
       });
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
-      let full = '';
+      let full = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         full += decoder.decode(value, { stream: true });
         setOutput(
           full
-            .replaceAll('[[HB]]', '')
-            .replace(/\n?\[\[EXIT:\d+\]\]/, '')
-            .split('\n')
-            .map((l) => l.split('\r').pop() ?? '')
-            .join('\n'),
+            .replaceAll("[[HB]]", "")
+            .replace(/\n?\[\[EXIT:\d+\]\]/, "")
+            .split("\n")
+            .map((l) => l.split("\r").pop() ?? "")
+            .join("\n"),
         );
       }
-      setResult(/\[\[EXIT:0\]\]/.test(full) ? 'ok' : 'fail');
+      setResult(/\[\[EXIT:0\]\]/.test(full) ? "ok" : "fail");
       load();
     } catch (e) {
       setOutput((o) => `${o}\n(connection lost: ${(e as Error).message})`);
-      setResult('fail');
+      setResult("fail");
     } finally {
-      setBusy('');
+      setBusy("");
     }
   }
 
   async function remove(opts: RemoveOptions) {
-    setBusy('remove');
+    setBusy("remove");
     try {
       const res = await fetch(`/api/static/${name}/action`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'remove', ...opts }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "remove", ...opts }),
       });
       if (res.ok) {
-        router.push('/dashboard/static');
+        router.push("/dashboard/static");
         return;
       }
       const data = await res.json().catch(() => ({}));
       setOutput(data.error ?? data.output ?? `HTTP ${res.status}`);
-      setResult('fail');
+      setResult("fail");
     } finally {
-      setBusy('');
+      setBusy("");
     }
   }
 
@@ -117,7 +118,9 @@ export default function StaticSiteDetail({ name }: { name: string }) {
         <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
           It may have been removed.
         </p>
-        <Button onClick={() => router.push('/dashboard')}>Back to overview</Button>
+        <Button onClick={() => router.push("/dashboard")}>
+          Back to overview
+        </Button>
       </div>
     );
   }
@@ -128,9 +131,9 @@ export default function StaticSiteDetail({ name }: { name: string }) {
         <RemoveDialog
           name={name}
           kind="static site"
-          hosts={(site?.urls ?? []).map((u) => u.replace('https://', ''))}
+          hosts={(site?.urls ?? []).map((u) => u.replace("https://", ""))}
           filesPath={`~/apps/static/${name}`}
-          busy={busy === 'remove'}
+          busy={busy === "remove"}
           onCancel={() => setConfirmRemove(false)}
           onConfirm={(opts) => remove(opts)}
         />
@@ -138,7 +141,10 @@ export default function StaticSiteDetail({ name }: { name: string }) {
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-display font-light tracking-tight flex items-center gap-3">
-            <PanelsTopLeft size={24} className="text-gray-500 dark:text-gray-400" />
+            <PanelsTopLeft
+              size={24}
+              className="text-gray-500 dark:text-gray-400"
+            />
             {name}
             <span className="text-xs font-medium px-2 py-1 rounded border bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 align-middle">
               static
@@ -154,26 +160,27 @@ export default function StaticSiteDetail({ name }: { name: string }) {
                   rel="noreferrer"
                   className="text-accent-600 dark:text-accent-400 hover:underline text-sm inline-flex items-center gap-1"
                 >
-                  {u.replace('https://', '')}
+                  {u.replace("https://", "")}
                   <ExternalLink size={12} />
                 </a>
               ))}
             </div>
           ) : site ? (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-              Private — reachable over Tailscale only.{' '}
+              Private — reachable over Tailscale only.{" "}
               <Link href="/dashboard/tunnel?tab=publish" className="underline">
                 Publish it
-              </Link>{' '}
+              </Link>{" "}
               to give it a public hostname.
             </p>
           ) : null}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button disabled={!!busy} onClick={deploy}>
-            {busy === 'deploy' ? (
+            {busy === "deploy" ? (
               <>
-                <Loader2 size={14} className="animate-spin mr-1.5" /> Rebuilding…
+                <Loader2 size={14} className="animate-spin mr-1.5" />{" "}
+                Rebuilding…
               </>
             ) : (
               <>
@@ -198,17 +205,19 @@ export default function StaticSiteDetail({ name }: { name: string }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {(
             [
-              ['Status', site.served ? 'served' : 'not served'],
-              ['Port', String(site.port)],
-              ['Build size', site.size],
-              ['Branch', site.branch || 'default'],
+              ["Status", site.served ? "served" : "not served"],
+              ["Port", String(site.port)],
+              ["Build size", site.size],
+              ["Branch", site.branch || "default"],
             ] as Array<[string, string]>
           ).map(([label, value]) => (
             <div key={label} className="border rounded-lg p-4">
               <div className="text-xs uppercase text-gray-500 dark:text-gray-400 font-semibold">
                 {label}
               </div>
-              <div className="text-lg font-medium mt-1 tabular-nums">{value}</div>
+              <div className="text-lg font-medium mt-1 tabular-nums">
+                {value}
+              </div>
             </div>
           ))}
         </div>
@@ -216,18 +225,28 @@ export default function StaticSiteDetail({ name }: { name: string }) {
 
       <div className="border rounded-lg divide-y dark:divide-gray-800 text-sm">
         <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
-          <span className="text-gray-700 dark:text-gray-300">Private (Tailscale)</span>
-          {site ? (
+          <span className="text-gray-700 dark:text-gray-300">
+            Private (Tailscale)
+          </span>
+          {site && facts?.tailnetHost ? (
             <a
-              href={`http://${TAILNET_HOST}:${site.port}`}
+              href={`http://${facts.tailnetHost}:${site.port}`}
               target="_blank"
               rel="noreferrer"
               className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
             >
-              {TAILNET_HOST}:{site.port}
+              {facts.tailnetHost}:{site.port}
             </a>
+          ) : site ? (
+            // No tailnet here, so there is no address to offer. A link to
+            // localhost would only work for somebody already on the machine.
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Tailscale is not on this machine
+            </span>
           ) : (
-            <span className="font-mono text-gray-800 dark:text-gray-200">—</span>
+            <span className="font-mono text-gray-800 dark:text-gray-200">
+              —
+            </span>
           )}
         </div>
         <div className="px-4 py-3 flex justify-between flex-wrap gap-2">
@@ -241,17 +260,19 @@ export default function StaticSiteDetail({ name }: { name: string }) {
       {result && (
         <p
           className={`fade-in-up flex items-center gap-1.5 text-sm ${
-            result === 'ok'
-              ? 'text-green-700 dark:text-green-400'
-              : 'text-red-600 dark:text-red-400'
+            result === "ok"
+              ? "text-green-700 dark:text-green-400"
+              : "text-red-600 dark:text-red-400"
           }`}
         >
-          {result === 'ok' ? (
+          {result === "ok" ? (
             <Check size={14} className="pop-in" />
           ) : (
             <AlertCircle size={14} className="pop-in" />
           )}
-          {result === 'ok' ? 'Rebuilt and reloaded.' : 'Rebuild failed — see log.'}
+          {result === "ok"
+            ? "Rebuilt and reloaded."
+            : "Rebuild failed — see log."}
         </p>
       )}
 
