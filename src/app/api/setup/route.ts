@@ -120,6 +120,26 @@ export async function POST(req: NextRequest) {
 
       await writeEnv(updates);
 
+      // Create the account rather than only writing DASHBOARD_PASSWORD. A fresh
+      // install has no reason to start on the shared credential that every
+      // existing install now has to migrate away from.
+      let account: string | undefined;
+      if (email) {
+        try {
+          process.env.DASHBOARD_PASSWORD = password;
+          process.env.SUPERADMIN_EMAIL = email;
+          const { createUser, storeInUse } = await import("@/lib/users");
+          if (!storeInUse()) {
+            const user = await createUser({ email, password, role: "superadmin" });
+            account = `${user.email} is a superadmin account, not a shared password`;
+          }
+        } catch (e) {
+          // Never fatal: .env is already written, so the panel is usable. Say
+          // what did not happen instead of failing a completed setup.
+          account = `the account could not be created (${(e as Error).message}) — the panel will sign in with the shared password until you migrate from IAM`;
+        }
+      }
+
       // Garage resolves a published object's bucket by stripping its own
       // root_domain from the hostname. Left at the old value, every public
       // object returns 404 while the panel reports the route as live.
@@ -149,6 +169,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         mail,
+        account,
         garage,
         // True again. It used to be misleading: the browser read the domain
         // through NEXT_PUBLIC_ constants inlined at BUILD time, so a restart

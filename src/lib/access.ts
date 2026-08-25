@@ -30,6 +30,11 @@ export interface AccessApp {
   name: string;
   domain: string;
   sessionDuration: string;
+  /**
+   * The audience tag baked into every JWT Access mints for this application.
+   * Verifying it is what stops a token for one application opening another.
+   */
+  aud: string;
   policies: AccessPolicy[];
 }
 
@@ -77,6 +82,7 @@ export async function listApps(): Promise<AccessApp[]> {
     name: a.name,
     domain: a.domain,
     sessionDuration: a.session_duration,
+    aud: a.aud,
     policies: (a.policies ?? []).map((p: any) => ({
       id: p.id,
       name: p.name,
@@ -209,4 +215,34 @@ export async function syncSuperadmin(): Promise<string[]> {
     .map((a) => a.id);
   if (missing.length === 0) return [];
   return grantAccess(superadmin, missing);
+}
+
+
+/**
+ * The Access application in front of this panel, and the team that signs it.
+ *
+ * Both are needed before an Access token can be believed, and neither can be
+ * guessed: the team names the signing keys, the audience ties a token to this
+ * application. Discovered from the hostname the panel is actually published on,
+ * so a machine configures itself rather than needing values typed in.
+ */
+export async function discoverAccessIdentity(
+  hostnames: string[],
+): Promise<{ team: string; aud: string; app: string } | null> {
+  const apps = await listApps().catch(() => []);
+  const app = apps.find((a) => hostnames.includes(a.domain.split('/')[0].toLowerCase()));
+  if (!app?.aud) return null;
+
+  // The team name is not on the application record. It is in the redirect
+  // Access itself issues, which is the authoritative source and costs one
+  // unauthenticated request.
+  const res = await fetch(`https://${app.domain.split('/')[0]}/`, {
+    redirect: 'manual',
+    cache: 'no-store',
+  }).catch(() => null);
+  const location = res?.headers.get('location') ?? '';
+  const team = /https:\/\/([a-z0-9-]+)\.cloudflareaccess\.com/i.exec(location)?.[1];
+  if (!team) return null;
+
+  return { team, aud: app.aud, app: app.name };
 }

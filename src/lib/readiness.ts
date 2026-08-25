@@ -10,6 +10,7 @@ import os from 'os';
 import { readFile } from 'fs/promises';
 import path from 'path';
 import { run } from './runner';
+import { dbPath, listUsers, storeInUse } from './users';
 import { checkCloudflare, detectTailnet } from './setup';
 import { versionInfo } from './version';
 import { adminBindAddr, bindIsLoopback, webRootDomain } from './garage-config';
@@ -94,17 +95,45 @@ async function has(binary: string): Promise<boolean> {
 }
 
 async function panelStep(e: Record<string, string>): Promise<Step> {
-  const ok = Boolean(e.DASHBOARD_PASSWORD && e.SESSION_SECRET);
+  const accounts = storeInUse();
+  const ok = accounts || Boolean(e.DASHBOARD_PASSWORD && e.SESSION_SECRET);
+
+  // 'partial' rather than 'ready' for the shared password. It works, so it is
+  // not missing — but everyone who can reach the panel uses one credential, so
+  // nothing can be attributed to a person and removing one person's access
+  // means changing everyone's.
+  const status = !ok ? 'missing' : accounts ? 'ready' : 'partial';
+  const count = accounts ? listUsers().length : 0;
+
   return {
     id: 'panel',
     title: 'Panel access',
     required: true,
-    status: ok ? 'ready' : 'missing',
-    detail: ok
-      ? 'Password and session secret are set.'
-      : 'No dashboard password — the panel would redirect to the setup wizard.',
+    status,
+    detail: !ok
+      ? 'No dashboard password — the panel would redirect to the setup wizard.'
+      : accounts
+        ? `${count} account${count === 1 ? '' : 's'} in ${dbPath()} (node:sqlite). Sessions name a person and can be ended for one of them.`
+        : 'One shared DASHBOARD_PASSWORD. Sessions cannot tell two people apart, and removing one person means changing it for all of them.',
     unlocks: ['Signing in at all'],
-    fix: ok ? undefined : ['Open /setup and complete the wizard'],
+    fix: !ok
+      ? ['Open /setup and complete the wizard']
+      : accounts
+        ? undefined
+        : ['Open IAM and choose "Create real accounts" — the current password keeps working'],
+  };
+}
+
+async function userStoreStep(): Promise<Step> {
+  const inUse = storeInUse();
+  return {
+    id: 'users',
+    title: 'User store',
+    status: inUse ? 'ready' : 'partial',
+    detail: inUse
+      ? `node:sqlite, built into Node — no separate service to keep running. File: ${dbPath()}, mode 0600.`
+      : 'Not in use yet. The panel is still signing in with the single shared password from .env.',
+    unlocks: ['Per-person sign-in', 'Disabling one person without touching the rest'],
   };
 }
 
@@ -673,6 +702,7 @@ export async function readiness(fresh = false): Promise<Readiness> {
   // in series makes the page feel broken on modest hardware.
   const steps = await Promise.all([
     panelStep(e),
+    userStoreStep(),
     domainStep(e),
     cloudflareStep(e),
     tunnelStep(),

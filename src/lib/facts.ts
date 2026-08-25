@@ -13,6 +13,7 @@
 // cannot work.
 
 import { run, runCached } from "./runner";
+import { dbPath, listUsers, storeInUse } from "./users";
 
 export interface Facts {
   /** MagicDNS name, without the trailing dot. Null when Tailscale is absent. */
@@ -35,6 +36,23 @@ export interface Facts {
   platform: "android" | "linux";
   /** True when a tunnel is configured AND connected. */
   tunnelUp: boolean;
+  /**
+   * How this machine decides who someone is.
+   *
+   * 'shared' means the single DASHBOARD_PASSWORD is still in use and no action
+   * can be attributed to a person. 'accounts' means real per-person logins,
+   * stored in SQLite. Measured rather than assumed: the two machines this runs
+   * on will not be migrated at the same moment.
+   */
+  auth: {
+    mode: "shared" | "accounts";
+    /** The user store's engine and file, for the System view. */
+    engine: "node:sqlite";
+    store: string;
+    users: number;
+    /** True when Cloudflare Access identity is verifiable on this machine. */
+    accessIdentity: boolean;
+  };
 }
 
 /** Is this Termux on Android, or an ordinary Linux box? */
@@ -117,6 +135,15 @@ export async function getFacts(): Promise<Facts> {
     domainSuffix: suffix && suffix !== "example.com" ? suffix : null,
     platform,
     tunnelUp,
+    auth: {
+      mode: storeInUse() ? "accounts" : "shared",
+      engine: "node:sqlite",
+      store: dbPath(),
+      users: storeInUse() ? listUsers().length : 0,
+      // Both halves are needed: the team names the signing keys, the audience
+      // ties a token to this application rather than any app in the team.
+      accessIdentity: Boolean(process.env.CF_ACCESS_TEAM && process.env.CF_ACCESS_AUD),
+    },
   };
 }
 

@@ -23,7 +23,11 @@ APP_DIR="${BITPANEL_DIR:-$HOME/apps/bitroot-panel}"
 BIN_DIR="$HOME/bin"
 PANEL_PORT="${BITPANEL_PORT:-3210}"
 DEFAULT_BRANCH="${BITPANEL_BRANCH:-main}"
+# 22.5 is the floor, not 22: node:sqlite — which the panel's account store uses
+# — landed in 22.5.0. On 22.0–22.4 the panel installs cleanly and then cannot
+# import a module that is simply not there.
 NODE_MAJOR="${NODE_MAJOR:-22}"
+NODE_MINOR_MIN="${NODE_MINOR_MIN:-5}"
 
 # ─── progress ────────────────────────────────────────────────────────────────
 # An installer that prints nothing for four minutes looks broken, and the honest
@@ -178,7 +182,16 @@ step_ok
 
 # ─── 2. node ─────────────────────────────────────────────────────
 step "Node.js $NODE_MAJOR and pm2"
-if have node && [ "$(node -p 'process.versions.node.split(".")[0]')" -ge "$NODE_MAJOR" ]; then
+node_new_enough() {
+	have node || return 1
+	node -e '
+	  const [maj, min] = process.versions.node.split(".").map(Number);
+	  const wantMaj = Number(process.argv[1]), wantMin = Number(process.argv[2]);
+	  process.exit(maj > wantMaj || (maj === wantMaj && min >= wantMin) ? 0 : 1);
+	' "$NODE_MAJOR" "$NODE_MINOR_MIN" 2>/dev/null
+}
+
+if node_new_enough; then
 	NODE_NOTE="node $(node -v) already there"
 else
 	NODE_NOTE=''
