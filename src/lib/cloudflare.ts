@@ -52,7 +52,13 @@ async function cf(path: string, init: RequestInit = {}) {
 // every device pointed at it, so each machine must only judge its own records.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function localTunnelId(): Promise<string | null> {
+/**
+ * Exported because publishing needs it too, and .env is not where it lives.
+ * On the machine this was written against, TUNNEL_ID is absent and the id is
+ * only in the tunnel's own config — so an endpoint that required the env var
+ * refused to run on a correctly configured server.
+ */
+export async function localTunnelId(): Promise<string | null> {
   if (UUID.test(process.env.TUNNEL_ID ?? '')) return process.env.TUNNEL_ID!;
 
   // config.yml may name the tunnel either way. `tunnel: oneplus-tunnel` is

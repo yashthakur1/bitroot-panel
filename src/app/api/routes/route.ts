@@ -8,6 +8,7 @@ import {
   verifyHostname,
 } from "@/lib/routes";
 import { checkDomainUsable } from "@/lib/setup";
+import { localTunnelId } from "@/lib/cloudflare";
 import { recordResidue } from "@/lib/residue";
 
 // Live status per route, so a broken one can be diagnosed here rather than by
@@ -62,10 +63,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const tunnelId = process.env.TUNNEL_ID;
+  // Measured from the tunnel's own config, not read from .env. TUNNEL_ID is
+  // absent on a working machine, so requiring it refused a valid server.
+  const tunnelId = await localTunnelId();
   if (!tunnelId) {
     return NextResponse.json(
-      { error: "TUNNEL_ID is not set, so DNS records cannot be created" },
+      {
+        error:
+          "No cloudflared tunnel was found on this machine, so DNS records cannot be created",
+      },
       { status: 400 },
     );
   }
