@@ -11,17 +11,48 @@ B='\033[1m'     # bold
 
 # --- Gather data ---
 
+# Which machine is this? getprop exists only on Android. Calling it on a Linux
+# server returns nothing and every field below renders blank — a column of empty
+# labels that looks like a broken panel rather than "this is not a phone".
+if command -v getprop >/dev/null 2>&1; then
+	PLATFORM=android
+else
+	PLATFORM=linux
+fi
+
 # Device
-MODEL=$(getprop ro.product.model)
-BRAND=$(getprop ro.product.brand)
-DEVICE=$(getprop ro.product.device)
-SERIAL=$(getprop ro.serialno)
-ANDROID_VER=$(getprop ro.build.version.release)
-BUILD_ID=$(getprop ro.build.display.id)
+if [ "$PLATFORM" = android ]; then
+	MODEL=$(getprop ro.product.model)
+	BRAND=$(getprop ro.product.brand)
+	DEVICE=$(getprop ro.product.device)
+	SERIAL=$(getprop ro.serialno)
+	ANDROID_VER=$(getprop ro.build.version.release)
+	BUILD_ID=$(getprop ro.build.display.id)
+else
+	# The nearest equivalents a Linux host actually has. DMI is readable without
+	# root on most hardware and absent on cloud VMs, so each falls back rather
+	# than printing an empty label.
+	MODEL=$(cat /sys/class/dmi/id/product_name 2>/dev/null || echo "")
+	BRAND=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || echo "")
+	DEVICE=$(hostname 2>/dev/null)
+	SERIAL=""
+	ANDROID_VER=""
+	BUILD_ID=$( . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" )
+	[ -z "$MODEL" ] && MODEL=$(systemd-detect-virt 2>/dev/null | sed 's/^/virtual machine (/;s/$/)/')
+	[ -z "$MODEL" ] && MODEL="unknown"
+	[ -z "$BRAND" ] && BRAND=$(uname -s)
+fi
 KERNEL=$(uname -r)
 
 # CPU
-CHIPSET=$(getprop ro.board.platform | tr '[:lower:]' '[:upper:]')
+if [ "$PLATFORM" = android ]; then
+	CHIPSET=$(getprop ro.board.platform | tr '[:lower:]' '[:upper:]')
+else
+	# The model name is what a server operator recognises; the vendor line is
+	# the nearest thing to a "platform".
+	CHIPSET=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null)
+	[ -z "$CHIPSET" ] && CHIPSET=$(uname -m)
+fi
 HARDWARE=$(grep 'Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2 | xargs)
 CPU_CORES=$(nproc)
 ARCH=$(uname -m)
@@ -43,18 +74,22 @@ WIFI_IP=$(ip addr show wlan0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f
 WIFI_MAC=$(ip link show wlan0 2>/dev/null | awk '/ether/ {print $2}')
 WIFI_IPV6=$(ip addr show wlan0 2>/dev/null | awk '/inet6.*global/ {print $2}' | head -1)
 GATEWAY=$(ip route 2>/dev/null | awk '/default/ {print $3}' | head -1)
-DNS1=$(getprop net.dns1 2>/dev/null)
-DNS2=$(getprop net.dns2 2>/dev/null)
+if [ "$PLATFORM" = android ]; then
+	DNS1=$(getprop net.dns1 2>/dev/null)
+else
+	DNS1=$(awk '/^nameserver/{print $2; exit}' /etc/resolv.conf 2>/dev/null)
+fi
+DNS2=$([ "$PLATFORM" = android ] && getprop net.dns2 2>/dev/null)
 
 # Bluetooth
-BT_NAME=$(getprop net.bt.name 2>/dev/null)
-BT_MAC=$(getprop ro.boot.btmacaddr 2>/dev/null)
+BT_NAME=$([ "$PLATFORM" = android ] && getprop net.bt.name 2>/dev/null)
+BT_MAC=$([ "$PLATFORM" = android ] && getprop ro.boot.btmacaddr 2>/dev/null)
 [ -z "$BT_MAC" ] && BT_MAC=$(cat /sys/class/bluetooth/hci0/address 2>/dev/null)
 [ -z "$BT_MAC" ] && BT_MAC="N/A"
 
 # Cellular
-SIM_OP=$(getprop gsm.sim.operator.alpha 2>/dev/null)
-NET_TYPE=$(getprop gsm.network.type 2>/dev/null)
+SIM_OP=$([ "$PLATFORM" = android ] && getprop gsm.sim.operator.alpha 2>/dev/null)
+NET_TYPE=$([ "$PLATFORM" = android ] && getprop gsm.network.type 2>/dev/null)
 
 # Uptime
 UPTIME=$(uptime | sed 's/.*up /up /' | sed 's/,  load.*//')
@@ -75,8 +110,8 @@ echo ""
 printf "${Y}  DEVICE${R}\n"
 printf "${D}  ──────────────────────────────────────────────${R}\n"
 printf "  ${G}Model     ${D}:${R}  %s\n" "$BRAND $MODEL"
-printf "  ${G}Codename  ${D}:${R}  %s\n" "$DEVICE"
-printf "  ${G}Android   ${D}:${R}  %s\n" "$ANDROID_VER"
+printf "  ${G}%s  ${D}:${R}  %s\n" "$([ "$PLATFORM" = android ] && echo 'Codename' || echo 'Hostname')" "$DEVICE"
+[ -n "$ANDROID_VER" ] && printf "  ${G}Android   ${D}:${R}  %s\n" "$ANDROID_VER"
 printf "  ${G}Build     ${D}:${R}  %s\n" "$BUILD_ID"
 printf "  ${G}Kernel    ${D}:${R}  %s\n" "$KERNEL"
 [ -n "$SERIAL" ] && printf "  ${G}Serial    ${D}:${R}  %s\n" "$SERIAL"

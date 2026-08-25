@@ -1,8 +1,11 @@
 "use client";
 
-// Same zone the API routes use; NEXT_PUBLIC so the browser bundle can see it.
-const DOMAIN_SUFFIX = process.env.NEXT_PUBLIC_DOMAIN_SUFFIX ?? 'example.com';
-const TAILNET_IP = process.env.NEXT_PUBLIC_TAILNET_IP ?? '127.0.0.1';
+// Facts come from /api/facts at runtime, not from NEXT_PUBLIC_* baked into this
+// bundle at build time. The old constants read NEXT_PUBLIC_TAILNET_IP while .env
+// wrote NEXT_PUBLIC_TAILNET_HOST — the names never matched, so this page fell
+// back to 127.0.0.1 and told the operator their database was on localhost.
+// A value the server can measure should not be a build-time guess.
+import type { Facts } from '@/lib/facts';
 
 import { useCallback, useEffect, useState } from 'react';
 import { useLivePoll } from '@/lib/use-poll';
@@ -44,10 +47,19 @@ interface PbState {
   publicUrl: string;
 }
 
-const ADMIN_URL = `https://pocketbase.${DOMAIN_SUFFIX}/_/`;
-// Full MagicDNS name: browsers treat a single-label host as a
-// search term, so the short form looks broken when clicked.
-const TS_FQDN = 'localhost';
+// Where "Open admin" should point, given what this machine actually has.
+// Public first, then the tailnet, then loopback — which only helps somebody
+// already on the box, so it is last and honest about that.
+//
+// This was two constants: an ADMIN_URL built from a suffix that might not be
+// routed, and `TS_FQDN = 'localhost'` hardcoded under a comment explaining why
+// a full MagicDNS name matters. The comment was right; the value was not.
+function adminUrl(facts: Facts | null): string {
+  const host = facts?.domainSuffix && `pocketbase.${facts.domainSuffix}`;
+  if (host && facts?.routedHosts.includes(host)) return `https://${host}/_/`;
+  if (facts?.tailnetHost) return `http://${facts.tailnetHost}:8090/_/`;
+  return 'http://127.0.0.1:8090/_/';
+}
 
 type Tab = 'overview' | 'databases' | 'backups' | 'access';
 
@@ -59,6 +71,14 @@ const TABS: Array<{ key: Tab; label: string }> = [
 ];
 
 export default function PocketBasePage({ initialTab }: { initialTab?: string }) {
+  const [facts, setFacts] = useState<Facts | null>(null);
+  useEffect(() => {
+    fetch('/api/facts', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then(setFacts)
+      .catch(() => setFacts(null));
+  }, []);
+
   const [tab, setTab] = useState<Tab>(
     TABS.some((t) => t.key === initialTab) ? (initialTab as Tab) : 'overview',
   );
@@ -125,7 +145,7 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <a href={ADMIN_URL} target="_blank" rel="noreferrer">
+          <a href={adminUrl(facts)} target="_blank" rel="noreferrer">
             <Button className="flex items-center gap-2">
               Open admin <ExternalLink size={13} />
             </Button>
@@ -218,14 +238,31 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
                   HTTPS through the Cloudflare tunnel, reachable anywhere
                 </div>
               </div>
-              <a
-                href={`${state?.publicUrl ?? `https://pocketbase.${DOMAIN_SUFFIX}`}/_/`}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
-              >
-                {(state?.publicUrl ?? `https://pocketbase.${DOMAIN_SUFFIX}`).replace('https://', '')}
-              </a>
+              {(() => {
+                // Only if a route exists for it. This used to print
+                // pocketbase.<suffix> unconditionally, so the link was dead
+                // until somebody happened to publish that exact hostname.
+                const host =
+                  facts?.domainSuffix && `pocketbase.${facts.domainSuffix}`;
+                const routed = host && facts?.routedHosts.includes(host);
+                if (!routed) {
+                  return (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Not published — publish it from Routes
+                    </span>
+                  );
+                }
+                return (
+                  <a
+                    href={`https://${host}/_/`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
+                  >
+                    {host}
+                  </a>
+                );
+              })()}
             </div>
             <div className="px-4 py-3 flex justify-between items-start flex-wrap gap-2">
               <div>
@@ -234,14 +271,20 @@ export default function PocketBasePage({ initialTab }: { initialTab?: string }) 
                   Any device on your tailnet — HTTP, but carried inside WireGuard
                 </div>
               </div>
-              <a
-                href={`http://${TS_FQDN}:8090/_/`}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
-              >
-                {TS_FQDN}:8090
-              </a>
+              {facts?.tailnetHost ? (
+                <a
+                  href={`http://${facts.tailnetHost}:8090/_/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-accent-600 dark:text-accent-400 hover:underline"
+                >
+                  {facts.tailnetHost}:8090
+                </a>
+              ) : (
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Tailscale is not on this machine
+                </span>
+              )}
             </div>
           </div>
         </div>
