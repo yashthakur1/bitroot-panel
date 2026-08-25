@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "next build",
+    "build": "npm run build:cli && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test \"src/**/__tests__/*.test.ts\""
+    "test": "node --import tsx --test \"src/**/__tests__/*.test.ts\"",
+    "build:cli": "esbuild scripts/route.ts --bundle --platform=node --format=esm --target=node18 --outfile=scripts/route.mjs --log-level=warning"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.2",

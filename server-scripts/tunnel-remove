@@ -1,39 +1,32 @@
 #!/usr/bin/env bash
-# tunnel-remove <name> — drop an ingress route from the cloudflared config.
-# The DNS CNAME is left in place (removing it needs an API token); the hostname
-# simply stops resolving to a service and falls through to the catch-all 404.
-NAME=$1
-if [ -z "$NAME" ]; then echo "Usage: tunnel-remove <name>"; exit 1; fi
-CONFIG="$HOME/.cloudflared/config.yml"
-python3 - "$CONFIG" "$NAME" <<'PYEOF'
-import os
-import sys
+# Remove a hostname's route: the ingress entry and the DNS record together.
+#
+# A wrapper around the panel's route module, for the same reason as tunnel-add.
+# Removing something that is not there is success, not an error — a retry after
+# a partial failure must not report a problem.
+set -euo pipefail
 
-config_file, name = sys.argv[1], sys.argv[2]
-hostname = f"{name}." + os.environ.get("DOMAIN_SUFFIX", "example.com")
+NAME=${1:-}
+[ -n "$NAME" ] || { echo "Usage: tunnel-remove <name>" >&2; exit 1; }
 
-with open(config_file) as f:
-    lines = f.readlines()
+APP="${BITPANEL_APP:-$HOME/apps/bitroot-panel}"
+[ -d "$APP" ] || { echo "!! panel not found at $APP" >&2; exit 1; }
+[ -f "$APP/scripts/route.mjs" ] || {
+	echo "!! $APP/scripts/route.mjs is missing — run 'npm run build' in the panel" >&2
+	exit 1
+}
 
-out, skip, removed = [], 0, False
-for i, line in enumerate(lines):
-    if skip:
-        skip -= 1
-        continue
-    if f"hostname: {hostname}" in line:
-        removed = True
-        skip = 1  # also drop the following "service:" line
-        # drop a preceding comment line that belongs to this entry
-        if out and out[-1].strip().startswith("#") and name in out[-1]:
-            out.pop()
-        continue
-    out.append(line)
+set -a; . "$APP/.env" 2>/dev/null || true; set +a
+DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
+# Accept either a bare name or a full hostname, since both get typed.
+case "$NAME" in
+	*.*) HOST="$NAME" ;;
+	*)   HOST="${NAME}.${DOMAIN_SUFFIX}" ;;
+esac
 
-if not removed:
-    print(f"  no route found for {hostname}")
-    sys.exit(2)
+node "$APP/scripts/route.mjs" unpublish "$HOST"
 
-with open(config_file, "w") as f:
-    f.writelines(out)
-print(f"  removed route: {hostname}")
-PYEOF
+if [ -f "$HOME/.config/bitpanel/dns-created.txt" ]; then
+	grep -vxF "$HOST" "$HOME/.config/bitpanel/dns-created.txt" > "$HOME/.config/bitpanel/dns-created.tmp" 2>/dev/null || true
+	mv "$HOME/.config/bitpanel/dns-created.tmp" "$HOME/.config/bitpanel/dns-created.txt"
+fi

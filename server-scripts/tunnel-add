@@ -1,50 +1,39 @@
 #!/usr/bin/env bash
-# Point a hostname at a local port through the Cloudflare tunnel: create the
-# DNS record, add an ingress rule, and note the record so BitPanel can report
-# it later if it is ever left dangling.
-set -e
+# Point a hostname at a local port through the Cloudflare tunnel.
+#
+# A wrapper now. The work happens in the panel's route module, which the panel
+# itself also imports — so the two cannot disagree. They used to: this script
+# and `tunnel_add_route` inside `project` were separate implementations of the
+# same job, and neither verified the result. A publish that half-worked left a
+# live DNS record pointing at an ingress rule that no longer matched.
+#
+# The interface is unchanged, so `project` and anything else calling it keep
+# working: tunnel-add <name> <port>
+set -euo pipefail
 
-# Zone and tunnel come from the environment rather than being baked in, so this
-# is not tied to one domain or one machine's tunnel.
-DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
-
-NAME=$1; PORT=$2
+NAME=${1:-}; PORT=${2:-}
 if [ -z "$NAME" ] || [ -z "$PORT" ]; then
 	echo "Usage: tunnel-add <name> <port>" >&2
 	exit 1
 fi
 
-# Prefer an explicit id; otherwise ask cloudflared which tunnel this machine
-# runs. Guessing wrong would create a DNS record pointing at someone else's
-# tunnel, which fails in a confusing way much later.
-TUNNEL_ID="${TUNNEL_ID:-}"
-if [ -z "$TUNNEL_ID" ]; then
-	TUNNEL_NAME="${TUNNEL_NAME:-$(hostname)}"
-	TUNNEL_ID=$(cloudflared tunnel list 2>/dev/null | awk -v n="$TUNNEL_NAME" '$2 == n {print $1}' | head -1)
-fi
-if [ -z "$TUNNEL_ID" ]; then
-	echo "!! no tunnel found. Set TUNNEL_ID, or TUNNEL_NAME to match one in 'cloudflared tunnel list'." >&2
+APP="${BITPANEL_APP:-$HOME/apps/bitroot-panel}"
+[ -d "$APP" ] || { echo "!! panel not found at $APP" >&2; exit 1; }
+[ -f "$APP/scripts/route.mjs" ] || {
+	echo "!! $APP/scripts/route.mjs is missing — run 'npm run build' in the panel" >&2
 	exit 1
-fi
+}
 
-CONFIG="$HOME/.cloudflared/config.yml"
-[ -f "$CONFIG" ] || { echo "!! $CONFIG not found — run 'cloudflared tunnel create' first" >&2; exit 1; }
+# The module reads CF_API_TOKEN to find which zone owns the hostname, and
+# DOMAIN_SUFFIX to build it.
+set -a; . "$APP/.env" 2>/dev/null || true; set +a
+DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
+HOST="${NAME}.${DOMAIN_SUFFIX}"
 
-if grep -q "hostname: ${NAME}.${DOMAIN_SUFFIX}\b" "$CONFIG"; then
-	echo "Already routed: ${NAME}.${DOMAIN_SUFFIX}"
-	exit 0
-fi
+node "$APP/scripts/route.mjs" publish "$HOST" "$PORT"
 
-cloudflared tunnel route dns -f "$TUNNEL_ID" "${NAME}.${DOMAIN_SUFFIX}"
-sed -i "/# Catch-all/i\\  # ${NAME} (port ${PORT})\n  - hostname: ${NAME}.${DOMAIN_SUFFIX}\n    service: http://localhost:${PORT}\n" "$CONFIG"
-
-# Record that a DNS record now exists, so BitPanel can tell you later if it is
-# left dangling once the route is gone.
+# Kept for the Residue page, which offers to clean up records the panel created
+# when a service is removed. Recorded only after a successful publish.
 mkdir -p "$HOME/.config/bitpanel"
-grep -qx "${NAME}.${DOMAIN_SUFFIX}" "$HOME/.config/bitpanel/dns-created.txt" 2>/dev/null \
-	|| echo "${NAME}.${DOMAIN_SUFFIX}" >> "$HOME/.config/bitpanel/dns-created.txt"
-
-echo "Added: https://${NAME}.${DOMAIN_SUFFIX} -> localhost:${PORT}"
-# cloudflared does not begin serving a new hostname on SIGHUP; it needs a
-# restart. BitPanel does that itself after calling this.
-echo "cloudflared must be restarted for this to take effect."
+grep -qxF "$HOST" "$HOME/.config/bitpanel/dns-created.txt" 2>/dev/null \
+	|| echo "$HOST" >> "$HOME/.config/bitpanel/dns-created.txt"
