@@ -14,7 +14,12 @@ function cloudflareWith(zones: string[]) {
     const name = new URL(String(url)).searchParams.get('name') ?? '';
     const found = zones.includes(name);
     return {
-      json: async () => ({ success: true, result: found ? [{ name }] : [] }),
+      // The real API always carries an id alongside the name; the lookup needs
+      // both, so a fixture without one tests a shape Cloudflare never sends.
+      json: async () => ({
+        success: true,
+        result: found ? [{ id: 'a'.repeat(32), name }] : [],
+      }),
     } as Response;
   };
 }

@@ -18,6 +18,7 @@ import {
   realEffects,
   verifyHostname,
   parseIngress,
+  zoneFor as cfZoneFor,
 } from "../src/lib/routes";
 import { run } from "../src/lib/runner";
 
@@ -39,39 +40,15 @@ async function tunnelId(): Promise<string> {
 }
 
 /**
- * The zone that actually contains this hostname, asked of Cloudflare.
+ * The zone that actually contains this hostname.
  *
- * Not CF_ZONE_ID and not DOMAIN_SUFFIX. On the machine this was written against,
- * CF_ZONE_ID names bitroot.in while DOMAIN_SUFFIX is bitroot.club — two
- * different zones — so a check against either would have been wrong for every
- * hostname. One machine can serve names in several zones, and the certificate
- * rule depends on the apex of the zone the name is really in.
- *
- * Walks the labels: a.b.example.com asks for a.b.example.com, then b.example.com,
- * then example.com, and takes the first the account owns.
+ * The label walk lives in lib/routes so the panel and this CLI cannot disagree
+ * about which zone a name belongs to — they used to hold separate copies.
  */
 async function zoneFor(hostname: string): Promise<string> {
-  const token = process.env.CF_API_TOKEN;
-  if (token) {
-    const labels = hostname.split(".");
-    for (let i = 0; i < labels.length - 1; i++) {
-      const candidate = labels.slice(i).join(".");
-      try {
-        const res = await fetch(
-          `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(candidate)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const d = (await res.json()) as {
-          success?: boolean;
-          result?: Array<{ name?: string }>;
-        };
-        if (d.success && d.result?.length && d.result[0].name)
-          return d.result[0].name;
-      } catch {
-        break; // network trouble: fall back rather than fail the publish
-      }
-    }
-  }
+  const zone = await cfZoneFor(hostname);
+  if (zone) return zone.name;
+
   const suffix = process.env.DOMAIN_SUFFIX;
   if (!suffix || suffix === "example.com") {
     die(

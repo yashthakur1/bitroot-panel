@@ -606,12 +606,114 @@ export async function verifyHostname(hostname: string): Promise<VerifyResult> {
       reason: `the tunnel answered ${code} — the local service is not responding`,
     };
   }
+
+  // A 404 is ambiguous and was being read as healthy. The tunnel's own
+  // catch-all is `http_status:404`, so a route cloudflared never loaded answers
+  // exactly like a service whose root is a 404. Ask cloudflared which rule it
+  // matches — that is local, exact, and settles it. Anything other than 404
+  // proves a rule matched, so the question does not arise.
+  if (code === "404") {
+    const rule = await run(
+      `cloudflared tunnel ingress rule ${shq(`https://${hostname}`)} 2>&1 || true`,
+      20_000,
+    );
+    // The catch-all has no hostname of its own, so its match prints no
+    // "hostname:" line. A real rule always names one.
+    const matchedHost = /^\s*hostname:\s*(\S+)/m.exec(rule.output)?.[1];
+    if (!matchedHost) {
+      checks.ingress = "failed";
+      return {
+        ok: false,
+        checks,
+        reason:
+          `${hostname} reaches the tunnel but matches no ingress rule — the ` +
+          "catch-all answered. The route is not actually published.",
+      };
+    }
+  }
+
   return { ok: true, checks };
 }
 
 const CONFIG = "$HOME/.cloudflared/config.yml";
 
 /** The effects, against this machine. */
+const CF_API = "https://api.cloudflare.com/client/v4";
+
+/**
+ * The zone that actually contains this hostname, asked of Cloudflare.
+ *
+ * Not CF_ZONE_ID and not DOMAIN_SUFFIX. On the machine this was written
+ * against, CF_ZONE_ID named bitroot.in while DOMAIN_SUFFIX was bitroot.club —
+ * two different zones — so a check against either was wrong for every hostname.
+ * One machine can serve names in several zones.
+ *
+ * Walks the labels: a.b.example.com asks for a.b.example.com, then
+ * b.example.com, then example.com, and takes the first the account owns.
+ */
+export async function zoneFor(
+  hostname: string,
+  token = process.env.CF_API_TOKEN,
+): Promise<{ id: string; name: string } | null> {
+  if (!token) return null;
+  const labels = hostname.split(".");
+  for (let i = 0; i < labels.length - 1; i++) {
+    const candidate = labels.slice(i).join(".");
+    try {
+      const res = await fetch(
+        `${CF_API}/zones?name=${encodeURIComponent(candidate)}`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      );
+      const d = (await res.json()) as {
+        success?: boolean;
+        result?: Array<{ id?: string; name?: string }>;
+      };
+      const hit = d.success ? d.result?.[0] : undefined;
+      if (hit?.id && hit.name) return { id: hit.id, name: hit.name };
+    } catch {
+      break; // network trouble: the caller decides, rather than guessing here
+    }
+  }
+  return null;
+}
+
+/**
+ * Actually delete the DNS record.
+ *
+ * This used to run `cloudflared tunnel route dns --overwrite-dns`, which
+ * *creates* a record — it has no delete mode. So every unpublish left a live
+ * record pointing at the tunnel. With the ingress rule gone the catch-all
+ * answered it, which is a 404 on a hostname nobody could account for. Proven on
+ * a real machine: after tunnel-remove, the name still resolved.
+ */
+export async function deleteDnsFor(hostname: string): Promise<number> {
+  const token = process.env.CF_API_TOKEN;
+  if (!token) return 0;
+  const zone = await zoneFor(hostname, token);
+  if (!zone) return 0;
+
+  const head = { Authorization: `Bearer ${token}` };
+  const list = await fetch(
+    `${CF_API}/zones/${zone.id}/dns_records?name=${encodeURIComponent(hostname)}`,
+    { headers: head, cache: "no-store" },
+  );
+  const d = (await list.json()) as {
+    success?: boolean;
+    result?: Array<{ id: string }>;
+  };
+  if (!d.success || !d.result?.length) return 0;
+
+  let removed = 0;
+  for (const rec of d.result) {
+    const res = await fetch(`${CF_API}/zones/${zone.id}/dns_records/${rec.id}`, {
+      method: "DELETE",
+      headers: head,
+    });
+    if (res.ok) removed++;
+  }
+  return removed;
+}
+
 export function realEffects(tunnelId: string): RouteEffects {
   return {
     readConfig: async () =>
@@ -652,11 +754,9 @@ export function realEffects(tunnelId: string): RouteEffects {
     },
 
     deleteDns: async (hostname) => {
-      const r = await run(
-        `cloudflared tunnel route dns --overwrite-dns ${shq(tunnelId)} ${shq(hostname)} 2>&1 || true`,
-        60_000,
-      );
-      void r;
+      // Deliberately not `cloudflared tunnel route dns`: that command only
+      // creates. Deletion is an API call or it does not happen.
+      await deleteDnsFor(hostname);
     },
 
     verify: verifyHostname,

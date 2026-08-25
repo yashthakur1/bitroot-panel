@@ -11,6 +11,7 @@ import path from 'path';
 import dns from 'dns/promises';
 import { run } from './runner';
 import { applyEnvEdits, parseEnv } from './env';
+import { zoneFor } from './routes';
 
 const ENV_PATH = process.env.BITPANEL_ENV_PATH ?? path.join(process.cwd(), '.env');
 
@@ -206,37 +207,28 @@ export async function checkDomainUsable(
     };
   }
 
-  // Walk the labels: the zone is whichever ancestor the account actually owns.
-  const labels = domain.split(".");
-  for (let i = 0; i < labels.length - 1; i++) {
-    const candidate = labels.slice(i).join(".");
-    try {
-      const res = await fetch(
-        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(candidate)}`,
-        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
-      );
-      const d = (await res.json()) as { success?: boolean; result?: Array<{ name?: string }> };
-      if (d.success && d.result?.length && d.result[0].name) {
-        const zone = d.result[0].name;
-        const depth = domain === zone ? 0 : domain.slice(0, -(zone.length + 1)).split(".").length;
-        // Services are published at <name>.<domain>, so the name is one level
-        // deeper than the domain itself. Cloudflare covers *.zone and no more.
-        if (depth >= 1) {
-          return {
-            ok: false,
-            zone,
-            reason:
-              `Services would be published at <name>.${domain}, which is ` +
-              `${depth + 1} levels below ${zone}. Cloudflare's certificate covers ` +
-              `only *.${zone}, so every service would fail its TLS handshake. ` +
-              `Use ${zone} as the domain, or add Advanced Certificate Manager.`,
-          };
-        }
-        return { ok: true, zone };
-      }
-    } catch {
-      break;
+  // The label walk lives in lib/routes: the panel, the CLI and this check must
+  // agree about which zone owns a name, and three copies did not.
+  const zone = await zoneFor(domain, token);
+  if (zone) {
+    const depth =
+      domain === zone.name
+        ? 0
+        : domain.slice(0, -(zone.name.length + 1)).split('.').length;
+    // Services are published at <name>.<domain>, so the name is one level
+    // deeper than the domain itself. Cloudflare covers *.zone and no more.
+    if (depth >= 1) {
+      return {
+        ok: false,
+        zone: zone.name,
+        reason:
+          `Services would be published at <name>.${domain}, which is ` +
+          `${depth + 1} levels below ${zone.name}. Cloudflare's certificate covers ` +
+          `only *.${zone.name}, so every service would fail its TLS handshake. ` +
+          `Use ${zone.name} as the domain, or add Advanced Certificate Manager.`,
+      };
     }
+    return { ok: true, zone: zone.name };
   }
   return {
     ok: false,
