@@ -10,12 +10,24 @@
 // server running. The panel imports the same module. One implementation, two
 // callers — the alternative is shell and TypeScript versions that disagree.
 
+import { run, runWithInput } from "./runner";
+import { shq } from "./validate";
+
 // ─── types ───────────────────────────────────────────────────────────────────
 
 export interface IngressEntry {
   /** Absent on the catch-all, which must stay last. */
   hostname?: string;
   service: string;
+  /**
+   * The comment written above this entry, without its "# ".
+   *
+   * tunnel-add annotates each route with its service name and port. A renderer
+   * that drops them hands back a file that still works and is markedly less
+   * readable than the one it replaced — which is a regression even though
+   * nothing fails.
+   */
+  comment?: string;
 }
 
 export type CheckState = "ok" | "missing" | "failed" | "skipped" | "unknown";
@@ -50,10 +62,21 @@ export class RouteError extends Error {}
 export function parseIngress(yaml: string): IngressEntry[] {
   const out: IngressEntry[] = [];
   let pending: string | undefined;
+  let comment: string | undefined;
 
   for (const raw of yaml.split("\n")) {
     const line = raw.trim();
-    if (line.startsWith("#")) continue;
+    if (line.startsWith("#")) {
+      // Kept so render can put it back. Only the last comment before an entry
+      // belongs to it; a header paragraph is handled separately.
+      comment = line.replace(/^#\s?/, "");
+      continue;
+    }
+    if (line === "") {
+      // A blank line ends a comment's association with what follows.
+      comment = undefined;
+      continue;
+    }
 
     const h = line.match(/^-?\s*hostname:\s*(\S+)/);
     if (h) {
@@ -62,10 +85,13 @@ export function parseIngress(yaml: string): IngressEntry[] {
     }
     const s = line.match(/^-?\s*service:\s*(\S+)/);
     if (s) {
-      out.push(
-        pending ? { hostname: pending, service: s[1] } : { service: s[1] },
-      );
+      const entry: IngressEntry = pending
+        ? { hostname: pending, service: s[1] }
+        : { service: s[1] };
+      if (comment) entry.comment = comment;
+      out.push(entry);
       pending = undefined;
+      comment = undefined;
     }
   }
   return out;
@@ -85,10 +111,20 @@ export function renderIngress(entries: IngressEntry[]): string {
   };
 
   const lines = ["ingress:"];
+  lines.push(
+    "  # Routes are inserted above the catch-all, which must stay last.",
+  );
   for (const e of named) {
+    lines.push("");
+    if (e.comment) lines.push(`  # ${e.comment}`);
     lines.push(`  - hostname: ${e.hostname}`);
     lines.push(`    service: ${e.service}`);
   }
+  lines.push("");
+  // Only if the file already had one. Inventing a comment breaks idempotence:
+  // the next parse reads it back as real, so rendering twice is not the same as
+  // rendering once, and every rewrite would show a spurious change.
+  if (catchAll.comment) lines.push(`  # ${catchAll.comment}`);
   lines.push(`  - service: ${catchAll.service}`);
   return lines.join("\n") + "\n";
 }
@@ -112,11 +148,12 @@ export function replaceIngressBlock(
       break;
     }
   }
-  return [
+  const merged = [
     ...lines.slice(0, start),
     renderIngress(entries).trimEnd(),
     ...lines.slice(end),
   ].join("\n");
+  return merged.endsWith("\n") ? merged : merged + "\n";
 }
 
 // ─── validation ──────────────────────────────────────────────────────────────
@@ -239,8 +276,6 @@ export function planUnpublish(current: IngressEntry[], hostname: string) {
 // but hostsForPort now goes through the parser above instead of carrying its own
 // copy of the ingress format, which is the duplication this module exists to end.
 
-import { run } from "./runner";
-
 /**
  * Hostnames whose ingress rule points at a given local port.
  *
@@ -262,4 +297,289 @@ export async function portForService(name: string): Promise<number | null> {
   );
   const port = Number(r.output.trim());
   return Number.isInteger(port) && port > 0 ? port : null;
+}
+
+// ─── doing it ────────────────────────────────────────────────────────────────
+//
+// The effects are injected rather than called directly. Publishing writes DNS at
+// Cloudflare and rewrites the config of a running tunnel, so the failure paths —
+// especially rollback — have to be provable without a live tunnel to break.
+
+export interface VerifyResult {
+  ok: boolean;
+  checks: RouteStatus;
+  /** Why it failed, in words the operator can act on. */
+  reason?: string;
+}
+
+export interface RouteEffects {
+  readConfig(): Promise<string>;
+  writeConfig(text: string): Promise<void>;
+  reloadTunnel(): Promise<void>;
+  createDns(hostname: string): Promise<void>;
+  deleteDns(hostname: string): Promise<void>;
+  verify(hostname: string): Promise<VerifyResult>;
+}
+
+export interface PublishResult {
+  ok: boolean;
+  hostname: string;
+  /** True when the route was already exactly as asked for. */
+  unchanged: boolean;
+  verify?: VerifyResult;
+  reason?: string;
+  /** Set when something failed and the previous state was put back. */
+  rolledBack?: boolean;
+}
+
+/**
+ * Publish a hostname, and undo it if it does not work.
+ *
+ * The order matters. DNS goes first because it is the slow half and the one
+ * that can fail for reasons outside this machine; the config is only rewritten
+ * once DNS exists. If verification then fails, both halves are undone — the
+ * config from the exact text read at the start rather than a re-render, so a
+ * rollback cannot introduce a formatting change of its own.
+ *
+ * Half-created routes are what left a bucket with a live DNS record pointing at
+ * an ingress rule that no longer matched.
+ */
+export async function publish(
+  fx: RouteEffects,
+  opts: { hostname: string; service: string; zone: string },
+): Promise<PublishResult> {
+  const { hostname, service, zone } = opts;
+  validateHostname(hostname);
+
+  const cover = certificateCoverage(hostname, zone);
+  if (!cover.covered) {
+    return { ok: false, hostname, unchanged: true, reason: cover.reason };
+  }
+
+  const before = await fx.readConfig();
+  const plan = planPublish(parseIngress(before), hostname, service);
+
+  if (!plan.changesIngress) {
+    // Already routed here. Still verify: the entry existing is not evidence it
+    // works, and reporting "already published" for a broken route is how a
+    // problem stays hidden.
+    const verify = await fx.verify(hostname);
+    return {
+      ok: verify.ok,
+      hostname,
+      unchanged: true,
+      verify,
+      reason: verify.reason,
+    };
+  }
+
+  let dnsCreated = false;
+  try {
+    await fx.createDns(hostname);
+    dnsCreated = true;
+
+    await fx.writeConfig(replaceIngressBlock(before, plan.ingress));
+    await fx.reloadTunnel();
+
+    const verify = await fx.verify(hostname);
+    if (verify.ok) return { ok: true, hostname, unchanged: false, verify };
+
+    await rollback(fx, before, hostname, dnsCreated, Boolean(plan.replaces));
+    return {
+      ok: false,
+      hostname,
+      unchanged: false,
+      verify,
+      rolledBack: true,
+      reason: verify.reason ?? "the route did not answer after publishing",
+    };
+  } catch (e) {
+    await rollback(fx, before, hostname, dnsCreated, Boolean(plan.replaces));
+    return {
+      ok: false,
+      hostname,
+      unchanged: false,
+      rolledBack: true,
+      reason: (e as Error).message,
+    };
+  }
+}
+
+/**
+ * Put back what was there.
+ *
+ * `replacedExisting` decides whether the DNS record is removed: when the
+ * hostname was already routed somewhere, its record predates this attempt and
+ * deleting it would break the route that was working before.
+ */
+async function rollback(
+  fx: RouteEffects,
+  previousConfig: string,
+  hostname: string,
+  dnsCreated: boolean,
+  replacedExisting: boolean,
+): Promise<void> {
+  // Each step is attempted even if an earlier one throws. A rollback that stops
+  // halfway leaves exactly the split state it exists to prevent.
+  try {
+    await fx.writeConfig(previousConfig);
+    await fx.reloadTunnel();
+  } catch {
+    /* reported by the caller's reason; nothing better to do here */
+  }
+  if (dnsCreated && !replacedExisting) {
+    try {
+      await fx.deleteDns(hostname);
+    } catch {
+      /* the record is harmless without an ingress rule pointing at it */
+    }
+  }
+}
+
+export async function unpublish(
+  fx: RouteEffects,
+  hostname: string,
+): Promise<{
+  ok: boolean;
+  hostname: string;
+  unchanged: boolean;
+  reason?: string;
+}> {
+  const before = await fx.readConfig();
+  const plan = planUnpublish(parseIngress(before), hostname);
+
+  if (!plan.changesIngress) {
+    // Removing something absent is success, not an error: it is the state asked
+    // for, and a retry after a partial failure must not report a problem.
+    return { ok: true, hostname, unchanged: true };
+  }
+
+  try {
+    await fx.writeConfig(replaceIngressBlock(before, plan.ingress));
+    await fx.reloadTunnel();
+    await fx.deleteDns(hostname);
+    return { ok: true, hostname, unchanged: false };
+  } catch (e) {
+    return {
+      ok: false,
+      hostname,
+      unchanged: false,
+      reason: (e as Error).message,
+    };
+  }
+}
+
+// ─── the real effects ────────────────────────────────────────────────────────
+
+/**
+ * Verify a hostname by using it.
+ *
+ * The tunnel reporting a route, and the route working, are different claims.
+ * Every check here is an observation: does the name resolve, does TLS complete,
+ * does something answer. A 404 counts as answering — plenty of services return
+ * one at `/` — so this asks whether the request completed, not what it said.
+ */
+export async function verifyHostname(hostname: string): Promise<VerifyResult> {
+  const checks: RouteStatus = {
+    dns: "unknown",
+    ingress: "ok",
+    tunnel: "unknown",
+    tls: "unknown",
+    origin: "unknown",
+  };
+
+  const dns = await run(
+    `getent hosts ${hostname} 2>/dev/null | head -1 || true`,
+    15_000,
+  );
+  checks.dns = dns.output.trim() ? "ok" : "missing";
+  if (checks.dns === "missing") {
+    return { ok: false, checks, reason: `${hostname} does not resolve yet` };
+  }
+
+  // -o /dev/null with a written-out code: curl exits non-zero on an HTTP error
+  // status, and treating that as failure would reject a service whose root is a
+  // 404. What matters is that the request completed.
+  const http = await run(
+    `curl -s -o /dev/null -w '%{http_code}' --max-time 20 https://${hostname}/ 2>/dev/null || true`,
+    30_000,
+  );
+  const code = http.output.trim();
+  if (code === "" || code === "000") {
+    checks.tls = "failed";
+    return {
+      ok: false,
+      checks,
+      reason:
+        `${hostname} resolves but the request did not complete. Usually TLS: ` +
+        `Cloudflare's certificate covers only one level below the zone.`,
+    };
+  }
+
+  checks.tls = "ok";
+  checks.tunnel = "ok";
+  // 502 and 504 are the tunnel reaching Cloudflare but not the local service.
+  checks.origin = code === "502" || code === "504" ? "failed" : "ok";
+  if (checks.origin === "failed") {
+    return {
+      ok: false,
+      checks,
+      reason: `the tunnel answered ${code} — the local service is not responding`,
+    };
+  }
+  return { ok: true, checks };
+}
+
+const CONFIG = "$HOME/.cloudflared/config.yml";
+
+/** The effects, against this machine. */
+export function realEffects(tunnelId: string): RouteEffects {
+  return {
+    readConfig: async () =>
+      (await run(`cat "${CONFIG}" 2>/dev/null || true`)).output,
+
+    // Written through a temp file and renamed. A partial write to the config of
+    // a running tunnel is worse than no write at all.
+    writeConfig: async (text) => {
+      const r = await runWithInput(
+        `umask 077; cat > "${CONFIG}.tmp" && mv "${CONFIG}.tmp" "${CONFIG}"`,
+        text,
+        30_000,
+      );
+      if (!r.ok)
+        throw new RouteError(`could not write the tunnel config: ${r.output}`);
+    },
+
+    reloadTunnel: async () => {
+      const r = await run(
+        "pm2 restart cloudflared 2>&1 || cloudflared service restart 2>&1",
+        60_000,
+      );
+      if (!r.ok)
+        throw new RouteError(`could not reload the tunnel: ${r.output}`);
+      // cloudflared registers its edge connections a moment after starting.
+      await new Promise((res) => setTimeout(res, 6000));
+    },
+
+    createDns: async (hostname) => {
+      const r = await run(
+        `cloudflared tunnel route dns ${shq(tunnelId)} ${shq(hostname)} 2>&1`,
+        60_000,
+      );
+      // Already pointing here is the state we want, not a failure.
+      if (!r.ok && !/already (exists|configured)/i.test(r.output)) {
+        throw new RouteError(`could not create the DNS record: ${r.output}`);
+      }
+    },
+
+    deleteDns: async (hostname) => {
+      const r = await run(
+        `cloudflared tunnel route dns --overwrite-dns ${shq(tunnelId)} ${shq(hostname)} 2>&1 || true`,
+        60_000,
+      );
+      void r;
+    },
+
+    verify: verifyHostname,
+  };
 }

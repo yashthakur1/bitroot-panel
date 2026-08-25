@@ -239,3 +239,73 @@ test("unpublishing something absent is a no-op, not an error", () => {
   assert.equal(plan.changesIngress, false);
   assert.equal(plan.ingress.length, 3);
 });
+
+// ─── preserving what tunnel-add wrote ────────────────────────────────────────
+// The first live run against a throwaway hostname produced a working config
+// that had quietly lost every comment and its trailing newline. Nothing failed,
+// and the file was markedly less readable than the one it replaced.
+
+const ANNOTATED = `tunnel: abc
+credentials-file: /home/u/.cloudflared/abc.json
+
+ingress:
+  # Routes are inserted above the catch-all, which must stay last.
+
+  # neevpanel (port 3210)
+  - hostname: neevpanel.bitroot.club
+    service: http://localhost:3210
+
+  # pocketbase (port 8090)
+  - hostname: pocketbase.bitroot.club
+    service: http://localhost:8090
+
+  # Catch-all
+  - service: http_status:404
+`;
+
+test("each route keeps the comment naming its service and port", () => {
+  const e = parseIngress(ANNOTATED);
+  assert.equal(e[0].comment, "neevpanel (port 3210)");
+  assert.equal(e[1].comment, "pocketbase (port 8090)");
+});
+
+test("rewriting an annotated config keeps the annotations", () => {
+  const out = replaceIngressBlock(ANNOTATED, parseIngress(ANNOTATED));
+  for (const c of [
+    "neevpanel (port 3210)",
+    "pocketbase (port 8090)",
+    "Catch-all",
+  ]) {
+    assert.ok(out.includes(`# ${c}`), `lost the comment: ${c}`);
+  }
+});
+
+test("a rewritten file still ends with a newline", () => {
+  // Invisible until something diffs the file, and then it is noise in every diff.
+  const out = replaceIngressBlock(ANNOTATED, parseIngress(ANNOTATED));
+  assert.ok(out.endsWith("\n"));
+});
+
+test("a new route is added without disturbing the existing comments", () => {
+  const plan = planPublish(
+    parseIngress(ANNOTATED),
+    "new.bitroot.club",
+    "http://localhost:5000",
+  );
+  const out = replaceIngressBlock(ANNOTATED, plan.ingress);
+  assert.ok(
+    out.includes("# neevpanel (port 3210)"),
+    "existing annotation survived",
+  );
+  assert.ok(out.includes("new.bitroot.club"), "new route present");
+  assert.equal(parseIngress(out).length, 4);
+});
+
+test("routes survive a rewrite unchanged", () => {
+  const before = parseIngress(ANNOTATED);
+  const after = parseIngress(replaceIngressBlock(ANNOTATED, before));
+  assert.deepEqual(
+    after.map((e) => [e.hostname, e.service]),
+    before.map((e) => [e.hostname, e.service]),
+  );
+});
