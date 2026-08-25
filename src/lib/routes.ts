@@ -10,6 +10,7 @@
 // server running. The panel imports the same module. One implementation, two
 // callers — the alternative is shell and TypeScript versions that disagree.
 
+import { lookup as dnsLookup } from "node:dns/promises";
 import { run, runWithInput } from "./runner";
 import { shq } from "./validate";
 
@@ -567,12 +568,20 @@ export async function verifyHostname(hostname: string): Promise<VerifyResult> {
     origin: "unknown",
   };
 
-  const dns = await run(
-    `getent hosts ${hostname} 2>/dev/null | head -1 || true`,
-    15_000,
-  );
-  checks.dns = dns.output.trim() ? "ok" : "missing";
-  if (checks.dns === "missing") {
+  // Node's resolver, not `getent`. Termux has no getent, so on Android the
+  // command failed for every hostname and the panel reported every route as
+  // "does not resolve yet" — including routes that were serving correctly. The
+  // same platform gap already forced dns.lookupService over dns.reverse
+  // elsewhere in the panel.
+  let resolves = false;
+  try {
+    await dnsLookup(hostname);
+    resolves = true;
+  } catch {
+    resolves = false;
+  }
+  checks.dns = resolves ? "ok" : "missing";
+  if (!resolves) {
     return { ok: false, checks, reason: `${hostname} does not resolve yet` };
   }
 
