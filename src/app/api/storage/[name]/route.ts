@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { run } from '@/lib/runner';
 import { recordResidue } from '@/lib/residue';
-import { deleteRecordsForHosts, syncStorageCacheRule } from '@/lib/cloudflare';
+import {
+  deleteRecordsForHosts,
+  purgeCachedUrls,
+  syncStorageCacheRule,
+} from '@/lib/cloudflare';
 import {
   WEB_PORT,
   assertBucketName,
@@ -16,6 +20,35 @@ import { listObjects, restampObject } from '@/lib/s3';
 import { hostsForPort } from '@/lib/routes';
 
 const PUBLIC_CACHE = 'public, max-age=31536000, immutable';
+
+/**
+ * Take a bucket's objects out of Cloudflare's cache.
+ *
+ * Closing the origin is not enough. Objects are published with a one-year
+ * immutable cache header, so without this a bucket made private keeps serving
+ * to anyone holding a URL — confirmed on a live bucket, where the origin
+ * returned 404 while the edge returned the file with cf-cache-status: HIT.
+ *
+ * Never throws: the caller has already made the bucket private, and reporting
+ * what is still cached is more useful than failing the whole operation.
+ */
+async function purgeBucket(name: string, bucketId: string): Promise<string> {
+  try {
+    const cred = await ensureUploadAccess(bucketId);
+    const objects = await listObjects(cred.accessKeyId, cred.secretAccessKey, name);
+    if (objects.length === 0) return 'nothing was cached to purge';
+    const urls = objects.map(
+      (o) => `https://${name}.${DOMAIN_SUFFIX}/${o.key.split('/').map(encodeURIComponent).join('/')}`,
+    );
+    const purged = await purgeCachedUrls(urls);
+    return `purged ${purged} cached object${purged === 1 ? '' : 's'} from Cloudflare`;
+  } catch (e) {
+    return (
+      'WARNING: the objects could not be purged from Cloudflare, so they stay ' +
+      `readable at the edge until the cache expires — ${(e as Error).message}`
+    );
+  }
+}
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? 'example.com';
 
@@ -100,7 +133,11 @@ export async function PATCH(
     }
 
     if (body.access === 'private') {
+      // Purge before closing the origin. The other order leaves a window in
+      // which a request can re-populate the cache from a still-public bucket.
+      const purge = await purgeBucket(name, bucket.id);
       await setWebsite(bucket.id, false);
+      done.push(purge);
       await run(`tunnel-remove ${name}`, 60_000);
       await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push('unpublished; objects are reachable over Tailscale only');
@@ -111,7 +148,7 @@ export async function PATCH(
           kind: 'dns',
           what: 'Cloudflare DNS record was kept',
           target: `${name}.${DOMAIN_SUFFIX}`,
-          hint: 'Harmless — the hostname now returns 404. Delete it from the Residue page to retire it, or keep it to republish instantly.',
+          hint: 'The hostname now returns 404 at the origin. Delete it from the Residue page to retire it, or keep it to republish instantly.',
         },
       ]);
     }
@@ -150,6 +187,9 @@ export async function DELETE(
 
     const wasPublic = bucket.websiteAccess;
     if (wasPublic) {
+      // Same reason as making a bucket private: deleting the objects does not
+      // reach the copies Cloudflare is holding.
+      done.push(await purgeBucket(name, bucket.id));
       await run(`tunnel-remove ${name}`, 60_000);
       await run('(sleep 2; pm2 restart cloudflared >/dev/null 2>&1) >/dev/null 2>&1 &', 10_000);
       done.push('removed the tunnel route');

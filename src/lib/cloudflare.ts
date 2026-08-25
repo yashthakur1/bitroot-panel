@@ -224,3 +224,49 @@ export async function syncStorageCacheRule(hosts: string[]): Promise<string> {
     return `could not update the cache rule: ${(e as Error).message}`;
   }
 }
+
+
+/**
+ * Drop cached copies of these URLs from Cloudflare's edge.
+ *
+ * Making a bucket private closes the origin — Garage answers 404 — but the edge
+ * goes on serving whatever it already holds. Publishing stamps objects
+ * `public, max-age=31536000, immutable` so they cache well, which means a
+ * bucket taken private stayed readable by anyone with the URL for up to a year.
+ * Measured, not theorised: after the origin returned 404, the edge still
+ * returned the object with `cf-cache-status: HIT`.
+ *
+ * Purge by URL rather than by hostname on purpose: `hosts` is an Enterprise
+ * field, and the zone this was written against is on the Free plan, where a
+ * hostname purge fails with a permissions error that reads like a bad token.
+ *
+ * Returns the number of URLs accepted for purging.
+ */
+export async function purgeCachedUrls(urls: string[]): Promise<number> {
+  if (urls.length === 0 || !dnsConfigured()) return 0;
+
+  // The API takes at most 30 URLs per call on non-Enterprise plans.
+  let purged = 0;
+  for (let i = 0; i < urls.length; i += 30) {
+    const batch = urls.slice(i, i + 30);
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/zones/${ZONE}/purge_cache`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ files: batch }),
+      },
+    );
+    const d = (await res.json().catch(() => null)) as { success?: boolean } | null;
+    if (!d?.success) {
+      throw new Error(
+        `Cloudflare refused to purge ${batch.length} URL(s). The token needs Zone:Cache Purge.`,
+      );
+    }
+    purged += batch.length;
+  }
+  return purged;
+}
