@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkCloudflare, writeEnv } from '@/lib/setup';
+import { checkCloudflare, checkDomainUsable, writeEnv } from '@/lib/setup';
+import { parseIngress, planMigrate } from '@/lib/routes';
 import { run } from '@/lib/runner';
 import { syncWebRootDomain } from '@/lib/garage-config';
 
@@ -69,6 +70,36 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // A domain that passes the pattern above can still be unusable: Cloudflare's
+  // certificate covers the zone and one wildcard level, so a suffix any deeper
+  // gives every service a TLS handshake failure. This is the fault that made
+  // neevpanel.bitroot.club look like a broken server for a day.
+  let domainCheck: Awaited<ReturnType<typeof checkDomainUsable>> | null = null;
+  let migration: ReturnType<typeof planMigrate> = [];
+  if (values.DOMAIN_SUFFIX) {
+    const token = values.CF_API_TOKEN || process.env.CF_API_TOKEN;
+    domainCheck = await checkDomainUsable(values.DOMAIN_SUFFIX, token);
+    if (!domainCheck.ok && !body.force) {
+      return NextResponse.json(
+        { error: domainCheck.reason, domainCheck, canForce: true },
+        { status: 400 },
+      );
+    }
+
+    // Routes published under the previous suffix keep the old hostname. Say so
+    // instead of leaving the panel showing one domain and serving another.
+    const previous = process.env.DOMAIN_SUFFIX;
+    if (previous && previous !== values.DOMAIN_SUFFIX) {
+      const cfg = await run('cat "$HOME/.cloudflared/config.yml" 2>/dev/null || true');
+      migration = planMigrate(
+        parseIngress(cfg.output),
+        previous,
+        values.DOMAIN_SUFFIX,
+        domainCheck.zone ?? values.DOMAIN_SUFFIX,
+      );
+    }
+  }
+
   try {
     await writeEnv(values);
   } catch (e) {
@@ -104,6 +135,10 @@ export async function POST(req: NextRequest) {
     ok: true,
     saved: Object.keys(values),
     verified,
+    domainCheck,
+    // Empty unless the domain changed. Each entry is a route that still answers
+    // on the old hostname; POST /api/routes with action "migrate" moves them.
+    migration,
     garage,
     restarting: Boolean(body.restart),
   });

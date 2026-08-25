@@ -1,6 +1,12 @@
 import os from "os";
 import { NextRequest, NextResponse } from "next/server";
-import { checkCloudflare, setupState, writeEnv } from "@/lib/setup";
+import {
+  checkCloudflare,
+  checkDomainUsable,
+  setupState,
+  writeEnv,
+} from "@/lib/setup";
+import { syncWebRootDomain } from "@/lib/garage-config";
 import { mailConfigured, sendPanelCredentials } from "@/lib/mail";
 import { randomBytes } from "crypto";
 
@@ -38,6 +44,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(await checkCloudflare(token, zone));
     }
 
+    // Asked before "save" so the wizard can show the problem next to the field
+    // rather than rejecting the whole form at the end.
+    if (step === "verify-domain") {
+      const domain = String(body.domain ?? "").trim().toLowerCase();
+      if (!domain) {
+        return NextResponse.json({ error: "a domain is required" }, { status: 400 });
+      }
+      const token = String(body.cfToken ?? "").trim() || process.env.CF_API_TOKEN;
+      return NextResponse.json(await checkDomainUsable(domain, token));
+    }
+
     if (step === "save") {
       const updates: Record<string, string> = {};
       const domain = String(body.domain ?? "")
@@ -46,6 +63,21 @@ export async function POST(req: NextRequest) {
       if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
         return NextResponse.json(
           { error: "a domain like example.com is required" },
+          { status: 400 },
+        );
+      }
+
+      // The shape check above only proves it looks like a domain. It said yes
+      // to a suffix two levels below the zone, and every service published
+      // under it failed its TLS handshake with an error that named neither the
+      // domain nor the certificate. Ask Cloudflare before accepting it.
+      const cfToken = String(body.cfToken ?? "").trim() || process.env.CF_API_TOKEN;
+      const usable = await checkDomainUsable(domain, cfToken);
+      if (!usable.ok && !body.forceDomain) {
+        return NextResponse.json(
+          // Saving anyway stays possible: the zone may be added to Cloudflare
+          // later, or the operator may hold a certificate the panel cannot see.
+          { error: usable.reason, domain, zone: usable.zone, canForce: true },
           { status: 400 },
         );
       }
@@ -88,6 +120,11 @@ export async function POST(req: NextRequest) {
 
       await writeEnv(updates);
 
+      // Garage resolves a published object's bucket by stripping its own
+      // root_domain from the hostname. Left at the old value, every public
+      // object returns 404 while the panel reports the route as live.
+      const garage = (await syncWebRootDomain(domain)).message;
+
       // Best-effort, and never blocking: the password is already on screen and
       // in the installer's output, so a mail failure must not leave setup
       // looking incomplete.
@@ -112,6 +149,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         mail,
+        garage,
         // True again. It used to be misleading: the browser read the domain
         // through NEXT_PUBLIC_ constants inlined at BUILD time, so a restart
         // alone changed nothing and the panel went on showing the previous

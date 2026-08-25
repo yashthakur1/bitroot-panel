@@ -177,3 +177,71 @@ export async function checkCloudflare(token: string, zoneId: string): Promise<To
 
   return { ok: permissions.every((p) => p.ok), zoneName, permissions };
 }
+
+
+/**
+ * Can this domain actually be used as a suffix for published services?
+ *
+ * Setting a domain used to be a string write with a shape check. Nothing asked
+ * whether Cloudflare could issue a certificate for `<name>.<domain>`, so a
+ * suffix two levels below the zone was accepted, every service published under
+ * it failed the TLS handshake, and the failure looked like a broken server
+ * rather than an unsupported name.
+ *
+ * Returns the zone when usable, and an actionable reason when not.
+ */
+export async function checkDomainUsable(
+  domain: string,
+  token?: string,
+): Promise<{ ok: boolean; zone?: string; reason?: string }> {
+  if (!token) {
+    // Without a token the zone cannot be established. Say so rather than
+    // guessing: guessing is what put a two-level suffix into .env.
+    return {
+      ok: true,
+      zone: domain,
+      reason:
+        "No Cloudflare token yet, so the certificate check was skipped. " +
+        "Add the token and re-check before publishing anything.",
+    };
+  }
+
+  // Walk the labels: the zone is whichever ancestor the account actually owns.
+  const labels = domain.split(".");
+  for (let i = 0; i < labels.length - 1; i++) {
+    const candidate = labels.slice(i).join(".");
+    try {
+      const res = await fetch(
+        `https://api.cloudflare.com/client/v4/zones?name=${encodeURIComponent(candidate)}`,
+        { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+      );
+      const d = (await res.json()) as { success?: boolean; result?: Array<{ name?: string }> };
+      if (d.success && d.result?.length && d.result[0].name) {
+        const zone = d.result[0].name;
+        const depth = domain === zone ? 0 : domain.slice(0, -(zone.length + 1)).split(".").length;
+        // Services are published at <name>.<domain>, so the name is one level
+        // deeper than the domain itself. Cloudflare covers *.zone and no more.
+        if (depth >= 1) {
+          return {
+            ok: false,
+            zone,
+            reason:
+              `Services would be published at <name>.${domain}, which is ` +
+              `${depth + 1} levels below ${zone}. Cloudflare's certificate covers ` +
+              `only *.${zone}, so every service would fail its TLS handshake. ` +
+              `Use ${zone} as the domain, or add Advanced Certificate Manager.`,
+          };
+        }
+        return { ok: true, zone };
+      }
+    } catch {
+      break;
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `No Cloudflare zone found for ${domain}. Add the domain to this Cloudflare ` +
+      "account first, or check the API token.",
+  };
+}

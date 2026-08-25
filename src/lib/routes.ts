@@ -270,6 +270,85 @@ export function planUnpublish(current: IngressEntry[], hostname: string) {
   };
 }
 
+/**
+ * What changing the domain suffix does to the routes that already exist.
+ *
+ * Changing DOMAIN_SUFFIX used to change one string in .env. Every route
+ * published before the change kept the old hostname, so the panel showed one
+ * domain and served another, and the only way to find out was to open each URL.
+ * This makes the consequence visible before it is accepted.
+ */
+export interface MigrationStep {
+  from: string;
+  to: string;
+  service: string;
+  /** False when the new hostname would sit outside the certificate. */
+  covered: boolean;
+  reason?: string;
+}
+
+export function planMigrate(
+  current: IngressEntry[],
+  from: string,
+  to: string,
+  zone: string,
+): MigrationStep[] {
+  if (!from || !to || from === to) return [];
+  const steps: MigrationStep[] = [];
+  for (const e of current) {
+    if (!e.hostname) continue;
+    if (!e.hostname.endsWith(`.${from}`)) continue;
+    const name = e.hostname.slice(0, -(from.length + 1));
+    const next = `${name}.${to}`;
+    const cover = certificateCoverage(next, zone);
+    steps.push({
+      from: e.hostname,
+      to: next,
+      service: e.service,
+      covered: cover.covered,
+      reason: cover.reason,
+    });
+  }
+  return steps;
+}
+
+/**
+ * Move every route from one suffix to the next.
+ *
+ * Publish first, then unpublish. The old hostname keeps working until the new
+ * one is verified, so a failure part-way leaves a reachable service rather than
+ * an unreachable one. A step whose new hostname has no certificate is reported
+ * and skipped, never published half-way.
+ */
+export async function migrate(
+  fx: RouteEffects,
+  opts: { from: string; to: string; zone: string },
+): Promise<{ moved: MigrationStep[]; skipped: MigrationStep[] }> {
+  const before = await fx.readConfig();
+  const steps = planMigrate(parseIngress(before), opts.from, opts.to, opts.zone);
+  const moved: MigrationStep[] = [];
+  const skipped: MigrationStep[] = [];
+
+  for (const step of steps) {
+    if (!step.covered) {
+      skipped.push(step);
+      continue;
+    }
+    const res = await publish(fx, {
+      hostname: step.to,
+      service: step.service,
+      zone: opts.zone,
+    });
+    if (!res.ok) {
+      skipped.push({ ...step, covered: false, reason: res.reason });
+      continue;
+    }
+    await unpublish(fx, step.from);
+    moved.push(step);
+  }
+  return { moved, skipped };
+}
+
 // ─── the existing callers ────────────────────────────────────────────────────
 // These two kept the panel's removal paths working before this module existed.
 // Same signatures, so api/projects, api/static and api/storage are untouched —

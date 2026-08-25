@@ -34,6 +34,10 @@ export default function SetupWizard() {
   const [cfToken, setCfToken] = useState('');
   const [cfZoneId, setCfZoneId] = useState('');
   const [checked, setChecked] = useState<{ ok: boolean; zoneName?: string; permissions: Permission[] } | null>(null);
+  // Set when the server refuses the domain but the operator may legitimately
+  // override it — a zone added to Cloudflare later, or a certificate the panel
+  // cannot see. The second attempt carries forceDomain.
+  const [domainOverride, setDomainOverride] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/setup');
@@ -65,9 +69,10 @@ export default function SetupWizard() {
     }
   }
 
-  async function save() {
+  async function save(forceDomain = false) {
     setBusy(true);
     setError('');
+    setDomainOverride(false);
     try {
       const res = await fetch('/api/setup', {
         method: 'POST',
@@ -75,6 +80,7 @@ export default function SetupWizard() {
         body: JSON.stringify({
           step: 'save',
           domain,
+          forceDomain,
           email,
           emailCredentials,
           // The address the operator actually reached this page on beats
@@ -87,7 +93,10 @@ export default function SetupWizard() {
         }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      if (!res.ok) {
+        if (d.canForce) setDomainOverride(true);
+        throw new Error(d.error ?? `HTTP ${res.status}`);
+      }
       if (d.mail) setMailNote(d.mail);
       setDone(true);
     } catch (e) {
@@ -160,9 +169,21 @@ npm run build && panel-restart`}
       </div>
 
       {error && (
-        <p className="text-sm text-red-600 dark:text-red-400 mb-4 flex items-start gap-2">
-          <AlertTriangle size={15} className="shrink-0 mt-0.5" /> {error}
-        </p>
+        <div className="mb-4">
+          <p className="text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" /> {error}
+          </p>
+          {domainOverride && (
+            <button
+              type="button"
+              onClick={() => save(true)}
+              disabled={busy}
+              className="mt-2 text-sm underline underline-offset-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors disabled:opacity-50"
+            >
+              Use this domain anyway
+            </button>
+          )}
+        </div>
       )}
 
       {step === 0 && (
@@ -312,7 +333,7 @@ npm run build && panel-restart`}
               works — but routes or cache rules will fail until the token is fixed.
             </p>
           )}
-          <Nav onBack={() => setStep(2)} onNext={save} nextLabel="Save configuration" busy={busy} />
+          <Nav onBack={() => setStep(2)} onNext={() => save()} nextLabel="Save configuration" busy={busy} />
         </div>
       )}
     </Shell>

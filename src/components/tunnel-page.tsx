@@ -7,14 +7,17 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import {
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
   Cloud,
   ExternalLink,
-  RefreshCw,
-  Lock,
   Globe,
   Loader2,
-  Trash2,
+  Lock,
+  RefreshCw,
   Shield,
+  Trash2,
 } from 'lucide-react';
 import { humanUptime, StatusBadge } from './project-list';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
@@ -44,6 +47,75 @@ interface TunnelState {
 }
 
 type Tab = 'public' | 'private' | 'publish';
+
+
+interface RouteHealth {
+  ok: boolean;
+  checks: Record<string, string>;
+  reason: string | null;
+}
+
+/**
+ * What is actually true about a route.
+ *
+ * The order is the order a request travels: DNS, then the tunnel, then TLS, then
+ * the local service. Reading left to right shows where it stops, which is the
+ * question anyone asks of a route that does not work.
+ *
+ * Undefined means not measured yet, and renders as nothing. Claiming a state we
+ * have not observed is how a panel ends up reporting a service as healthy while
+ * it is unreachable.
+ */
+function RouteStatus({ status }: { status?: RouteHealth }) {
+  if (!status) {
+    return <span className="text-xs text-gray-400 dark:text-gray-600">checking…</span>;
+  }
+
+  const order: Array<[string, string]> = [
+    ['dns', 'DNS'],
+    ['tunnel', 'Tunnel'],
+    ['tls', 'TLS'],
+    ['origin', 'Service'],
+  ];
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        {status.ok ? (
+          <CheckCircle2 size={14} className="text-green-600 dark:text-green-500 shrink-0" />
+        ) : (
+          <AlertCircle size={14} className="text-red-600 dark:text-red-500 shrink-0" />
+        )}
+        <span className="flex gap-1">
+          {order.map(([key, label]) => {
+            const v = status.checks?.[key];
+            const tone =
+              v === 'ok'
+                ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
+                : v === 'failed' || v === 'missing'
+                  ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                  : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400';
+            return (
+              <span
+                key={key}
+                title={`${label}: ${v ?? 'not checked'}`}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${tone}`}
+              >
+                {label}
+              </span>
+            );
+          })}
+        </span>
+      </div>
+      {/* Not truncated: this sentence is why the row is red. */}
+      {status.reason && (
+        <span className="text-[11px] text-red-700 dark:text-red-300 max-w-xs break-words [text-wrap:pretty]">
+          {status.reason}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export default function TunnelPage({ initialTab }: { initialTab?: string }) {
   const [tab, setTab] = useState<Tab>(
@@ -158,6 +230,72 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
     }
   }
 
+  const [health, setHealth] = useState<Record<string, RouteHealth>>({});
+  const [migrating, setMigrating] = useState(false);
+
+  // Routes published before the domain changed still carry the old hostname.
+  // Nothing used to notice, so the panel showed one domain and served another.
+  const stale = (state?.routes ?? []).filter(
+    (r) => state?.domain && !r.hostname.endsWith(`.${state.domain}`),
+  );
+  // Every stale route shares one old suffix in practice, and moving them one at
+  // a time would be a different operation each. Take the first as the source.
+  const oldSuffix = stale.length
+    ? stale[0].hostname.split('.').slice(1).join('.')
+    : '';
+
+  async function migrateRoutes() {
+    if (!state?.domain || !oldSuffix) return;
+    setMigrating(true);
+    setOutput(`Moving ${stale.length} route(s) from ${oldSuffix} to ${state.domain}…`);
+    try {
+      const res = await fetch('/api/routes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'migrate', from: oldSuffix, to: state.domain }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setOutput(`Nothing moved: ${d.error ?? `HTTP ${res.status}`}`);
+        return;
+      }
+      const lines = [
+        ...d.moved.map((m: { from: string; to: string }) => `moved ${m.from} -> ${m.to}`),
+        ...d.skipped.map(
+          (m: { from: string; reason?: string }) =>
+            `left ${m.from} in place: ${m.reason ?? 'unknown reason'}`,
+        ),
+      ];
+      setOutput(lines.join('\n') || 'nothing to move');
+      await load();
+      await loadHealth();
+    } catch (e) {
+      setOutput((e as Error).message);
+    } finally {
+      setMigrating(false);
+    }
+  }
+
+
+  const loadHealth = useCallback(async () => {
+    try {
+      const res = await fetch('/api/routes', { cache: 'no-store' });
+      const data = await res.json();
+      const next: Record<string, RouteHealth> = {};
+      for (const r of data.routes ?? []) {
+        next[r.hostname] = { ok: r.ok, checks: r.checks, reason: r.reason };
+      }
+      setHealth(next);
+    } catch {
+      // Leave the column blank rather than claiming a state we did not measure.
+      setHealth({});
+    }
+  }, []);
+
+  useEffect(() => {
+    loadHealth();
+  }, [loadHealth]);
+
   async function removeRoute(hostname: string) {
     const name = hostname.split('.')[0];
     setBusy(`del-${hostname}`);
@@ -269,10 +407,36 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
               <Globe size={18} className="text-gray-500 dark:text-gray-400" />
               Public routes
             </h2>
+            {stale.length > 0 && oldSuffix && (
+              <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex items-start gap-3">
+                <AlertTriangle
+                  size={16}
+                  className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"
+                />
+                <div className="text-sm text-amber-900 dark:text-amber-200">
+                  <p>
+                    {stale.length} route{stale.length === 1 ? '' : 's'} still answer
+                    {stale.length === 1 ? 's' : ''} on <code>{oldSuffix}</code>, not the
+                    configured domain <code>{state.domain}</code>.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={migrateRoutes}
+                    disabled={migrating}
+                    className="mt-2 inline-flex items-center gap-2 rounded-md bg-amber-600 px-3 py-1.5 text-white text-xs font-medium hover:bg-amber-700 active:scale-[0.96] transition-[background-color,scale] disabled:opacity-50"
+                  >
+                    {migrating && <Loader2 size={12} className="animate-spin" />}
+                    Move them to {state.domain}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide bg-gray-50 dark:bg-gray-800/60">
+                    <th className="px-4 py-3 whitespace-nowrap">Status</th>
                     <th className="px-4 py-3 whitespace-nowrap">Public URL</th>
                     <th className="px-4 py-3 whitespace-nowrap">Attached service</th>
                     <th className="px-4 py-3 whitespace-nowrap">Target</th>
@@ -285,6 +449,9 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
                       key={r.hostname}
                       className="border-t dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors"
                     >
+                      <td className="px-4 py-3 whitespace-nowrap align-top">
+                        <RouteStatus status={health[r.hostname]} />
+                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {r.scheme === 'http' || r.scheme === 'https' ? (
                           <a
