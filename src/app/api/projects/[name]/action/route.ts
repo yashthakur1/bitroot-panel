@@ -5,7 +5,26 @@ import { recordResidue } from '@/lib/residue';
 import { deleteRecordsForHosts } from '@/lib/cloudflare';
 import { hostsForPort, portForService } from '@/lib/routes';
 
+/**
+ * Deploy is disabled.
+ *
+ * On 2026-09-05 a deploy from the service page stopped pm2 outright — the
+ * daemon log ends "PM2 successfully stopped" — which took down the panel,
+ * PocketBase, Garage, nginx and the tunnel's origin on neev-stag together. The
+ * public URL served 502 until the process list was resurrected by hand.
+ *
+ * The refusal lives here rather than only on the button, because a disabled
+ * button still leaves the endpoint callable by anything that knows the URL.
+ * The feature is being redesigned; this is the stop, not the fix.
+ */
+const DEPLOY_DISABLED =
+  'Deploy is turned off while it is redesigned. It stopped pm2 on 2026-09-05, ' +
+  'taking every service on the machine down with it. Use `project deploy <name>` ' +
+  'over SSH if you need to deploy before it returns.';
+
 const ACTIONS: Record<string, number> = {
+  // Still listed so a deploy request reaches the refusal below and is told why,
+  // rather than bouncing off "unknown action" and looking like a broken build.
   deploy: 600_000,
   start: 60_000,
   stop: 60_000,
@@ -26,23 +45,16 @@ export async function POST(
       return NextResponse.json({ error: 'unknown action' }, { status: 400 });
     }
 
-    // Deploy is the only long action here — it pulls, installs, builds and
-    // restarts, and used to return one buffered blob minutes later with no sign
-    // of life in between. It streams so the client can draw the step rail from
-    // the markers `project deploy` emits (docs/streaming-progress.md).
+    // Refused before anything runs. Deploy used to stream `project deploy`
+    // here; see DEPLOY_DISABLED above for why it no longer does.
     //
-    // The others stay buffered on purpose: start/stop/restart finish in seconds,
-    // and `remove` does bookkeeping AFTER the command — DNS records and residue —
-    // which a stream would have to interleave with output for no benefit.
+    // The remaining actions stay buffered on purpose: start/stop/restart finish
+    // in seconds, and `remove` does bookkeeping AFTER the command — DNS records
+    // and residue — which a stream would have to interleave for no benefit.
     if (action === 'deploy') {
-      return new Response(runStream(`BITPANEL_STEPS=1 project deploy ${name}`, timeout), {
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Cache-Control': 'no-cache',
-          'X-Accel-Buffering': 'no',
-        },
-      });
+      return NextResponse.json({ error: DEPLOY_DISABLED }, { status: 503 });
     }
+
 
     // Resolve routes before removal: afterwards the ingress rule is gone and
     // the link between this service and its hostnames is unrecoverable.

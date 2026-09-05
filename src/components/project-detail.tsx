@@ -164,13 +164,17 @@ export default function ProjectDetail({
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Disabled on 2026-09-05: a deploy from this page stopped pm2, which
+              took the panel, PocketBase, Garage, nginx and the tunnel's origin
+              down together and left the public URL serving 502. The API refuses
+              the action too — a disabled button is not a control on its own.
+              The feature is being redesigned. */}
           <Button
             className="bg-black text-white hover:bg-black/90 dark:bg-white dark:text-black dark:hover:bg-gray-200"
-            disabled={!!busyAction}
-            onClick={deploy}
-            title="Pull the latest commit on this branch, reinstall, rebuild if needed, then restart"
+            disabled
+            title="Deploy is turned off while it is redesigned — it stopped pm2 and took every service on this machine down. Deploy over SSH with: project deploy <name>"
           >
-            {busyAction === 'deploy' ? 'Deploying…' : 'Deploy'}
+            Deploy
           </Button>
           <Button variant="outline" disabled={!!busyAction} onClick={() => runAction('restart')}>
             {busyAction === 'restart' ? 'Restarting…' : 'Restart'}
