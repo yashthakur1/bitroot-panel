@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import DashboardLayout from './dashboard-layout';
+import { PipelinesEmpty } from './feature-empties';
 
 interface Pipeline {
   id: string;
@@ -101,7 +102,9 @@ export default function PipelinesPage() {
           </div>
         )}
 
-        {data && data.connections.length === 0 && (
+        {/* Only once pipelines exist. With none, the placeholder below already
+            sends people to Git connections, and saying it twice is noise. */}
+        {data && data.connections.length === 0 && data.pipelines.length > 0 && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-4">
             <p className="text-sm text-gray-600 dark:text-gray-400 text-pretty">
               No GitHub connection yet. Add one under{' '}
@@ -114,7 +117,18 @@ export default function PipelinesPage() {
         )}
 
         {data?.pipelines.length === 0 && !adding && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">Nothing wired up yet.</p>
+          <PipelinesEmpty
+            // The action is whatever is actually blocking the first pipeline.
+            // Offering "create" while a prerequisite is missing would open a
+            // form that cannot succeed.
+            action={
+              !data.deliveryBase
+                ? { label: 'Set a domain first', href: '/dashboard/config', go: true }
+                : data.connections.length === 0
+                  ? { label: 'Connect GitHub first', href: '/dashboard/git', go: true }
+                  : { label: 'Create your first pipeline', onClick: () => setAdding(true) }
+            }
+          />
         )}
 
         <div className="space-y-3">
@@ -128,7 +142,8 @@ export default function PipelinesPage() {
           ))}
         </div>
 
-        {adding ? (
+        {/* The placeholder carries the first "create"; this button is for the rest. */}
+        {data?.pipelines.length === 0 && !adding ? null : adding ? (
           <NewPipeline
             connections={data?.connections ?? []}
             onDone={() => {

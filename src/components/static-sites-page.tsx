@@ -16,6 +16,7 @@ import {
   Check,
   Pause,
 } from 'lucide-react';
+import { StaticSitesEmpty } from './feature-empties';
 
 interface Site {
   name: string;
@@ -111,16 +112,7 @@ export default function StaticSitesPage({ initialTab }: { initialTab?: string })
         <>
           {!sites && <TableSkeleton rows={3} cols={5} />}
           {sites && sites.length === 0 && (
-            <div className="border rounded-lg p-8 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                No static sites yet.
-              </p>
-              <Link href="/dashboard/new-static">
-                <Button variant="outline" size="sm">
-                  Create your first one
-                </Button>
-              </Link>
-            </div>
+            <StaticSitesEmpty action={{ label: 'Create your first site', href: '/dashboard/new-static' }} />
           )}
           {sites && sites.length > 0 && (
             <div className="overflow-x-auto border rounded-lg">

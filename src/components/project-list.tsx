@@ -26,6 +26,7 @@ import {
   Server,
   Square,
 } from 'lucide-react';
+import { ServicesEmpty } from './feature-empties';
 
 export interface Project {
   name: string;
@@ -327,9 +328,15 @@ export default function ProjectList() {
 
           {/* Table */}
           {visible.length === 0 ? (
-            <p className="text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center text-sm">
-              {query ? `Nothing matching "${query}"` : 'No services here yet.'}
-            </p>
+            // A search that matched nothing is not an empty feature: saying
+            // what Services are for would answer a question nobody asked.
+            query ? (
+              <p className="text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center text-sm">
+                Nothing matching &quot;{query}&quot;
+              </p>
+            ) : (
+              <ServicesEmpty action={{ label: 'Create your first service', href: '/dashboard/new-service' }} />
+            )
           ) : (
             <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-lg">
               <table className="min-w-full">

@@ -18,6 +18,7 @@ import {
   KeyRound,
   Lock,
 } from 'lucide-react';
+import { GitConnectionsEmpty } from './feature-empties';
 
 interface Connection {
   id: string;
@@ -162,14 +163,7 @@ export default function GitConnectionsPage({ initialTab }: { initialTab?: string
           )}
 
           {conns && conns.length === 0 && !staleToken && (
-            <div className="border rounded-lg p-8 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
-                No git accounts connected yet.
-              </p>
-              <Button variant="outline" size="sm" onClick={() => setTab('add')}>
-                <Plus size={14} className="mr-1.5" /> Add a connection
-              </Button>
-            </div>
+            <GitConnectionsEmpty action={{ label: 'Add your first connection', onClick: () => setTab('add') }} />
           )}
 
           <div className="space-y-3">

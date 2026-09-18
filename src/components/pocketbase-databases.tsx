@@ -16,6 +16,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { TableSkeleton } from './skeletons';
+import { DatabasesEmpty } from './feature-empties';
 
 interface Collection {
   name: string;
@@ -197,10 +198,7 @@ export default function PocketBaseDatabases() {
       {!dbs && !error && <TableSkeleton rows={2} cols={4} />}
 
       {dbs && dbs.length === 0 && !error && (
-        <p className="border rounded-lg p-6 text-sm text-gray-500 dark:text-gray-400">
-          No project databases yet. Create one to get collections plus ready-to-paste
-          connection details.
-        </p>
+        <DatabasesEmpty action={{ label: 'Create your first database', onClick: () => setShowForm(true) }} />
       )}
 
       <div className="space-y-3">

@@ -22,6 +22,7 @@ import {
 import { humanUptime, StatusBadge } from './project-list';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
 import { Tabs } from './ui/tabs';
+import { RoutesEmpty } from './feature-empties';
 
 interface TunnelRoute {
   hostname: string;
@@ -432,6 +433,10 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
               </div>
             )}
 
+            {state.routes.length === 0 ? (
+              <RoutesEmpty action={{ label: 'Publish your first route', onClick: () => setTab('publish') }} />
+            ) : (
+            <>
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full">
                 <thead>
@@ -513,6 +518,8 @@ export default function TunnelPage({ initialTab }: { initialTab?: string }) {
               Detaching removes the ingress rule (the hostname stops serving); its DNS record
               stays in Cloudflare so re-attaching later is instant.
             </p>
+            </>
+            )}
           </div>
 
           {/* Add route */}

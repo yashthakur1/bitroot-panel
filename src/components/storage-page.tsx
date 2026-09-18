@@ -22,6 +22,7 @@ import { Tabs } from './ui/tabs';
 import { TableSkeleton } from './skeletons';
 import UploadDialog from './upload-dialog';
 import ObjectBrowser from './object-browser';
+import { StorageEmpty } from './feature-empties';
 
 interface BucketKey {
   accessKeyId: string;
@@ -221,12 +222,7 @@ export default function StoragePage() {
       )}
 
       {tab === 'buckets' && !browsing && (buckets.length === 0 ? (
-        <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">No buckets yet.</p>
-          <Button variant="secondary" onClick={() => setCreating(true)}>
-            Create your first one
-          </Button>
-        </div>
+        <StorageEmpty action={{ label: 'Create your first bucket', onClick: () => setCreating(true) }} />
       ) : (
         <div className="space-y-3">
           {buckets.map((b) => {

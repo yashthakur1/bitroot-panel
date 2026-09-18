@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Laptop, Loader2, RefreshCw, Smartphone, Server, HelpCircle } from 'lucide-react';
 import { TableSkeleton } from '@/components/skeletons';
+import { DevicesEmpty } from './feature-empties';
 
 interface Device {
   id: string;
@@ -263,9 +264,9 @@ TS_TAILNET=-`}
       )}
 
       {configured && devices && devices.length === 0 && !err && !loading && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          The key worked, but the tailnet has no devices.
-        </p>
+        <DevicesEmpty
+          action={{ label: 'Install Tailscale', href: 'https://tailscale.com/download', external: true }}
+        />
       )}
     </div>
   );

@@ -265,3 +265,17 @@
     transition: none;
   }
 }
+
+/* Feature placeholders: the drafting grid behind the sketch. Lines sit just off
+   the panel colour so they read as paper, not as a table. */
+.bp-empty-grid {
+  --bp-grid: rgb(0 0 0 / 0.06);
+  background-image:
+    linear-gradient(to right, var(--bp-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--bp-grid) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: -1px -1px;
+}
+.dark .bp-empty-grid {
+  --bp-grid: rgb(255 255 255 / 0.06);
+}
