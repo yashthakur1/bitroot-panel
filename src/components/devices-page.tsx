@@ -115,6 +115,19 @@ export default function DevicesPage() {
       )}
 
       {!configured && state !== 'stale' && (
+        <DevicesEmpty
+          needsKey
+          action={{
+            label: 'Create a Tailscale API key',
+            href: 'https://login.tailscale.com/admin/settings/keys',
+            external: true,
+          }}
+        />
+      )}
+
+      {/* The steps stay: the placeholder says what the page is for, these say
+          exactly where the key goes and why the CLI is not used instead. */}
+      {!configured && state !== 'stale' && (
         <div className="border rounded-lg p-5 space-y-3 bg-gray-50 dark:bg-gray-900/40">
           <p className="text-sm text-gray-700 dark:text-gray-300 text-pretty">
             Device discovery needs a Tailscale API key. The <code>tailscale</code> CLI is

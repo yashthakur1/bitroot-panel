@@ -18,6 +18,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Tabs } from './ui/tabs';
 import { StatCardsSkeleton, TableSkeleton } from './skeletons';
+import { AccessAppsEmpty, IamEmpty } from './feature-empties';
 
 interface AppRef {
   id: string;
@@ -268,9 +269,18 @@ export default function IamPage({ initialTab }: { initialTab?: string }) {
         onChange={setTab}
       />
 
+      {state && !state.configured && (
+        <IamEmpty action={{ label: 'Add a Cloudflare token', href: '/dashboard/config', go: true }} />
+      )}
+
+      {/* Kept under the placeholder: it is the actual reason, and "not
+          configured" and "token rejected" need different fixes. */}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-      {canWrite === false && (
+      {/* Only once Access is actually configured. canWrite is also false when
+          there is no token at all, and this banner then described a token that
+          did not exist — contradicting the placeholder above it. */}
+      {canWrite === false && state?.configured && (
         <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 rounded-xl p-4 flex items-start gap-3 text-sm text-amber-800 dark:text-amber-300">
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <div style={{ textWrap: 'pretty' }}>
@@ -618,7 +628,13 @@ export default function IamPage({ initialTab }: { initialTab?: string }) {
         </>
       )}
 
-      {tab === 'apps' && state?.configured && (
+      {tab === 'apps' && state?.configured && apps.length === 0 && (
+        <AccessAppsEmpty
+          action={{ label: 'Open Cloudflare Zero Trust', href: 'https://one.dash.cloudflare.com/', external: true }}
+        />
+      )}
+
+      {tab === 'apps' && state?.configured && apps.length > 0 && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {apps.map((app) => (

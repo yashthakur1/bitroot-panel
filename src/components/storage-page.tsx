@@ -77,6 +77,10 @@ export default function StoragePage() {
   const [tierFor, setTierFor] = useState<Bucket | null>(null);
   const [keyFor, setKeyFor] = useState<Bucket | null>(null);
   const [uploadTo, setUploadTo] = useState<Bucket | null>(null);
+  // Bumped after an upload so an open bucket browser remounts and refetches.
+  // Reloading the bucket list alone left the browser showing "this bucket is
+  // empty" over files that had just arrived.
+  const [browserKey, setBrowserKey] = useState(0);
   const [tab, setTab] = useState<'buckets' | 'endpoint'>('buckets');
   const [browsing, setBrowsing] = useState<Bucket | null>(null);
   const [newKey, setNewKey] = useState<{ accessKeyId: string; secretAccessKey: string } | null>(
@@ -118,10 +122,10 @@ export default function StoragePage() {
     return (
       <div className="space-y-4">
         <h1 className="text-3xl font-display font-light tracking-tight">Storage</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
-          Garage is not configured. Set <code className="font-mono">GARAGE_ADMIN_TOKEN</code> in the
-          panel environment and restart it.
-        </p>
+        <StorageEmpty
+          notConfigured
+          action={{ label: 'Open setup', href: '/dashboard/config', go: true }}
+        />
       </div>
     );
   }
@@ -213,6 +217,8 @@ export default function StoragePage() {
 
       {tab === 'buckets' && browsing && (
         <ObjectBrowser
+          key={`${browsing.name}-${browserKey}`}
+          onUpload={() => setUploadTo(browsing)}
           bucket={browsing.name}
           publicUrl={browsing.publicUrl}
           s3Endpoint={data?.s3Endpoint ?? ''}
@@ -476,7 +482,10 @@ export default function StoragePage() {
           bucket={uploadTo.name}
           isPublic={uploadTo.access === 'public'}
           onClose={() => setUploadTo(null)}
-          onDone={load}
+          onDone={() => {
+            load();
+            setBrowserKey((k) => k + 1);
+          }}
         />
       )}
 

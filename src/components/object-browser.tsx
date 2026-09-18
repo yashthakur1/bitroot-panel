@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { TableSkeleton } from './skeletons';
+import { BucketEmpty } from './feature-empties';
 
 export interface S3Object {
   key: string;
@@ -75,12 +76,15 @@ export default function ObjectBrowser({
   s3Endpoint,
   onBack,
   onChanged,
+  onUpload,
 }: {
   bucket: string;
   publicUrl: string | null;
   s3Endpoint: string;
   onBack: () => void;
   onChanged: () => void;
+  /** Starts an upload into this bucket. Offered by the empty state. */
+  onUpload?: () => void;
 }) {
   const [objects, setObjects] = useState<S3Object[] | null>(null);
   const [error, setError] = useState('');
@@ -156,11 +160,18 @@ export default function ObjectBrowser({
         <div className="min-w-0">
           {!objects && <TableSkeleton rows={4} cols={3} />}
           {objects && visible.length === 0 && (
-            <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                {query ? `Nothing matching "${query}"` : 'This bucket is empty.'}
-              </p>
-            </div>
+            // A search with no matches is not an empty bucket, so it keeps the
+            // plain line rather than offering an upload.
+            query ? (
+              <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-8 text-center">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">Nothing matching &quot;{query}&quot;</p>
+              </div>
+            ) : (
+              <BucketEmpty
+                bucket={bucket}
+                action={onUpload ? { label: 'Upload your first file', onClick: onUpload } : undefined}
+              />
+            )
           )}
           {objects && visible.length > 0 && (
             <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-lg">

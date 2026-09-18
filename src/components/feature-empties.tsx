@@ -26,6 +26,7 @@ import {
   KeyRound,
   Laptop,
   Lock,
+  Mail,
   Network,
   Package,
   PanelsTopLeft,
@@ -36,6 +37,8 @@ import {
   ShieldCheck,
   Smartphone,
   Table2,
+  Upload,
+  UserCheck,
   Users,
   Webhook,
   Zap,
@@ -128,13 +131,17 @@ export function StaticSitesEmpty({ action }: { action?: Action }) {
   );
 }
 
-export function StorageEmpty({ action }: { action?: Action }) {
+export function StorageEmpty({ action, notConfigured }: { action?: Action; notConfigured?: boolean }) {
   return (
     <FeatureEmpty
       id="storage"
       icon={HardDrive}
       title="Store files in Buckets"
-      description="S3-compatible storage on this machine. Keep a bucket private, or publish it at its own URL with edge caching."
+      description={
+        notConfigured
+          ? 'S3-compatible storage on this machine, run by Garage. It needs GARAGE_ADMIN_TOKEN in the panel environment first — the setup page shows exactly what to set.'
+          : 'S3-compatible storage on this machine. Keep a bucket private, or publish it at its own URL with edge caching.'
+      }
       action={action}
       learnMore="https://garagehq.deuxfleurs.fr/documentation/quick-start/"
       illustration={
@@ -260,13 +267,17 @@ export function RoutesEmpty({ action }: { action?: Action }) {
   );
 }
 
-export function DevicesEmpty({ action }: { action?: Action }) {
+export function DevicesEmpty({ action, needsKey }: { action?: Action; needsKey?: boolean }) {
   return (
     <FeatureEmpty
       id="devices"
       icon={Laptop}
       title="See every device on your Tailnet"
-      description="The key works, but the tailnet has no devices yet. Install Tailscale on a machine and sign in with the same account, and it appears here."
+      description={
+        needsKey
+          ? 'Every machine on your tailnet, whether it is online, and what it runs. It needs a Tailscale API key — the steps are below.'
+          : 'The key works, but the tailnet has no devices yet. Install Tailscale on a machine and sign in with the same account, and it appears here.'
+      }
       action={action}
       illustration={
         <MockWindow
@@ -278,6 +289,86 @@ export function DevicesEmpty({ action }: { action?: Action }) {
             { label: 'Servers', tiles: [Server, Server] },
             { label: 'Phones', tiles: [Smartphone] },
             { label: 'Laptops', tiles: [Laptop] },
+          ]}
+        />
+      }
+    />
+  );
+}
+
+
+export function BucketEmpty({ bucket, action }: { bucket: string; action?: Action }) {
+  return (
+    <FeatureEmpty
+      id="bucket-objects"
+      icon={Upload}
+      title="This bucket is empty"
+      description={`Upload files to ${bucket}. Private objects are reachable with keys; in a public bucket each one also gets its own URL.`}
+      action={action}
+      illustration={
+        <MockWindow
+          kind="Bucket"
+          name={bucket}
+          nameIcon={HardDrive}
+          status="Ready"
+          groups={[
+            { label: 'Images', tiles: [Image, Image] },
+            { label: 'Documents', tiles: [FileText] },
+            { label: 'Archives', tiles: [Archive] },
+          ]}
+        />
+      }
+    />
+  );
+}
+
+const ACCESS_DOCS = 'https://developers.cloudflare.com/cloudflare-one/policies/access/';
+
+export function IamEmpty({ action }: { action?: Action }) {
+  return (
+    <FeatureEmpty
+      id="iam"
+      icon={ShieldCheck}
+      title="Control who can reach this machine"
+      description="Put Cloudflare Access in front of your public hostnames, then choose who gets in. People sign in with an emailed one-time code, with no password to share."
+      action={action}
+      learnMore={ACCESS_DOCS}
+      illustration={
+        <MockWindow
+          kind="Access policy"
+          name="allow-team"
+          nameIcon={ShieldCheck}
+          status="3 people"
+          groups={[
+            { label: 'People', tiles: [UserCheck, UserCheck, UserCheck] },
+            { label: 'Sign-in', tiles: [Mail] },
+            { label: 'Protects', tiles: [Globe, Lock] },
+          ]}
+        />
+      }
+    />
+  );
+}
+
+export function AccessAppsEmpty({ action }: { action?: Action }) {
+  return (
+    <FeatureEmpty
+      id="iam-apps"
+      icon={Lock}
+      title="Protect a hostname"
+      description="No Access application covers this machine's hostnames yet, so anyone with a URL reaches the service behind it. Add one in Cloudflare Zero Trust and it appears here."
+      action={action}
+      learnMore={ACCESS_DOCS}
+      illustration={
+        <MockWindow
+          kind="Application"
+          name="panel.example.com"
+          nameIcon={Lock}
+          status="Protected"
+          groups={[
+            { label: 'Hostname', tiles: [Globe] },
+            { label: 'Policy', tiles: [ShieldCheck] },
+            { label: 'People', tiles: [UserCheck, UserCheck] },
           ]}
         />
       }
