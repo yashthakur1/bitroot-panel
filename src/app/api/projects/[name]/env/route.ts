@@ -9,7 +9,12 @@ import {
   ValidationError,
 } from '@/lib/validate';
 
-const envPath = (name: string) => `$HOME/Downloads/${name}/.env`;
+// Same lookup as `project_dir` in server-scripts/project: services live under
+// ~/apps, and anything not yet migrated falls back to ~/Downloads. Hardcoding
+// ~/Downloads meant a project in ~/apps (rapsap-api, every static site) could
+// not have its variables read or written from here at all.
+const projectDir = (name: string) =>
+  `d="$HOME/apps/${name}"; [ -d "$d" ] || d="$HOME/Downloads/${name}"`;
 
 export async function GET(
   _req: NextRequest,
@@ -17,7 +22,7 @@ export async function GET(
 ) {
   try {
     const name = assertName((await params).name);
-    const r = await run(`cat "${envPath(name)}" 2>/dev/null || true`);
+    const r = await run(`${projectDir(name)}; cat "$d/.env" 2>/dev/null || true`);
     const vars = parseEnv(r.output).map((v) => ({
       ...v,
       secret: looksSecret(v.key),
@@ -73,13 +78,13 @@ export async function POST(
       value: v.value === null ? null : assertEnvValue(v.value),
     }));
 
-    const current = await run(`cat "${envPath(name)}" 2>/dev/null || true`);
+    const current = await run(`${projectDir(name)}; cat "$d/.env" 2>/dev/null || true`);
     const next = applyEnvEdits(current.output, changes);
 
     // umask before the redirect so the file is never briefly world-readable, and
     // a rename so a failed write cannot truncate a working .env.
     const write = await runWithInput(
-      `d="$HOME/Downloads/${name}"; [ -d "$d" ] || { echo "no such project: ${name}" >&2; exit 1; }; ` +
+      `${projectDir(name)}; [ -d "$d" ] || { echo "no such project: ${name}" >&2; exit 1; }; ` +
         `umask 077; cat > "$d/.env.tmp" && mv "$d/.env.tmp" "$d/.env" && echo "wrote $d/.env"`,
       next,
       60_000,
