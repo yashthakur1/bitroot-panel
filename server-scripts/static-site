@@ -15,23 +15,34 @@ DOMAIN_SUFFIX="${DOMAIN_SUFFIX:-example.com}"
 
 die() { echo "error: $*" >&2; exit 1; }
 
+# BitPanel runs its own nginx with a user-level config. On Debian/Ubuntu a bare
+# `nginx` reads /etc/nginx/nginx.conf, which a non-root user cannot even open,
+# so `nginx -t` failed and every deploy died at the reload step.
+NGINX_CONF="${NGINX_CONF:-$HOME/etc/nginx/nginx.conf}"
+nginx_cmd() {
+  if [ -f "$NGINX_CONF" ]; then nginx -c "$NGINX_CONF" "$@"; else nginx "$@"; fi
+}
+
 reload_nginx() {
-  nginx -t >/dev/null 2>&1 || { nginx -t; die "nginx config test failed"; }
+  nginx_cmd -t >/dev/null 2>&1 || { nginx_cmd -t; die "nginx config test failed"; }
   # nginx runs under pm2 (daemon off), so prefer a signal reload and fall back
   # to pm2 if there is no master to signal.
-  if nginx -s reload >/dev/null 2>&1; then
+  if nginx_cmd -s reload >/dev/null 2>&1; then
     echo "  nginx reloaded"
   elif pm2 describe nginx >/dev/null 2>&1; then
     pm2 restart nginx >/dev/null 2>&1
     echo "  nginx restarted via pm2"
   else
-    nginx
+    nginx_cmd
     echo "  nginx started"
   fi
 }
 
 write_vhost() {
   local name="$1" port="$2" root="$3"
+  # The vhost logs here; nginx refuses to load a config whose log directory is
+  # missing, and a fresh Debian/Ubuntu host does not have it.
+  mkdir -p "$HOME/var/log/nginx"
   cat > "$NGINX_SITES/$name.conf" <<EOF
 # $name — managed by BitPanel
 server {
@@ -103,8 +114,8 @@ cmd_create() {
   echo "=== creating static site $name ==="
   mkdir -p "$dir"
   # %q so values with spaces (build commands) survive being sourced back
-  printf 'BUILD_CMD=%q\nOUT_DIR=%q\nPORT=%q\nREPO=%q\nBRANCH=%q\n' \
-    "${BUILD_CMD:-npm run build}" "${OUT_DIR:-dist}" "$port" "$repo" "${branch:-}" > "$dir/.staticrc"
+  printf 'BUILD_CMD=%q\nOUT_DIR=%q\nPORT=%q\nREPO=%q\nBRANCH=%q\nDOMAIN_SUFFIX=%q\n' \
+    "${BUILD_CMD:-npm run build}" "${OUT_DIR:-dist}" "$port" "$repo" "${branch:-}" "$DOMAIN_SUFFIX" > "$dir/.staticrc"
 
   echo "  cloning..."
   if [ -n "$branch" ]; then
