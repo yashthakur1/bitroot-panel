@@ -77,17 +77,14 @@ export function ServicesEmpty({ action }: { action?: Action }) {
   );
 }
 
-export function ProjectsEmpty() {
+export function ProjectsEmpty({ onCreate }: { onCreate: () => void }) {
   return (
     <FeatureEmpty
       id="projects"
       icon={Box}
       title="Get organized with Projects"
-      badge="Coming soon"
-      // No create action on purpose: grouping does not exist yet, and a
-      // "Create your first project" button that led nowhere would be a lie.
-      description="Group the services, static sites, buckets and routes that make up one piece of work, rather than listing them by what runs them. Until then, everything deployed is on Services."
-      action={{ label: 'Go to Services', href: '/dashboard', go: true }}
+      description="Group the services, static sites, buckets and routes that make up one piece of work, rather than listing them by what runs them. A project only labels things: nothing is moved, stopped or deleted when you add to it or remove it."
+      action={{ label: 'Create your first project', onClick: onCreate }}
       illustration={
         <MockWindow
           kind="Project"

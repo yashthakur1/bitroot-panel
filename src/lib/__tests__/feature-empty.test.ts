@@ -32,9 +32,18 @@ test('aria-hidden sits on the sketch, never on the panel holding the close butto
   assert.ok(!/bp-empty-grid[^>]*aria-hidden/.test(SRC), 'not on the panel itself');
 });
 
-test('Projects offers no create action, because projects cannot be created yet', () => {
+test('Projects offers a create action, and it leads somewhere real', () => {
+  // The placeholder used to withhold this button, because "Create your first
+  // project" leading nowhere would have been a lie. Projects exist now, so the
+  // button must exist too — and stay wired: a create action bound to nothing is
+  // the same lie again, only harder to spot.
   const projects = /export function ProjectsEmpty[\s\S]*?\n}/.exec(PRESETS)?.[0] ?? '';
   assert.ok(projects, 'ProjectsEmpty should exist');
-  assert.ok(!/Create your first project/.test(projects));
-  assert.match(projects, /go: true/);
+  assert.match(projects, /Create your first project/);
+  assert.match(projects, /onClick: onCreate/);
+  assert.ok(!/Coming soon/i.test(projects), 'a feature that exists is not "coming soon"');
+
+  const page = read('src/components/projects-page.tsx');
+  assert.match(page, /<ProjectsEmpty onCreate=/, 'the page must supply the handler');
+  assert.match(page, /fetch\('\/api\/groups', \{\s*method: 'POST'/, 'and the form must really create a project');
 });

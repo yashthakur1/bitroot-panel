@@ -13,6 +13,7 @@ handled at runtime, not in separate branches.
 | | |
 |---|---|
 | **Services** | Node apps under pm2, static sites under nginx, and the daemons underneath |
+| **Projects** | Named groups of services, static sites, buckets and routes that make up one piece of work. A project only labels things; membership lives in the panel's own SQLite file, one home per resource |
 | **Storage** | S3-compatible buckets via [Garage](https://garagehq.deuxfleurs.fr/), with size limits, browser previews and presigned share links |
 | **Routes** | Cloudflare Tunnel ingress and DNS, with an edge cache rule for published buckets |
 | **PocketBase** | A shared database with per-project isolation and backups |
