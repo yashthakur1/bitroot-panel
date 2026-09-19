@@ -302,7 +302,9 @@ const [,, file, name, dir, port] = process.argv;
 let src = '';
 try { src = fs.readFileSync(file, 'utf8'); } catch(e) {}
 let config = { apps: [] };
-try { config = eval(src.replace('module.exports =', '(')) || config; } catch(e) {}
+// require, not eval: the file ends in `;`, so eval('( {...};') always threw and the
+// catch left an empty list — which was then written back, wiping every other app.
+try { config = require(file) || config; } catch(e) {}
 if (!Array.isArray(config.apps)) config.apps = [];
 
 const exists = config.apps.find(a => a.name === name);
@@ -357,6 +359,15 @@ cmd_deploy() {
   # project deploy <name>
   local name="$1"
   require_name "$name"
+
+  # Static sites are built, not run: ~/apps/static/<name> holds the checkout and
+  # its .staticrc, and there is no pm2 process to restart. Without this the
+  # push-to-deploy webhook, which only ever calls `project deploy`, reported
+  # "project directory not found" for every static site.
+  if [ -f "$HOME/apps/static/$name/.staticrc" ]; then
+    exec static-site deploy "$name"
+  fi
+
   local dir
   dir=$(project_dir "$name")
   [ -d "$dir" ] || die "project directory $dir not found"
@@ -441,7 +452,9 @@ const [,, file, name] = process.argv;
 let src = '';
 try { src = fs.readFileSync(file, 'utf8'); } catch(e) { process.exit(0); }
 let config = { apps: [] };
-try { config = eval(src.replace('module.exports =', '(')) || config; } catch(e) {}
+// require, not eval: the file ends in `;`, so eval('( {...};') always threw and the
+// catch left an empty list — which was then written back, wiping every other app.
+try { config = require(file) || config; } catch(e) {}
 config.apps = config.apps.filter(a => a.name !== name);
 const out = 'module.exports = ' + JSON.stringify(config, null, 2) + ';\n';
 fs.writeFileSync(file, out);
