@@ -47,6 +47,10 @@ write_vhost() {
 # $name — managed by BitPanel
 server {
     listen $port;
+    # Behind the tunnel the public scheme/host/port are not nginx's own, so a
+    # directory redirect (/about -> /about/) must stay relative or it points at
+    # http://host:$port and the visitor cannot follow it.
+    absolute_redirect off;
     server_name $name.$DOMAIN_SUFFIX _;
     root $root;
     index index.html;
