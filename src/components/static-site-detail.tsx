@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "./ui/button";
 import { StatCardsSkeleton } from "./skeletons";
 import RemoveDialog, { type RemoveOptions } from "./remove-dialog";
+import DomainManager from "./domain-manager";
 import {
   PanelsTopLeft,
   ExternalLink,
@@ -256,6 +257,8 @@ export default function StaticSiteDetail({ name }: { name: string }) {
           </span>
         </div>
       </div>
+
+      {site && <DomainManager site={name} />}
 
       {result && (
         <p
