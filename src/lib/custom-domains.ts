@@ -97,6 +97,12 @@ export function allActiveDomains(): DomainRow[] {
   return (store().prepare('SELECT * FROM site_domains WHERE active = 1').all() as Row[]).map(toDomain);
 }
 
+/** Every site that has at least one custom domain attached — what the background watcher polls. */
+export function sitesWithDomains(): string[] {
+  const rows = store().prepare('SELECT DISTINCT site FROM site_domains').all() as Row[];
+  return rows.map((r) => String(r.site));
+}
+
 // ─── writes ──────────────────────────────────────────────────────────────────
 
 /**
