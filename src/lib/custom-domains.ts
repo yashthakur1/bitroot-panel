@@ -229,9 +229,24 @@ export interface DomainStatus extends DomainRow {
 
 const LIVE_DIR = (site: string) => `/etc/letsencrypt/live/custom-${site}`;
 
-async function certExists(site: string): Promise<boolean> {
-  const r = await run(`test -f "${LIVE_DIR(site)}/fullchain.pem" && echo yes || echo no`, 10_000);
-  return r.output.trim() === 'yes';
+/**
+ * The hostnames the current certificate actually lists, not just whether one
+ * exists. A site's cert is requested once for whatever domains are live at
+ * the time, and a domain added later — www, say, added after the apex already
+ * had a certificate — needs that cert *expanded*, not skipped because a file
+ * happens to be sitting there. Checking existence alone was exactly this bug:
+ * the apex got HTTPS, www went live later, and syncSite kept reusing the
+ * apex-only certificate for both because "a cert exists" was the only
+ * question it asked — which is a valid cert for the wrong set of names, i.e.
+ * precisely the browser error ("certificate common name invalid") this
+ * function exists to prevent.
+ */
+async function certCovers(site: string): Promise<string[]> {
+  const r = await run(
+    `openssl x509 -in "${LIVE_DIR(site)}/fullchain.pem" -noout -ext subjectAltName 2>/dev/null || true`,
+    10_000,
+  );
+  return [...r.output.matchAll(/DNS:([^\s,]+)/g)].map((m) => m[1]);
 }
 
 const proxyLocation = (port: number) => `location / {
@@ -277,9 +292,16 @@ function vhostBlocks(site: string, domain: string, redirectTo: string | null, po
   return `${httpBlock}\n\n${httpsBlock}`;
 }
 
-function buildConfig(site: string, domains: DomainRow[], port: number, https: boolean): string {
+/**
+ * https is decided per domain, not once for the whole file: a domain the
+ * certificate already covers must keep its :443 block on every rewrite, even
+ * while a sibling domain added moments ago is still plain :80 waiting for its
+ * own certificate. Writing one blanket "https or not" for the file is what
+ * briefly took working HTTPS domains back down to plain HTTP on every sync.
+ */
+function buildConfig(site: string, domains: Array<DomainRow & { certified: boolean }>, port: number): string {
   const header = `# custom-${site} — managed by BitPanel (do not hand-edit; see domain-write)\n`;
-  const blocks = domains.map((d) => vhostBlocks(site, d.domain, d.redirectTo, port, https));
+  const blocks = domains.map((d) => vhostBlocks(site, d.domain, d.redirectTo, port, d.certified));
   return header + blocks.join('\n\n') + '\n';
 }
 
@@ -316,25 +338,44 @@ export async function syncSite(site: string, port: number): Promise<SyncResult> 
     return { domains: statuses, certified: false };
   }
 
-  // Phase 1: plain :80, every live hostname proxying directly — this is also
-  // what certbot's HTTP-01 challenge needs to reach in phase 2.
-  await runWithInput(`static-site domain-write ${shq(name)} ${port}`, buildConfig(name, live, port, false), 30_000);
+  const covered = await certCovers(name);
+  const missing = live.filter((s) => !covered.includes(s.domain));
 
-  let certified = await certExists(name);
-  if (!certified) {
-    const r = await run(`static-site domain-cert ${shq(name)} ${live.map((s) => shq(s.domain)).join(' ')}`, 120_000);
-    certified = r.ok && (await certExists(name));
-    if (!certified) {
-      // DNS was right but the issuer still refused (rate limit, CAA record,
-      // propagation not actually complete yet) — the site still serves over
-      // plain HTTP from phase 1, which is better than nothing.
-      return { domains: statuses, certified: false };
-    }
+  // Base write: domains the cert already covers keep full HTTPS; a domain
+  // that just went live gets a plain :80 proxy — enough to actually serve it,
+  // and the one thing certbot's authenticator needs to reach in a moment.
+  // Nothing that already worked is ever regressed by this call.
+  await runWithInput(
+    `static-site domain-write ${shq(name)} ${port}`,
+    buildConfig(name, live.map((s) => ({ ...s, certified: covered.includes(s.domain) })), port),
+    30_000,
+  );
+
+  if (missing.length === 0) {
+    return { domains: statuses, certified: live.length > 0 };
   }
 
-  if (certified) {
-    await runWithInput(`static-site domain-write ${shq(name)} ${port}`, buildConfig(name, live, port, true), 30_000);
+  // certbot re-validates every requested name, not just the new ones, so the
+  // full live set goes in — --expand (in the static-site script) grows the
+  // existing certificate's SAN list rather than starting a fresh lineage.
+  const r = await run(`static-site domain-cert ${shq(name)} ${live.map((s) => shq(s.domain)).join(' ')}`, 120_000);
+  if (!r.ok) {
+    // DNS was right but the issuer still refused (rate limit, CAA record,
+    // propagation not actually complete at Let's Encrypt's own resolvers) —
+    // whatever was already covered keeps serving over HTTPS; only the new
+    // domain stays on plain HTTP until the next sync tries again.
+    return { domains: statuses, certified: covered.length > 0 };
   }
 
-  return { domains: statuses, certified };
+  const nowCovered = await certCovers(name);
+  const stillMissing = live.some((s) => !nowCovered.includes(s.domain));
+  if (!stillMissing) {
+    await runWithInput(
+      `static-site domain-write ${shq(name)} ${port}`,
+      buildConfig(name, live.map((s) => ({ ...s, certified: true })), port),
+      30_000,
+    );
+  }
+
+  return { domains: statuses, certified: !stillMissing };
 }
