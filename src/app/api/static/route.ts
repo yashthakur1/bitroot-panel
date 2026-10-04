@@ -12,6 +12,7 @@ import {
 import { assertBranch, assertRepoFullName, getGithubToken } from "@/lib/github";
 import { assertConnectionId, cloneUrlFor } from "@/lib/git-connections";
 import { attachDomain, createPagesProject } from "@/lib/pages";
+import { listDomains } from "@/lib/custom-domains";
 
 const DOMAIN_SUFFIX = process.env.DOMAIN_SUFFIX ?? "example.com";
 
@@ -68,7 +69,15 @@ export async function GET() {
     .map((line) => line.split("|"))
     .filter((p) => p.length === 5 && p[0])
     .map(([name, port, size, state, branch]) => {
-      const hosts = portToHosts[Number(port)] ?? [];
+      // Two separate sources of a public hostname: the tunnel (bitroot.club
+      // subdomains) and a custom domain pointed straight at this box's own IP
+      // (lib/custom-domains.ts). A site can have either, both, or neither —
+      // this list is just where every place that shows "the URL" looks.
+      const tunnelHosts = portToHosts[Number(port)] ?? [];
+      const customHosts = listDomains(name)
+        .filter((d) => d.active)
+        .map((d) => d.domain);
+      const hosts = [...tunnelHosts, ...customHosts];
       return {
         name,
         port: Number(port),

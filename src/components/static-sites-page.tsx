@@ -162,16 +162,21 @@ export default function StaticSitesPage({ initialTab }: { initialTab?: string })
                         {s.branch || 'default'}
                       </td>
                       <td className="px-4 py-3.5 text-sm">
-                        {s.url ? (
-                          <a
-                            href={s.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1"
-                          >
-                            {s.url.replace('https://', '')}
-                            <ExternalLink size={11} />
-                          </a>
+                        {s.urls && s.urls.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {s.urls.map((u) => (
+                              <a
+                                key={u}
+                                href={u}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-accent-600 dark:text-accent-400 hover:underline inline-flex items-center gap-1 w-fit"
+                              >
+                                {u.replace('https://', '')}
+                                <ExternalLink size={11} />
+                              </a>
+                            ))}
+                          </div>
                         ) : (
                           <Link
                             href="/dashboard/tunnel?tab=publish"
