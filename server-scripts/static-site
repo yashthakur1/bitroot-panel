@@ -5,9 +5,9 @@
 #   deploy <name>          git pull + rebuild + reload
 #   remove <name>          drop vhost + tunnel route + port registration
 #   list                   registered sites
-#   domain-write <name> <port>   vhost (on stdin) for the SYSTEM nginx — custom domains
-#   domain-cert <name> <domain...>   certbot for those domains against that vhost
-#   domain-unwrite <name>   drop the system vhost for custom domains
+#
+# Custom domains are routed by Traefik (~/traefik/), not by this script —
+# see src/lib/custom-domains.ts.
 set -e
 
 SITES_DIR="$HOME/apps/static"
@@ -192,70 +192,13 @@ cmd_list() {
   done
 }
 
-# ─── custom domains (SYSTEM nginx, :80/:443 — separate from the tunnel) ──────
-#
-# The panel's own nginx above only answers on internal ports behind the
-# Cloudflare Tunnel, which can only route hostnames in the tunnel's own zone.
-# A domain the operator owns elsewhere (bought at any registrar, DNS hosted
-# anywhere) cannot join that zone without moving its nameservers — so instead
-# it points straight at this box's public IP, and the box's SYSTEM nginx
-# (root, :80/:443, present on any Debian/Ubuntu box) answers it directly and
-# proxies to the same port the tunnel already uses. That needs sudo, which
-# every other command here deliberately avoids.
-
-SYS_SITES_AVAILABLE="/etc/nginx/sites-available"
-SYS_SITES_ENABLED="/etc/nginx/sites-enabled"
-
-reload_system_nginx() {
-  sudo -n nginx -t || die "system nginx config test failed"
-  sudo -n systemctl reload nginx || die "system nginx reload failed"
-}
-
-cmd_domain_write() {
-  local name="$1" port="$2"
-  [ -n "$name" ] && [ -n "$port" ] || die "usage: static-site domain-write <name> <port> (vhost body on stdin)"
-  sudo -n tee "$SYS_SITES_AVAILABLE/custom-$name.conf" >/dev/null || die "could not write vhost (sudo?)"
-  sudo -n ln -sf "$SYS_SITES_AVAILABLE/custom-$name.conf" "$SYS_SITES_ENABLED/custom-$name.conf"
-  reload_system_nginx
-  echo "  system vhost written for $name"
-}
-
-cmd_domain_unwrite() {
-  local name="$1"
-  [ -n "$name" ] || die "usage: static-site domain-unwrite <name>"
-  sudo -n rm -f "$SYS_SITES_ENABLED/custom-$name.conf" "$SYS_SITES_AVAILABLE/custom-$name.conf"
-  reload_system_nginx
-  echo "  system vhost removed for $name"
-}
-
-cmd_domain_cert() {
-  local name="$1"
-  shift
-  [ -n "$name" ] && [ "$#" -gt 0 ] || die "usage: static-site domain-cert <name> <domain> [domain...]"
-  # certonly, not the --nginx installer: this only proves control (via nginx,
-  # which is already serving the vhost domain-write just wrote) and drops cert
-  # files on disk. It never touches our vhost — that stays single-owner in
-  # lib/custom-domains.ts, which writes the apex→www redirect itself.
-  local args=(certonly --nginx --non-interactive --agree-tos --expand --cert-name "custom-$name")
-  if [ -n "$SUPERADMIN_EMAIL" ]; then
-    args+=(-m "$SUPERADMIN_EMAIL" --no-eff-email)
-  else
-    args+=(--register-unsafely-without-email)
-  fi
-  for d in "$@"; do args+=(-d "$d"); done
-  sudo -n certbot "${args[@]}"
-}
-
 COMMAND="${1:-}"
 shift 2>/dev/null || true
 case "$COMMAND" in
-  create)         cmd_create "$@" ;;
-  deploy)         cmd_deploy "$@" ;;
-  remove)         cmd_remove "$@" ;;
-  list)           cmd_list ;;
-  domain-write)   cmd_domain_write "$@" ;;
-  domain-unwrite) cmd_domain_unwrite "$@" ;;
-  domain-cert)    cmd_domain_cert "$@" ;;
+  create) cmd_create "$@" ;;
+  deploy) cmd_deploy "$@" ;;
+  remove) cmd_remove "$@" ;;
+  list)   cmd_list ;;
   *)
     cat <<EOF
 usage: static-site <command> [args]
@@ -264,9 +207,9 @@ usage: static-site <command> [args]
   deploy <name>     git pull + rebuild + nginx reload
   remove <name>     drop vhost, tunnel route and port (keeps files)
   list              registered sites
-  domain-write <name> <port>       system vhost (stdin) for custom domains
-  domain-unwrite <name>            drop that system vhost
-  domain-cert <name> <domain...>   certbot for those domains
+
+Custom domains (lib/custom-domains.ts) are routed by Traefik, which owns
+:80/:443 for the whole box — not by this script. See ~/traefik/.
 EOF
     exit 1
     ;;

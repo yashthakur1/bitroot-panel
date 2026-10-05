@@ -212,97 +212,125 @@ export async function checkDns(domain: string, publicIp: string | null): Promise
 
 // ─── provisioning ────────────────────────────────────────────────────────────
 //
-// Cert acquisition and nginx config are deliberately two separate steps, run in
-// that order, because certbot's `--nginx` *installer* edits a vhost file by
-// pattern-matching its existing server blocks — fine for a plain proxy_pass,
-// but an apex's `return 308 https://www...` is exactly the kind of content an
-// automatic editor could silently double up on or clobber on a second run.
-// So certbot here only ever runs with `certonly` (authenticator-only: it proves
-// control and writes cert files, nothing else), and every byte of the vhost
-// — including the redirect logic — is written by this module, once, from
-// scratch, each time. One owner per file.
+// Routing and TLS both go through Traefik now (see the Phase A migration:
+// the box used to run a hand-rolled nginx vhost per site plus certbot in
+// `certonly` mode for each certificate; both are replaced by one Traefik
+// instance that owns :80/:443 for the whole box). This is a real
+// simplification, not just a swap: Traefik's `certResolver` on a router
+// fetches and renews that router's certificate itself, lazily, on first use
+// — so there is no separate cert-acquisition step to sequence here, no
+// "does a file exist yet" bookkeeping, and no sudo (the dynamic-config
+// directory is owned by the same user the panel runs as, unlike
+// `/etc/nginx` and `/etc/letsencrypt`). One YAML file per site, rewritten
+// from scratch each sync, is the entire mechanism.
 
 export interface DomainStatus extends DomainRow {
   dns: DnsStatus;
   record: { type: 'A'; name: string; value: string } | null;
 }
 
-const LIVE_DIR = (site: string) => `/etc/letsencrypt/live/custom-${site}`;
+const TRAEFIK_DYNAMIC_DIR = '$HOME/traefik/dynamic';
 
 /**
- * The hostnames the current certificate actually lists, not just whether one
- * exists. A site's cert is requested once for whatever domains are live at
- * the time, and a domain added later — www, say, added after the apex already
- * had a certificate — needs that cert *expanded*, not skipped because a file
- * happens to be sitting there. Checking existence alone was exactly this bug:
- * the apex got HTTPS, www went live later, and syncSite kept reusing the
- * apex-only certificate for both because "a cert exists" was the only
- * question it asked — which is a valid cert for the wrong set of names, i.e.
- * precisely the browser error ("certificate common name invalid") this
- * function exists to prevent.
+ * One domain's routers: a plain :80 (either a scheme upgrade or, for a
+ * redirect entry like the apex, straight to the target) and a :443 that
+ * either proxies or redirects, each requesting its own certificate from
+ * Traefik's `le` resolver. yq/js-yaml are both overkill for a document this
+ * regular — it's templated directly, the same way the nginx version was.
  */
-async function certCovers(site: string): Promise<string[]> {
+function domainBlock(domain: string, redirectTo: string | null): string {
+  const safeName = domain.replace(/[^a-z0-9]+/g, '-');
+  if (redirectTo) {
+    return `
+    ${safeName}-http:
+      rule: "Host(\`${domain}\`)"
+      entryPoints: [web]
+      service: ${safeName}
+      middlewares: [${safeName}-redirect]
+    ${safeName}-https:
+      rule: "Host(\`${domain}\`)"
+      entryPoints: [websecure]
+      service: ${safeName}
+      tls:
+        certResolver: le
+      middlewares: [${safeName}-redirect]`;
+  }
+  return `
+    ${safeName}-http:
+      rule: "Host(\`${domain}\`)"
+      entryPoints: [web]
+      service: ${safeName}
+      middlewares: [redirect-to-https]
+    ${safeName}-https:
+      rule: "Host(\`${domain}\`)"
+      entryPoints: [websecure]
+      service: ${safeName}
+      tls:
+        certResolver: le`;
+}
+
+function domainMiddleware(domain: string, redirectTo: string | null): string {
+  if (!redirectTo) return '';
+  const safeName = domain.replace(/[^a-z0-9]+/g, '-');
+  return `
+    ${safeName}-redirect:
+      redirectRegex:
+        regex: '^https?://${domain.replace(/\./g, '\\.')}/(.*)'
+        replacement: 'https://${redirectTo}/\${1}'
+        permanent: true`;
+}
+
+function domainService(domain: string, port: number): string {
+  const safeName = domain.replace(/[^a-z0-9]+/g, '-');
+  return `
+    ${safeName}:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:${port}"`;
+}
+
+function buildTraefikConfig(domains: DomainRow[], port: number): string {
+  const header = `# ${domains[0]?.site ?? ''} — managed by BitPanel (do not hand-edit; see custom-domains.ts)\n`;
+  const hasRedirectMiddleware = domains.some((d) => !d.redirectTo);
+  return (
+    header +
+    'http:\n' +
+    '  routers:' +
+    domains.map((d) => domainBlock(d.domain, d.redirectTo)).join('') +
+    '\n\n  middlewares:' +
+    (hasRedirectMiddleware
+      ? `
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true`
+      : '') +
+    domains.map((d) => domainMiddleware(d.domain, d.redirectTo)).join('') +
+    '\n\n  services:' +
+    domains.map((d) => domainService(d.domain, port)).join('') +
+    '\n'
+  );
+}
+
+/**
+ * Touches a domain over HTTPS (triggering Traefik's lazy ACME fetch if it
+ * hasn't happened yet) and reports whether a real certificate came back,
+ * rather than Traefik's own self-signed fallback — the same question
+ * `certCovers` used to answer by reading certbot's files, now asked of
+ * Traefik directly since it owns the certificate lifecycle itself.
+ */
+async function isCertified(domain: string): Promise<boolean> {
+  await run(
+    `curl -sk -o /dev/null --max-time 15 --resolve ${shq(domain)}:443:127.0.0.1 https://${shq(domain)}/ 2>&1 || true`,
+    20_000,
+  );
   const r = await run(
-    `openssl x509 -in "${LIVE_DIR(site)}/fullchain.pem" -noout -ext subjectAltName 2>/dev/null || true`,
+    `echo | openssl s_client -connect 127.0.0.1:443 -servername ${shq(domain)} 2>/dev/null | ` +
+      'openssl x509 -noout -issuer 2>/dev/null || true',
     10_000,
   );
-  return [...r.output.matchAll(/DNS:([^\s,]+)/g)].map((m) => m[1]);
-}
-
-const proxyLocation = (port: number) => `location / {
-        proxy_pass http://127.0.0.1:${port};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }`;
-
-/**
- * One domain's :80 block, plus its :443 block once a certificate exists.
- * A redirect entry (the apex) always 308s to its www sibling, on either
- * scheme; a serving entry proxies on :443 and, once that exists, the :80
- * copy becomes a plain scheme upgrade instead of a second proxy.
- */
-function vhostBlocks(site: string, domain: string, redirectTo: string | null, port: number, https: boolean): string {
-  const httpBody = redirectTo
-    ? `return 308 https://${redirectTo}$request_uri;`
-    : https
-      ? `return 301 https://$host$request_uri;`
-      : proxyLocation(port);
-
-  const httpBlock = `server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain};
-    ${httpBody}
-}`;
-
-  if (!https) return httpBlock;
-
-  const httpsBody = redirectTo ? `return 308 https://${redirectTo}$request_uri;` : proxyLocation(port);
-  const httpsBlock = `server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name ${domain};
-    ssl_certificate     ${LIVE_DIR(site)}/fullchain.pem;
-    ssl_certificate_key ${LIVE_DIR(site)}/privkey.pem;
-    ${httpsBody}
-}`;
-
-  return `${httpBlock}\n\n${httpsBlock}`;
-}
-
-/**
- * https is decided per domain, not once for the whole file: a domain the
- * certificate already covers must keep its :443 block on every rewrite, even
- * while a sibling domain added moments ago is still plain :80 waiting for its
- * own certificate. Writing one blanket "https or not" for the file is what
- * briefly took working HTTPS domains back down to plain HTTP on every sync.
- */
-function buildConfig(site: string, domains: Array<DomainRow & { certified: boolean }>, port: number): string {
-  const header = `# custom-${site} — managed by BitPanel (do not hand-edit; see domain-write)\n`;
-  const blocks = domains.map((d) => vhostBlocks(site, d.domain, d.redirectTo, port, d.certified));
-  return header + blocks.join('\n\n') + '\n';
+  const issuer = r.output.trim();
+  return issuer.length > 0 && !issuer.includes('TRAEFIK DEFAULT CERT');
 }
 
 export interface SyncResult {
@@ -313,9 +341,9 @@ export interface SyncResult {
 /**
  * The one entrypoint the "Refresh" button (and adding/removing a domain) calls.
  * Checks DNS for every domain on the site, serves only the ones that actually
- * resolve here, and — the first time a site has any — gets a certificate and
- * turns HTTPS on. Safe to call repeatedly; each step is a no-op when nothing
- * changed.
+ * resolve here, and writes the complete Traefik route for them in one step —
+ * Traefik handles certificate issuance itself from there. Safe to call
+ * repeatedly; each step is a no-op when nothing changed.
  */
 export async function syncSite(site: string, port: number): Promise<SyncResult> {
   const name = assertName(site);
@@ -334,48 +362,19 @@ export async function syncSite(site: string, port: number): Promise<SyncResult> 
   const live = statuses.filter((s) => s.dns === 'valid').map((s) => ({ ...s }));
 
   if (live.length === 0) {
-    await run(`static-site domain-unwrite ${shq(name)}`, 30_000);
+    await run(`rm -f "${TRAEFIK_DYNAMIC_DIR}/${name}.yml"`, 10_000);
     return { domains: statuses, certified: false };
   }
 
-  const covered = await certCovers(name);
-  const missing = live.filter((s) => !covered.includes(s.domain));
+  await runWithInput(`cat > "${TRAEFIK_DYNAMIC_DIR}/${name}.yml"`, buildTraefikConfig(live, port), 15_000);
 
-  // Base write: domains the cert already covers keep full HTTPS; a domain
-  // that just went live gets a plain :80 proxy — enough to actually serve it,
-  // and the one thing certbot's authenticator needs to reach in a moment.
-  // Nothing that already worked is ever regressed by this call.
-  await runWithInput(
-    `static-site domain-write ${shq(name)} ${port}`,
-    buildConfig(name, live.map((s) => ({ ...s, certified: covered.includes(s.domain) })), port),
-    30_000,
-  );
+  // Traefik's file provider watches this directory and reloads on its own —
+  // no reload step, unlike nginx. Confirm each serving (non-redirect) domain
+  // actually has a real certificate now; a redirect-only entry (the apex)
+  // still needs one too, since TLS terminates before the HTTP-level redirect
+  // runs, so it's checked the same way.
+  const certResults = await Promise.all(live.map((s) => isCertified(s.domain)));
+  const certified = certResults.every(Boolean);
 
-  if (missing.length === 0) {
-    return { domains: statuses, certified: live.length > 0 };
-  }
-
-  // certbot re-validates every requested name, not just the new ones, so the
-  // full live set goes in — --expand (in the static-site script) grows the
-  // existing certificate's SAN list rather than starting a fresh lineage.
-  const r = await run(`static-site domain-cert ${shq(name)} ${live.map((s) => shq(s.domain)).join(' ')}`, 120_000);
-  if (!r.ok) {
-    // DNS was right but the issuer still refused (rate limit, CAA record,
-    // propagation not actually complete at Let's Encrypt's own resolvers) —
-    // whatever was already covered keeps serving over HTTPS; only the new
-    // domain stays on plain HTTP until the next sync tries again.
-    return { domains: statuses, certified: covered.length > 0 };
-  }
-
-  const nowCovered = await certCovers(name);
-  const stillMissing = live.some((s) => !nowCovered.includes(s.domain));
-  if (!stillMissing) {
-    await runWithInput(
-      `static-site domain-write ${shq(name)} ${port}`,
-      buildConfig(name, live.map((s) => ({ ...s, certified: true })), port),
-      30_000,
-    );
-  }
-
-  return { domains: statuses, certified: !stillMissing };
+  return { domains: statuses, certified };
 }
