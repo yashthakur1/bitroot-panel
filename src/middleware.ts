@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, verifySession } from '@/lib/session';
 import { ACCESS_HEADER, verifyAccessJwt } from '@/lib/access-jwt';
 import { getUser, storeInUse } from '@/lib/users';
+import { SERVICE_IDENTITY, SERVICE_PREFIX, serviceRequestAllowed } from '@/lib/service-auth';
 
 // Runs on the Node runtime rather than the Edge one, so it can read the account
 // store. That is what makes disabling somebody take effect on their next
@@ -34,6 +35,12 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname === '/api/login') return NextResponse.next();
+  // Machine-to-machine from the client portal on this box — token and
+  // loopback only, and nothing but this prefix (see lib/service-auth.ts).
+  if (pathname.startsWith(SERVICE_PREFIX)) {
+    if (!serviceRequestAllowed(req.headers)) return NextResponse.json({ error: 'not found' }, { status: 404 });
+    return allow(req, SERVICE_IDENTITY);
+  }
   // The login page has to ask whether this panel wants an email before anyone
   // can log in, so this cannot sit behind the session it is a prerequisite for.
   // It answers yes or no and nothing else - never the address itself.

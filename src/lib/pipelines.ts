@@ -7,7 +7,7 @@
 // authenticated panel off the public path is the entire point of the split.
 
 import { randomBytes } from 'node:crypto';
-import { run } from './runner';
+import { run, runWithInput } from './runner';
 import { shq, ValidationError } from './validate';
 import { getConnectionToken, getPrimaryToken, listConnections } from './git-connections';
 
@@ -75,6 +75,38 @@ export async function listRuns(limit = 30): Promise<PipelineRun[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Same shape and bound (newest first, 50 kept) the deploy-webhook service
+ * writes. Through stdin: fifty runs of build output is far past the size of a
+ * single argument.
+ */
+export async function recordRun(entry: PipelineRun): Promise<void> {
+  const runs = await listRuns(50);
+  await runWithInput(
+    `mkdir -p ${DIR} && umask 077 && cat > ${RUNS}`,
+    JSON.stringify([entry, ...runs].slice(0, 50), null, 2),
+  );
+}
+
+/**
+ * Points every pipeline for `project` at a new branch, so push-to-deploy
+ * follows the branch the site now builds from. The GitHub hook fires on every
+ * push and the webhook service filters by this field, so nothing changes on
+ * GitHub's side.
+ */
+export async function setPipelineBranch(project: string, branch: string): Promise<number> {
+  const list = await listPipelines();
+  let changed = 0;
+  for (const p of list) {
+    if (p.project === project && p.branch !== branch) {
+      p.branch = branch;
+      changed++;
+    }
+  }
+  if (changed) await writePipelines(list);
+  return changed;
 }
 
 // ─── GitHub side ─────────────────────────────────────────────────────────────
