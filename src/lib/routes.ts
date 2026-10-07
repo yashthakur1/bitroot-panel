@@ -106,7 +106,14 @@ export function parseIngress(yaml: string): IngressEntry[] {
  * the route exists, the config looks right, and every request returns 404.
  */
 export function renderIngress(entries: IngressEntry[]): string {
-  const named = entries.filter((e) => e.hostname);
+  // Wildcards ("*.example.com") go below every specific hostname, for the same
+  // first-match reason: a wildcard above a route published later would answer
+  // in its place. BitPanel Enterprise's sandbox URLs rely on one.
+  const isWild = (e: IngressEntry) => e.hostname!.replace(/^["']/, "").startsWith("*");
+  const named = [
+    ...entries.filter((e) => e.hostname && !isWild(e)),
+    ...entries.filter((e) => e.hostname && isWild(e)),
+  ];
   const catchAll = entries.find((e) => !e.hostname) ?? {
     service: "http_status:404",
   };

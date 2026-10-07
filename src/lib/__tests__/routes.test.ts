@@ -61,6 +61,18 @@ test("the catch-all is forced last however it arrives", () => {
   assert.ok(out.indexOf("a.example.com") < out.indexOf("http_status:404"));
 });
 
+test("wildcard hostnames stay below every specific one, even routes added later", () => {
+  const out = renderIngress([
+    { hostname: "a.example.com", service: "http://localhost:1" },
+    { hostname: "*.example.com", service: "http://127.0.0.1:8088" },
+    { hostname: "later.example.com", service: "http://localhost:2" },
+    { service: "http_status:404" },
+  ]);
+  assert.ok(out.indexOf("later.example.com") < out.indexOf("*.example.com"));
+  assert.ok(out.indexOf("*.example.com") < out.indexOf("http_status:404"));
+  assert.equal(renderIngress(parseIngress(out)), out, "stable on re-render");
+});
+
 test("a config with no ingress block gains one", () => {
   const out = replaceIngressBlock("tunnel: abc\n", [
     { hostname: "a.example.com", service: "http://localhost:1" },
