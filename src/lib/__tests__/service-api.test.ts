@@ -9,6 +9,8 @@ import {
   assertBranch,
   assertBuildScript,
   assertOutDir,
+  assertReleaseId,
+  parseReleases,
   parseStaticrc,
   renderStaticrc,
   toConfig,
@@ -64,5 +66,20 @@ describe('static-site settings', () => {
       { repo: undefined, buildScript: 'build', outDir: 'dist', port: 3100, branch: 'main' },
     );
     assert.deepEqual(parseStaticrc(renderStaticrc(rc)), rc);
+  });
+});
+
+describe('kept builds', () => {
+  it('parses static-site releases output and skips junk', () => {
+    const r = parseReleases('20261008T132354Z-e1a0e32|current|1.2M\n20261005T100000Z-3869739|kept|1.1M\nnot-a-release|kept|1K\n');
+    assert.equal(r.length, 2);
+    assert.deepEqual(r[0], { id: '20261008T132354Z-e1a0e32', sha: 'e1a0e32', builtAt: Date.UTC(2026, 9, 8, 13, 23, 54), current: true, size: '1.2M' });
+    assert.equal(r[1].current, false);
+  });
+  it('accepts only release ids, never paths or options', () => {
+    assert.equal(assertReleaseId('20261008T132354Z-e1a0e32'), '20261008T132354Z-e1a0e32');
+    for (const bad of ['../../etc', '-rf', '20261008T132354Z-e1a0e32/..', '20261008T132354Z-E1A0', '', 42]) {
+      assert.throws(() => assertReleaseId(bad));
+    }
   });
 });

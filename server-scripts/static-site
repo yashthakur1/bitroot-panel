@@ -5,6 +5,8 @@
 #   deploy <name>          git pull + rebuild + reload
 #   remove <name>          drop vhost + tunnel route + port registration
 #   list                   registered sites
+#   releases <name>        builds kept on disk (the last 2 + whatever is live)
+#   rollback <name> <id>   serve a kept build again
 #
 # Custom domains are routed by Traefik (~/traefik/), not by this script —
 # see src/lib/custom-domains.ts.
@@ -107,9 +109,76 @@ build_site() {
     fi
   fi
   [ -d "$dir/src/$OUT_DIR" ] || die "build output '$OUT_DIR' not found in the repo"
-  rm -rf "$dir/public"
-  cp -r "$dir/src/$OUT_DIR" "$dir/public"
-  echo "  published $(du -sh "$dir/public" | cut -f1) from $OUT_DIR"
+  local sha id
+  sha=$(git -C "$dir/src" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+  id="$(date -u +%Y%m%dT%H%M%SZ)-$sha"
+  mkdir -p "$dir/releases"
+  cp -r "$dir/src/$OUT_DIR" "$dir/releases/$id"
+  switch_release "$dir" "$id"
+  prune_releases "$dir"
+  echo "  published $(du -sh "$dir/releases/$id" | cut -f1) from $OUT_DIR as release $id"
+}
+
+# Builds are kept as releases/<UTC stamp>-<sha> and `public` (nginx's root) is
+# a symlink to the one being served, so the previous build stays on disk and a
+# rollback is one symlink swap — no rebuild. Only the newest KEEP_RELEASES
+# (plus whichever is live, after a rollback) are kept.
+KEEP_RELEASES="${KEEP_RELEASES:-2}"
+RELEASE_RE='^[0-9]{8}T[0-9]{6}Z-[0-9a-z]+$'
+
+current_release() {
+  [ -L "$1/public" ] && basename "$(readlink "$1/public")" || true
+}
+
+# A site built before releases existed has a real `public` directory. Keep it
+# as a release (named after the commit it was built from) so it stays
+# available to roll back to once the next build goes live.
+adopt_legacy_public() {
+  local dir="$1"
+  [ -d "$dir/public" ] && [ ! -L "$dir/public" ] || return 0
+  local sha id
+  sha=$(git -C "$dir/src" rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
+  id="$(date -u -r "$dir/public" +%Y%m%dT%H%M%SZ)-$sha"
+  mkdir -p "$dir/releases"
+  mv "$dir/public" "$dir/releases/$id"
+  ln -sfn "releases/$id" "$dir/public"
+}
+
+switch_release() {
+  local dir="$1" id="$2"
+  adopt_legacy_public "$dir"
+  # rename(2) over the old link is atomic: nginx never sees a missing root.
+  ln -sfn "releases/$id" "$dir/public.next"
+  mv -Tf "$dir/public.next" "$dir/public"
+}
+
+prune_releases() {
+  local dir="$1" live
+  live=$(current_release "$dir")
+  # Names start with a UTC stamp, so reverse name order is newest first.
+  ls -1 "$dir/releases" 2>/dev/null | grep -E "$RELEASE_RE" | sort -r | tail -n +$((KEEP_RELEASES + 1)) |
+    while read -r old; do
+      [ "$old" = "$live" ] || rm -rf "${dir:?}/releases/$old"
+    done
+}
+
+cmd_releases() {
+  local name="$1" dir="$SITES_DIR/$1" live r
+  [ -d "$dir" ] || die "no static site named '$name'"
+  live=$(current_release "$dir")
+  for r in $(ls -1 "$dir/releases" 2>/dev/null | grep -E "$RELEASE_RE" | sort -r); do
+    printf '%s|%s|%s\n' "$r" "$([ "$r" = "$live" ] && echo current || echo kept)" "$(du -sh "$dir/releases/$r" | cut -f1)"
+  done
+}
+
+cmd_rollback() {
+  local name="$1" id="$2" dir="$SITES_DIR/$1"
+  [ -d "$dir" ] || die "no static site named '$name'"
+  echo "$id" | grep -qE "$RELEASE_RE" || die "not a release id: $id"
+  [ -d "$dir/releases/$id" ] || die "release $id is no longer on the server"
+  echo "=== rolling back $name to $id ==="
+  switch_release "$dir" "$id"
+  echo "=== rolled back $name ==="
 }
 
 cmd_create() {
@@ -153,6 +222,8 @@ cmd_deploy() {
   local dir="$SITES_DIR/$name"
   [ -d "$dir" ] || die "no static site named '$name'"
   echo "=== deploying $name ==="
+  # Before the pull, while HEAD is still the commit the live build came from.
+  adopt_legacy_public "$dir"
   (cd "$dir/src" && git pull --ff-only) || die "git pull failed (diverged? uncommitted changes?)"
   build_site "$name" "$dir"
 
@@ -187,7 +258,7 @@ cmd_list() {
     n=$(basename "$d")
     # shellcheck disable=SC1091
     . "$d/.staticrc"
-    printf '%s|%s|%s|%s|%s\n' "$n" "$PORT" "$(du -sh "$d/public" 2>/dev/null | cut -f1)" \
+    printf '%s|%s|%s|%s|%s\n' "$n" "$PORT" "$(du -shL "$d/public" 2>/dev/null | cut -f1)" \
       "$([ -f "$NGINX_SITES/$n.conf" ] && echo served || echo unserved)" "$BRANCH"
   done
 }
@@ -199,6 +270,8 @@ case "$COMMAND" in
   deploy) cmd_deploy "$@" ;;
   remove) cmd_remove "$@" ;;
   list)   cmd_list ;;
+  releases) cmd_releases "$@" ;;
+  rollback) cmd_rollback "$@" ;;
   *)
     cat <<EOF
 usage: static-site <command> [args]
@@ -207,6 +280,8 @@ usage: static-site <command> [args]
   deploy <name>     git pull + rebuild + nginx reload
   remove <name>     drop vhost, tunnel route and port (keeps files)
   list              registered sites
+  releases <name>   builds kept on disk (id|current or kept|size), newest first
+  rollback <name> <id>   serve a kept build again, no rebuild
 
 Custom domains (lib/custom-domains.ts) are routed by Traefik, which owns
 :80/:443 for the whole box — not by this script. See ~/traefik/.

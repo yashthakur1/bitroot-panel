@@ -141,6 +141,46 @@ export async function updateStaticConfig(
   return toConfig(rc);
 }
 
+// ─── Kept builds ─────────────────────────────────────────────────────────────
+// `static-site` keeps each build as releases/<UTC stamp>-<sha> and serves the
+// live one through a symlink; only the last two (plus whatever is live after a
+// rollback) stay on disk.
+
+export interface Release {
+  id: string;
+  sha: string;
+  /** When it was built, ms since epoch. */
+  builtAt: number;
+  current: boolean;
+  size: string;
+}
+
+const RELEASE_RE = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z-([0-9a-z]+)$/;
+
+export function assertReleaseId(v: unknown): string {
+  if (typeof v !== 'string' || !RELEASE_RE.test(v)) throw new ValidationError('not a release id');
+  return v;
+}
+
+/** Parses `static-site releases` output (id|current or kept|size per line), skipping anything malformed. */
+export function parseReleases(output: string): Release[] {
+  return output
+    .split('\n')
+    .map((line) => line.trim().split('|'))
+    .flatMap(([id, state, size]) => {
+      const m = RELEASE_RE.exec(id ?? '');
+      if (!m) return [];
+      const [, y, mo, d, h, mi, s, sha] = m;
+      return [{ id, sha, builtAt: Date.UTC(+y, +mo - 1, +d, +h, +mi, +s), current: state === 'current', size: size ?? '' }];
+    });
+}
+
+export async function listReleases(name: string): Promise<Release[]> {
+  const r = await run(`static-site releases ${shq(assertName(name))}`, 15_000);
+  if (!r.ok) throw new Error(`could not list builds: ${r.output}`);
+  return parseReleases(r.output);
+}
+
 /** True while a build for this site is running — two builds in one checkout would trample each other. */
 export async function deployInProgress(name: string): Promise<boolean> {
   const r = await run(`pgrep -f ${shq(`static-site deploy ${assertName(name)}$`)} >/dev/null && echo yes || true`);
